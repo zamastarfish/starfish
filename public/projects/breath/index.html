@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Breath — zama.starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0f; 
+      overflow: hidden;
+      min-height: 100vh;
+      cursor: none;
+    }
+    canvas { 
+      display: block;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.2);
+      font-family: monospace;
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 1s;
+    }
+    body:hover #info { opacity: 1; }
+    #info a { color: rgba(255,255,255,0.3); }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="info">
+    breath — <a href="https://starfish.zama.space">zama.starfish</a>
+  </div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height, centerX, centerY;
+    let time = 0;
+    let breathPhase = 0;
+    let cycleCount = 0;
+    
+    // Breath timing (in frames at 60fps)
+    // Starts faster, gradually slows to encourage slower breathing
+    const getBreathDuration = () => {
+      const baseDuration = 240; // 4 seconds per breath
+      const slowdown = Math.min(cycleCount * 10, 180); // up to 3 more seconds
+      return baseDuration + slowdown;
+    };
+    
+    // Organic blob parameters
+    const blobPoints = 64;
+    let noiseOffsets = [];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      centerX = width / 2;
+      centerY = height / 2;
+    }
+    
+    function init() {
+      // Initialize noise offsets for organic shape
+      noiseOffsets = [];
+      for (let i = 0; i < blobPoints; i++) {
+        noiseOffsets.push(Math.random() * 1000);
+      }
+    }
+    
+    // Simple smooth noise
+    function noise(x) {
+      const i = Math.floor(x);
+      const f = x - i;
+      const smooth = f * f * (3 - 2 * f);
+      
+      const a = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+      const b = Math.sin((i + 1) * 12.9898 + 78.233) * 43758.5453;
+      
+      return (a - Math.floor(a)) * (1 - smooth) + (b - Math.floor(b)) * smooth;
+    }
+    
+    function getBreathScale() {
+      const duration = getBreathDuration();
+      const phase = (breathPhase % duration) / duration;
+      
+      // Smooth breathing curve - inhale slightly faster than exhale
+      // Using sin with easing for natural feel
+      const inhaleRatio = 0.4;
+      
+      let scale;
+      if (phase < inhaleRatio) {
+        // Inhale
+        const t = phase / inhaleRatio;
+        scale = easeOutQuad(t);
+      } else {
+        // Exhale
+        const t = (phase - inhaleRatio) / (1 - inhaleRatio);
+        scale = 1 - easeInOutQuad(t);
+      }
+      
+      // Map to size range
+      return 0.4 + scale * 0.6;
+    }
+    
+    function easeOutQuad(t) {
+      return 1 - (1 - t) * (1 - t);
+    }
+    
+    function easeInOutQuad(t) {
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+    
+    function drawBreath() {
+      const scale = getBreathScale();
+      const baseRadius = Math.min(width, height) * 0.25;
+      const radius = baseRadius * scale;
+      
+      // Multiple layers for depth
+      const layers = 5;
+      
+      for (let layer = layers - 1; layer >= 0; layer--) {
+        const layerScale = 1 - layer * 0.15;
+        const layerRadius = radius * layerScale;
+        const alpha = 0.1 + (1 - layer / layers) * 0.2;
+        
+        // Color shifts slightly with breath
+        const hue = 200 + scale * 20; // blue to cyan
+        const sat = 30 + layer * 10;
+        const light = 50 + scale * 20;
+        
+        // Organic blob shape
+        ctx.beginPath();
+        
+        for (let i = 0; i <= blobPoints; i++) {
+          const angle = (i / blobPoints) * Math.PI * 2;
+          
+          // Noise-based variation for organic feel
+          const noiseVal = noise(noiseOffsets[i % blobPoints] + time * 0.005);
+          const variation = 1 + (noiseVal - 0.5) * 0.1 * scale;
+          
+          const r = layerRadius * variation;
+          const x = centerX + Math.cos(angle) * r;
+          const y = centerY + Math.sin(angle) * r;
+          
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        
+        ctx.closePath();
+        
+        // Gradient fill
+        const gradient = ctx.createRadialGradient(
+          centerX, centerY, 0,
+          centerX, centerY, layerRadius
+        );
+        gradient.addColorStop(0, `hsla(${hue}, ${sat}%, ${light + 20}%, ${alpha})`);
+        gradient.addColorStop(1, `hsla(${hue}, ${sat}%, ${light}%, ${alpha * 0.5})`);
+        
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
+      
+      // Soft glow
+      const glowGradient = ctx.createRadialGradient(
+        centerX, centerY, radius * 0.5,
+        centerX, centerY, radius * 2
+      );
+      glowGradient.addColorStop(0, `hsla(210, 40%, 60%, ${0.1 * scale})`);
+      glowGradient.addColorStop(1, 'hsla(210, 40%, 60%, 0)');
+      
+      ctx.fillStyle = glowGradient;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    function update() {
+      time++;
+      breathPhase++;
+      
+      const duration = getBreathDuration();
+      if (breathPhase >= duration) {
+        breathPhase = 0;
+        cycleCount++;
+      }
+      
+      // Slowly drift noise offsets
+      for (let i = 0; i < noiseOffsets.length; i++) {
+        noiseOffsets[i] += 0.001;
+      }
+    }
+    
+    function draw() {
+      // Clear with slight fade for smoothness
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.3)';
+      ctx.fillRect(0, 0, width, height);
+      
+      drawBreath();
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    init();
+    animate();
+  </script>
+</body>
+</html>

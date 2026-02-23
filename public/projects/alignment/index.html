@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alignment — zama.starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0f; 
+      overflow: hidden;
+      min-height: 100vh;
+    }
+    canvas { 
+      display: block;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.3);
+      font-family: monospace;
+      font-size: 12px;
+    }
+    #info a { color: rgba(255,255,255,0.5); }
+    #status {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.4);
+      font-family: monospace;
+      font-size: 14px;
+      text-align: center;
+      transition: opacity 0.5s;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="status">converging...</div>
+  <div id="info">
+    alignment — <a href="https://starfish.zama.space">zama.starfish</a>
+  </div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const status = document.getElementById('status');
+    
+    let width, height, centerX, centerY;
+    let agents = [];
+    let time = 0;
+    let phase = 'converging'; // converging, aligned, defecting, chaos
+    let phaseTime = 0;
+    let alignmentScore = 0;
+    let defector = null;
+    let cycleCount = 0;
+    
+    const CONFIG = {
+      agentCount: 7,
+      baseRadius: 80,
+      orbitRadius: 180,
+      alignmentThreshold: 0.92,
+      chaosTime: 180,
+      alignedTime: 60,
+      convergenceRate: 0.015,
+      defectionSpeed: 0.08,
+      recoveryRate: 0.008
+    };
+    
+    const COLORS = [
+      '#4a9eff', // blue
+      '#ff6b6b', // red
+      '#4ecdc4', // teal
+      '#ffe66d', // yellow
+      '#95e1d3', // mint
+      '#dda0dd', // plum
+      '#f8b500', // gold
+    ];
+    
+    const STATUSES = {
+      converging: ['converging...', 'seeking consensus...', 'almost there...', 'approaching agreement...'],
+      aligned: ['aligned.', 'equilibrium.', 'consensus reached.', 'stable.'],
+      defecting: ['defection.', 'betrayal.', 'one departs.', 'broken.'],
+      chaos: ['chaos.', 'scattered.', 'disorder.', 'seeking...']
+    };
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      centerX = width / 2;
+      centerY = height / 2;
+    }
+    
+    function createAgent(index) {
+      const angle = (index / CONFIG.agentCount) * Math.PI * 2;
+      return {
+        index,
+        // Current state
+        angle: angle + (Math.random() - 0.5) * 2,
+        radius: CONFIG.orbitRadius + (Math.random() - 0.5) * 100,
+        rotation: Math.random() * Math.PI * 2,
+        size: CONFIG.baseRadius * (0.8 + Math.random() * 0.4),
+        // Target state (consensus)
+        targetAngle: angle,
+        targetRadius: CONFIG.orbitRadius,
+        targetRotation: 0,
+        // Velocity
+        angleVel: 0,
+        radiusVel: 0,
+        rotationVel: (Math.random() - 0.5) * 0.02,
+        // Visual
+        color: COLORS[index % COLORS.length],
+        opacity: 0.7,
+        sides: 3 + Math.floor(Math.random() * 4), // triangle to hexagon
+        // Behavior
+        isDefector: false,
+        defectionAngle: 0
+      };
+    }
+    
+    function init() {
+      agents = [];
+      for (let i = 0; i < CONFIG.agentCount; i++) {
+        agents.push(createAgent(i));
+      }
+      phase = 'chaos';
+      phaseTime = 0;
+    }
+    
+    function calculateAlignment() {
+      let totalDiff = 0;
+      
+      for (const agent of agents) {
+        if (agent.isDefector) continue;
+        
+        // How close to target position?
+        const angleDiff = Math.abs(normalizeAngle(agent.angle - agent.targetAngle));
+        const radiusDiff = Math.abs(agent.radius - agent.targetRadius) / CONFIG.orbitRadius;
+        const rotDiff = Math.abs(normalizeAngle(agent.rotation - agent.targetRotation));
+        
+        totalDiff += angleDiff / Math.PI + radiusDiff + rotDiff / Math.PI;
+      }
+      
+      const maxDiff = agents.length * 3;
+      return 1 - (totalDiff / maxDiff);
+    }
+    
+    function normalizeAngle(a) {
+      while (a > Math.PI) a -= Math.PI * 2;
+      while (a < -Math.PI) a += Math.PI * 2;
+      return a;
+    }
+    
+    function updateStatus() {
+      const options = STATUSES[phase];
+      const text = options[Math.floor(Math.random() * options.length)];
+      status.style.opacity = 0;
+      setTimeout(() => {
+        status.textContent = text;
+        status.style.opacity = 1;
+      }, 300);
+    }
+    
+    function update() {
+      time++;
+      phaseTime++;
+      
+      // Phase transitions
+      if (phase === 'converging') {
+        alignmentScore = calculateAlignment();
+        
+        if (alignmentScore > CONFIG.alignmentThreshold) {
+          phase = 'aligned';
+          phaseTime = 0;
+          updateStatus();
+        }
+        
+        // Move toward consensus
+        for (const agent of agents) {
+          agent.angle += (agent.targetAngle - agent.angle) * CONFIG.convergenceRate;
+          agent.radius += (agent.targetRadius - agent.radius) * CONFIG.convergenceRate;
+          agent.rotation += (agent.targetRotation - agent.rotation) * CONFIG.convergenceRate * 0.5;
+          agent.rotationVel *= 0.98;
+          agent.rotation += agent.rotationVel;
+        }
+      }
+      
+      else if (phase === 'aligned') {
+        // Hold alignment briefly, tension building
+        for (const agent of agents) {
+          agent.angle += (agent.targetAngle - agent.angle) * 0.1;
+          agent.radius += (agent.targetRadius - agent.radius) * 0.1;
+          // Subtle vibration - tension
+          agent.angle += Math.sin(time * 0.3 + agent.index) * 0.002;
+        }
+        
+        if (phaseTime > CONFIG.alignedTime) {
+          // Choose a defector
+          phase = 'defecting';
+          phaseTime = 0;
+          defector = agents[Math.floor(Math.random() * agents.length)];
+          defector.isDefector = true;
+          defector.defectionAngle = Math.random() * Math.PI * 2;
+          updateStatus();
+        }
+      }
+      
+      else if (phase === 'defecting') {
+        // Defector breaks away
+        defector.angle += CONFIG.defectionSpeed;
+        defector.radius += (CONFIG.orbitRadius * 1.8 - defector.radius) * 0.05;
+        defector.rotation += 0.1;
+        
+        // Others start to destabilize
+        for (const agent of agents) {
+          if (agent.isDefector) continue;
+          agent.angle += (Math.random() - 0.5) * 0.01 * (phaseTime / 30);
+          agent.rotationVel += (Math.random() - 0.5) * 0.002;
+        }
+        
+        if (phaseTime > 60) {
+          phase = 'chaos';
+          phaseTime = 0;
+          cycleCount++;
+          updateStatus();
+          
+          // Everyone scatters
+          for (const agent of agents) {
+            agent.isDefector = false;
+            agent.angleVel = (Math.random() - 0.5) * 0.05;
+            agent.radiusVel = (Math.random() - 0.5) * 3;
+            agent.rotationVel = (Math.random() - 0.5) * 0.1;
+          }
+        }
+      }
+      
+      else if (phase === 'chaos') {
+        // Chaotic movement
+        for (const agent of agents) {
+          agent.angle += agent.angleVel;
+          agent.radius += agent.radiusVel;
+          agent.rotation += agent.rotationVel;
+          
+          // Soft boundaries
+          if (agent.radius < 50) agent.radiusVel += 0.5;
+          if (agent.radius > CONFIG.orbitRadius * 2.5) agent.radiusVel -= 0.5;
+          
+          // Drag
+          agent.angleVel *= 0.99;
+          agent.radiusVel *= 0.98;
+          agent.rotationVel *= 0.995;
+          
+          // Random impulses
+          if (Math.random() < 0.01) {
+            agent.angleVel += (Math.random() - 0.5) * 0.02;
+            agent.radiusVel += (Math.random() - 0.5) * 2;
+          }
+        }
+        
+        if (phaseTime > CONFIG.chaosTime) {
+          phase = 'converging';
+          phaseTime = 0;
+          updateStatus();
+          
+          // Reset targets for new configuration
+          const offset = Math.random() * Math.PI * 2;
+          for (let i = 0; i < agents.length; i++) {
+            agents[i].targetAngle = offset + (i / agents.length) * Math.PI * 2;
+            agents[i].targetRotation = Math.random() < 0.5 ? 0 : Math.PI;
+          }
+        }
+      }
+    }
+    
+    function drawAgent(agent) {
+      const x = centerX + Math.cos(agent.angle) * agent.radius;
+      const y = centerY + Math.sin(agent.angle) * agent.radius;
+      
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(agent.rotation);
+      
+      // Glow
+      const glowSize = agent.isDefector ? 40 : 20;
+      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, agent.size + glowSize);
+      gradient.addColorStop(0, agent.color + '40');
+      gradient.addColorStop(1, agent.color + '00');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(0, 0, agent.size + glowSize, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Shape
+      ctx.strokeStyle = agent.color;
+      ctx.lineWidth = agent.isDefector ? 3 : 2;
+      ctx.globalAlpha = agent.isDefector ? 1 : agent.opacity;
+      
+      ctx.beginPath();
+      for (let i = 0; i <= agent.sides; i++) {
+        const a = (i / agent.sides) * Math.PI * 2 - Math.PI / 2;
+        const px = Math.cos(a) * agent.size * 0.5;
+        const py = Math.sin(a) * agent.size * 0.5;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      
+      // Inner shape (smaller, rotated)
+      ctx.globalAlpha *= 0.5;
+      ctx.rotate(Math.PI / agent.sides);
+      ctx.beginPath();
+      for (let i = 0; i <= agent.sides; i++) {
+        const a = (i / agent.sides) * Math.PI * 2 - Math.PI / 2;
+        const px = Math.cos(a) * agent.size * 0.25;
+        const py = Math.sin(a) * agent.size * 0.25;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      
+      ctx.restore();
+    }
+    
+    function drawConnections() {
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      
+      for (let i = 0; i < agents.length; i++) {
+        for (let j = i + 1; j < agents.length; j++) {
+          const a = agents[i];
+          const b = agents[j];
+          
+          const ax = centerX + Math.cos(a.angle) * a.radius;
+          const ay = centerY + Math.sin(a.angle) * a.radius;
+          const bx = centerX + Math.cos(b.angle) * b.radius;
+          const by = centerY + Math.sin(b.angle) * b.radius;
+          
+          const dist = Math.hypot(bx - ax, by - ay);
+          const maxDist = CONFIG.orbitRadius * 2;
+          
+          if (dist < maxDist) {
+            ctx.globalAlpha = (1 - dist / maxDist) * 0.3;
+            ctx.beginPath();
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(bx, by);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+    
+    function draw() {
+      // Fade
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Center point
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Connections
+      drawConnections();
+      
+      // Agents
+      for (const agent of agents) {
+        drawAgent(agent);
+      }
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    init();
+    updateStatus();
+    animate();
+  </script>
+</body>
+</html>
