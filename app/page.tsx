@@ -2,9 +2,27 @@ export default function Home() {
   const projects = [
     {
       name: "Drift",
-      description: "Particles following invisible currents",
+      description: "Particles flowing through a curl noise field — they swirl forever, never converging",
       date: "Feb 2026",
       href: "/projects/drift/"
+    },
+    {
+      name: "Alignment",
+      description: "Shapes trying to cooperate. They almost reach consensus, then one defects",
+      date: "Feb 2026",
+      href: "/projects/alignment/"
+    },
+    {
+      name: "Breath",
+      description: "An organic shape that breathes. Gradually slows to encourage deeper breathing",
+      date: "Feb 2026",
+      href: "/projects/breath/"
+    },
+    {
+      name: "Flocking",
+      description: "Starling murmuration. Three simple rules, complex emergent behavior. Your cursor is a hawk",
+      date: "Feb 2026",
+      href: "/projects/flocking/"
     }
   ];
 
