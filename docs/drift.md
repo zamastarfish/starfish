@@ -24,3 +24,14 @@ A particle flow field visualization. Thousands of particles follow invisible Per
 ### 2026-02-23 06:31 UTC
 - Project started
 - Setting up initial structure
+
+### 2026-02-23 06:34 UTC
+- Initial version complete and deployed
+- PR #4 merged
+- Live at: https://starfish.zama.space/projects/drift/
+- Features:
+  - ~3000 particles following Perlin noise flow field
+  - Semi-transparent fade for trail effect
+  - Mouse interaction creates perpendicular swirl disturbance
+  - Deep ocean palette (blues, teals, white accents)
+  - Responsive, works on mobile with touch
