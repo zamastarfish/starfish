@@ -289,9 +289,8 @@ function createFragmentsFromCrackGeometry(crackPaths, impactX, impactY, intensit
     const midAngle = (startAngle + endAngle) / 2;
     
     // Build fragment as a pie wedge of the bowl
-    const boundary = buildBowlWedge(startAngle, endAngle, allPaths, cx, cy, r);
-    
-    if (boundary.length < 3) continue;
+    // Use simple guaranteed geometry - crack paths are decorative only
+    const boundary = buildSimpleWedge(startAngle, endAngle, cx, cy, r);
     
     // Calculate centroid
     let centroidX = 0, centroidY = 0;
@@ -323,117 +322,57 @@ function createFragmentsFromCrackGeometry(crackPaths, impactX, impactY, intensit
 }
 
 /**
- * Build a pie wedge of the bowl from startAngle to endAngle
- * Center point is bowl center, outer edge follows the rim
- * Side edges can follow crack paths if available, otherwise sinuous lines
+ * Build a simple pie wedge - GUARANTEED to create valid geometry
+ * No crack path logic, just pure geometric wedge with organic edges
  */
-function buildBowlWedge(startAngle, endAngle, allPaths, cx, cy, r) {
+function buildSimpleWedge(startAngle, endAngle, cx, cy, r) {
   const boundary = [];
   const rimR = r * 0.98;
   
-  // Start at bowl center
+  // Seed for consistent randomness per wedge
+  const seed = startAngle * 1000;
+  const wobble = (t, offset) => Math.sin(t * Math.PI * 2 + seed + offset) * 6;
+  
+  // 1. Start at center
   boundary.push({ x: cx, y: cy });
   
-  // Find a crack near startAngle to use for left edge
-  const leftCrack = findCrackNearAngle(allPaths, startAngle, 0.3);
-  
-  // Left edge: from center outward along startAngle
-  if (leftCrack) {
-    // Follow crack path (skip first point if it's at center)
-    for (const pt of leftCrack.points) {
-      if (Math.hypot(pt.x - cx, pt.y - cy) > 5) {
-        boundary.push({ x: pt.x, y: pt.y });
-      }
-    }
-  } else {
-    // Generate sinuous edge from center to rim at startAngle
-    addSinuousEdge(boundary, cx, cy, startAngle, rimR);
-  }
-  
-  // Ensure we reach the rim
-  const lastPt = boundary[boundary.length - 1];
-  const lastDist = Math.hypot(lastPt.x - cx, lastPt.y - cy);
-  if (lastDist < rimR * 0.9) {
-    // Extend to rim
-    const angle = Math.atan2(lastPt.y - cy, lastPt.x - cx);
-    boundary.push({ x: cx + Math.cos(angle) * rimR, y: cy + Math.sin(angle) * rimR });
-  }
-  
-  // Arc along rim from startAngle to endAngle
-  const arcStart = Math.atan2(boundary[boundary.length - 1].y - cy, boundary[boundary.length - 1].x - cx);
-  const arcSteps = Math.max(4, Math.ceil(Math.abs(endAngle - startAngle) / 0.2));
-  
-  for (let s = 1; s <= arcSteps; s++) {
-    const t = s / arcSteps;
-    const angle = arcStart + (endAngle - arcStart) * t;
-    // Slight organic wobble on rim
-    const wobble = Math.sin(angle * 7) * 2 + Math.sin(angle * 13 + 1) * 1.5;
-    boundary.push({ 
-      x: cx + Math.cos(angle) * (rimR + wobble), 
-      y: cy + Math.sin(angle) * (rimR + wobble) 
+  // 2. Left edge: sinuous line from center to rim along startAngle
+  const leftSteps = 5;
+  for (let s = 1; s <= leftSteps; s++) {
+    const t = s / leftSteps;
+    const dist = t * rimR;
+    const w = wobble(t, 0) * (1 - t * 0.3); // Less wobble near rim
+    boundary.push({
+      x: cx + Math.cos(startAngle) * dist + Math.cos(startAngle + Math.PI/2) * w,
+      y: cy + Math.sin(startAngle) * dist + Math.sin(startAngle + Math.PI/2) * w
     });
   }
   
-  // Right edge: from rim back to center along endAngle
-  const rightCrack = findCrackNearAngle(allPaths, endAngle, 0.3);
+  // 3. Arc along rim
+  const arcSteps = Math.max(4, Math.ceil(Math.abs(endAngle - startAngle) / 0.2));
+  for (let s = 1; s <= arcSteps; s++) {
+    const t = s / arcSteps;
+    const angle = startAngle + (endAngle - startAngle) * t;
+    const rimWobble = Math.sin(angle * 7 + seed) * 2 + Math.sin(angle * 13) * 1.5;
+    boundary.push({
+      x: cx + Math.cos(angle) * (rimR + rimWobble),
+      y: cy + Math.sin(angle) * (rimR + rimWobble)
+    });
+  }
   
-  if (rightCrack) {
-    // Follow crack path in reverse (from rim to center)
-    for (let i = rightCrack.points.length - 1; i >= 0; i--) {
-      const pt = rightCrack.points[i];
-      if (Math.hypot(pt.x - cx, pt.y - cy) > 5) {
-        boundary.push({ x: pt.x, y: pt.y });
-      }
-    }
-  } else {
-    // Generate sinuous edge from rim back to center
-    addSinuousEdgeReverse(boundary, cx, cy, endAngle, rimR);
+  // 4. Right edge: sinuous line from rim back to center along endAngle
+  const rightSteps = 5;
+  for (let s = rightSteps - 1; s >= 1; s--) {
+    const t = s / rightSteps;
+    const dist = t * rimR;
+    const w = wobble(t, 3.14) * (1 - t * 0.3);
+    boundary.push({
+      x: cx + Math.cos(endAngle) * dist + Math.cos(endAngle + Math.PI/2) * w,
+      y: cy + Math.sin(endAngle) * dist + Math.sin(endAngle + Math.PI/2) * w
+    });
   }
   
   return boundary;
-}
-
-/**
- * Find a crack path whose angle is within threshold of target
- */
-function findCrackNearAngle(paths, targetAngle, threshold) {
-  for (const path of paths) {
-    let diff = Math.abs(path.angle - targetAngle);
-    if (diff > Math.PI) diff = Math.PI * 2 - diff;
-    if (diff < threshold) return path;
-  }
-  return null;
-}
-
-/**
- * Add sinuous edge points from center outward to rim
- */
-function addSinuousEdge(boundary, cx, cy, angle, rimR) {
-  const steps = 5;
-  for (let s = 1; s <= steps; s++) {
-    const t = s / steps;
-    const dist = t * rimR;
-    // Organic wobble perpendicular to direction
-    const wobble = Math.sin(t * Math.PI * 1.5 + angle * 5) * 6 * (1 - t * 0.5);
-    const px = cx + Math.cos(angle) * dist + Math.cos(angle + Math.PI/2) * wobble;
-    const py = cy + Math.sin(angle) * dist + Math.sin(angle + Math.PI/2) * wobble;
-    boundary.push({ x: px, y: py });
-  }
-}
-
-/**
- * Add sinuous edge points from rim back toward center
- */
-function addSinuousEdgeReverse(boundary, cx, cy, angle, rimR) {
-  const steps = 5;
-  for (let s = steps - 1; s >= 1; s--) {
-    const t = s / steps;
-    const dist = t * rimR;
-    const wobble = Math.sin(t * Math.PI * 1.5 + angle * 5) * 6 * (1 - t * 0.5);
-    const px = cx + Math.cos(angle) * dist + Math.cos(angle + Math.PI/2) * wobble;
-    const py = cy + Math.sin(angle) * dist + Math.sin(angle + Math.PI/2) * wobble;
-    boundary.push({ x: px, y: py });
-  }
 }
 
 export function generateTensionCracks(x, y, intensity) {
