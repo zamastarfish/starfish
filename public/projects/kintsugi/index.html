@@ -313,10 +313,11 @@
             y: cy,
             originX: cx,
             originY: cy,
-            vx: Math.cos(outwardAngle) * speed + (Math.random() - 0.5) * 2,
-            vy: Math.sin(outwardAngle) * speed - 2 * intensity + (Math.random() - 0.5) * 2,
+            // Gentler outward motion, minimal downward
+            vx: Math.cos(outwardAngle) * speed * 0.7 + (Math.random() - 0.5),
+            vy: Math.sin(outwardAngle) * speed * 0.7 + (Math.random() - 0.5),
             rotation: 0,
-            rotationVel: (Math.random() - 0.5) * 0.15 * intensity,
+            rotationVel: (Math.random() - 0.5) * 0.1 * intensity,
             thickness: 6 + Math.random() * 4
           });
           
@@ -454,10 +455,10 @@
     // ========================================
     
     function updatePhysics() {
-      const gravity = 0.08;  // Slower fall, more visible
-      const friction = 0.975;
-      const bounce = 0.3;
-      const boundary = bowlRadius * 1.8;  // Keep fragments closer
+      const gravity = 0.02;  // Very gentle - fragments float more than fall
+      const friction = 0.96;
+      const bounce = 0.4;
+      const boundary = bowlRadius * 1.3;  // Keep fragments close to bowl area
       
       let settled = true;
       
@@ -470,17 +471,16 @@
         f.rotation += f.rotationVel;
         f.rotationVel *= 0.97;
         
-        // Ground
-        if (f.y > centerY + boundary) {
-          f.y = centerY + boundary;
+        // Soft boundary - push back toward center when too far
+        const distFromCenter = Math.hypot(f.x - centerX, f.y - centerY);
+        if (distFromCenter > boundary) {
+          const angle = Math.atan2(f.y - centerY, f.x - centerX);
+          f.x = centerX + Math.cos(angle) * boundary;
+          f.y = centerY + Math.sin(angle) * boundary;
+          // Bounce back inward
+          f.vx *= -bounce;
           f.vy *= -bounce;
-          f.vx *= 0.8;
-          f.rotationVel *= 0.5;
         }
-        
-        // Walls
-        if (f.x < centerX - boundary) { f.x = centerX - boundary; f.vx *= -bounce; }
-        if (f.x > centerX + boundary) { f.x = centerX + boundary; f.vx *= -bounce; }
         
         if (Math.abs(f.vx) > 0.15 || Math.abs(f.vy) > 0.15) settled = false;
       }
