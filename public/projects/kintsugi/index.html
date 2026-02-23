@@ -253,176 +253,92 @@
     // VORONOI FRAGMENTATION
     // ========================================
     
-    function generateSeedPoints(count, cx, cy, radius, impactX, impactY) {
-      const points = [];
-      
-      // Bias points toward impact location
-      for (let i = 0; i < count; i++) {
-        let x, y;
-        
-        if (i < count * 0.4) {
-          // Some points near impact
-          const angle = Math.random() * Math.PI * 2;
-          const r = Math.random() * radius * 0.5;
-          x = impactX + Math.cos(angle) * r;
-          y = impactY + Math.sin(angle) * r;
-        } else {
-          // Rest distributed across bowl
-          const angle = Math.random() * Math.PI * 2;
-          const r = Math.sqrt(Math.random()) * radius * 0.9;
-          x = cx + Math.cos(angle) * r;
-          y = cy + Math.sin(angle) * r;
-        }
-        
-        // Keep within bowl
-        const dist = Math.hypot(x - cx, y - cy);
-        if (dist > radius * 0.95) {
-          const angle = Math.atan2(y - cy, x - cx);
-          x = cx + Math.cos(angle) * radius * 0.9;
-          y = cy + Math.sin(angle) * radius * 0.9;
-        }
-        
-        points.push({ x, y, id: i });
-      }
-      
-      return points;
-    }
-    
-    function getVoronoiCell(point, allPoints, cx, cy, radius) {
-      const resolution = 64;
-      let cellPoints = [];
-      
-      // Start with circle around point
-      for (let i = 0; i < resolution; i++) {
-        const angle = (i / resolution) * Math.PI * 2;
-        cellPoints.push({
-          x: point.x + Math.cos(angle) * radius * 2,
-          y: point.y + Math.sin(angle) * radius * 2
-        });
-      }
-      
-      // Clip to bowl
-      cellPoints = clipToCircle(cellPoints, cx, cy, radius);
-      if (cellPoints.length < 3) return [];
-      
-      // Clip by each bisector
-      for (const other of allPoints) {
-        if (other.id === point.id) continue;
-        
-        const midX = (point.x + other.x) / 2;
-        const midY = (point.y + other.y) / 2;
-        const nx = -(other.y - point.y);
-        const ny = other.x - point.x;
-        
-        cellPoints = clipByLine(cellPoints, midX, midY, nx, ny);
-        if (cellPoints.length < 3) return [];
-      }
-      
-      return cellPoints;
-    }
-    
-    function clipToCircle(poly, cx, cy, r) {
-      const result = [];
-      for (let i = 0; i < poly.length; i++) {
-        const curr = poly[i];
-        const next = poly[(i + 1) % poly.length];
-        const currIn = Math.hypot(curr.x - cx, curr.y - cy) <= r;
-        const nextIn = Math.hypot(next.x - cx, next.y - cy) <= r;
-        
-        if (currIn) result.push(curr);
-        
-        if (currIn !== nextIn) {
-          const inter = lineCircleIntersect(curr, next, cx, cy, r);
-          if (inter) result.push(inter);
-        }
-      }
-      return result;
-    }
-    
-    function lineCircleIntersect(p1, p2, cx, cy, r) {
-      const dx = p2.x - p1.x, dy = p2.y - p1.y;
-      const fx = p1.x - cx, fy = p1.y - cy;
-      const a = dx*dx + dy*dy;
-      const b = 2*(fx*dx + fy*dy);
-      const c = fx*fx + fy*fy - r*r;
-      const disc = b*b - 4*a*c;
-      if (disc < 0) return null;
-      let t = (-b - Math.sqrt(disc)) / (2*a);
-      if (t < 0 || t > 1) t = (-b + Math.sqrt(disc)) / (2*a);
-      if (t < 0 || t > 1) return null;
-      return { x: p1.x + t*dx, y: p1.y + t*dy };
-    }
-    
-    function clipByLine(poly, px, py, nx, ny) {
-      const result = [];
-      for (let i = 0; i < poly.length; i++) {
-        const curr = poly[i];
-        const next = poly[(i + 1) % poly.length];
-        const currSide = (curr.x - px)*nx + (curr.y - py)*ny;
-        const nextSide = (next.x - px)*nx + (next.y - py)*ny;
-        
-        if (currSide >= 0) result.push(curr);
-        
-        if ((currSide >= 0) !== (nextSide >= 0)) {
-          const t = currSide / (currSide - nextSide);
-          result.push({
-            x: curr.x + t*(next.x - curr.x),
-            y: curr.y + t*(next.y - curr.y)
-          });
-        }
-      }
-      return result;
-    }
-    
+    // Simple, reliable radial fragmentation
     function createFragments(intensity, impactX, impactY) {
-      const numPoints = Math.floor(7 + intensity * 11);
-      const seeds = generateSeedPoints(numPoints, centerX, centerY, bowlRadius, impactX, impactY);
-      
       fragments = [];
       const newSeams = [];
       
-      for (const seed of seeds) {
-        const verts = getVoronoiCell(seed, seeds, centerX, centerY, bowlRadius);
-        if (verts.length < 3) continue;
+      // Number of radial slices
+      const numSlices = Math.floor(6 + intensity * 6);
+      // Number of rings
+      const numRings = Math.floor(2 + intensity * 2);
+      
+      const angleOffset = Math.random() * Math.PI * 2;
+      
+      for (let ring = 0; ring < numRings; ring++) {
+        const innerR = ring === 0 ? 0 : (ring / numRings) * bowlRadius;
+        const outerR = ((ring + 1) / numRings) * bowlRadius;
         
-        // Centroid
-        let cx = 0, cy = 0;
-        for (const v of verts) { cx += v.x; cy += v.y; }
-        cx /= verts.length; cy /= verts.length;
-        
-        // Distance from impact affects velocity
-        const impactDist = Math.hypot(cx - impactX, cy - impactY);
-        const impactInfluence = Math.max(0, 1 - impactDist / (bowlRadius * 1.5));
-        
-        const angle = Math.atan2(cy - impactY, cx - impactX);
-        // Slower, more visible scatter
-        const speed = (1 + Math.random() * 2.5) * intensity * (0.3 + impactInfluence * 0.5);
-        
-        // Fragment thickness (for 3D effect)
-        const thickness = 8 + Math.random() * 6;
-        
-        fragments.push({
-          vertices: verts.map(v => ({ x: v.x - cx, y: v.y - cy })),
-          x: cx, y: cy,
-          originX: cx, originY: cy,
-          vx: Math.cos(angle + (Math.random()-0.5)*0.5) * speed,
-          vy: Math.sin(angle + (Math.random()-0.5)*0.5) * speed - 1.5 * intensity,
-          rotation: 0,
-          rotationVel: (Math.random()-0.5) * 0.12 * intensity,
-          thickness: thickness,
-          tilt: (Math.random()-0.5) * 0.3 // 3D tilt
-        });
-        
-        // Seams
-        for (let i = 0; i < verts.length; i++) {
-          const v1 = verts[i], v2 = verts[(i+1) % verts.length];
-          const mid = { x: (v1.x+v2.x)/2, y: (v1.y+v2.y)/2 };
-          if (Math.hypot(mid.x - centerX, mid.y - centerY) < bowlRadius - 3) {
+        for (let slice = 0; slice < numSlices; slice++) {
+          const angle1 = angleOffset + (slice / numSlices) * Math.PI * 2;
+          const angle2 = angleOffset + ((slice + 1) / numSlices) * Math.PI * 2;
+          
+          // Add slight randomness to angles
+          const jitter = 0.1;
+          const a1 = angle1 + (Math.random() - 0.5) * jitter;
+          const a2 = angle2 + (Math.random() - 0.5) * jitter;
+          
+          // Build fragment vertices (pie slice or ring segment)
+          const verts = [];
+          
+          if (ring === 0) {
+            // Center piece - triangle
+            verts.push({ x: centerX, y: centerY });
+            verts.push({ x: centerX + Math.cos(a1) * outerR, y: centerY + Math.sin(a1) * outerR });
+            verts.push({ x: centerX + Math.cos(a2) * outerR, y: centerY + Math.sin(a2) * outerR });
+          } else {
+            // Ring segment - quad
+            verts.push({ x: centerX + Math.cos(a1) * innerR, y: centerY + Math.sin(a1) * innerR });
+            verts.push({ x: centerX + Math.cos(a1) * outerR, y: centerY + Math.sin(a1) * outerR });
+            verts.push({ x: centerX + Math.cos(a2) * outerR, y: centerY + Math.sin(a2) * outerR });
+            verts.push({ x: centerX + Math.cos(a2) * innerR, y: centerY + Math.sin(a2) * innerR });
+          }
+          
+          // Calculate centroid
+          let cx = 0, cy = 0;
+          for (const v of verts) { cx += v.x; cy += v.y; }
+          cx /= verts.length;
+          cy /= verts.length;
+          
+          // Velocity based on distance from impact
+          const impactDist = Math.hypot(cx - impactX, cy - impactY);
+          const impactInfluence = Math.max(0.2, 1 - impactDist / (bowlRadius * 1.5));
+          
+          const outwardAngle = Math.atan2(cy - centerY, cx - centerX);
+          const speed = (1.5 + Math.random() * 3) * intensity * impactInfluence;
+          
+          fragments.push({
+            vertices: verts.map(v => ({ x: v.x - cx, y: v.y - cy })),
+            x: cx,
+            y: cy,
+            originX: cx,
+            originY: cy,
+            vx: Math.cos(outwardAngle) * speed + (Math.random() - 0.5) * 2,
+            vy: Math.sin(outwardAngle) * speed - 2 * intensity + (Math.random() - 0.5) * 2,
+            rotation: 0,
+            rotationVel: (Math.random() - 0.5) * 0.15 * intensity,
+            thickness: 6 + Math.random() * 4
+          });
+          
+          // Create seams along radial edges
+          if (ring > 0) {
+            // Inner arc seam
             newSeams.push({
-              x1: v1.x, y1: v1.y, x2: v2.x, y2: v2.y,
+              x1: centerX + Math.cos(a1) * innerR,
+              y1: centerY + Math.sin(a1) * innerR,
+              x2: centerX + Math.cos(a2) * innerR,
+              y2: centerY + Math.sin(a2) * innerR,
               progress: 0, flowProgress: 0
             });
           }
+          // Radial seam
+          newSeams.push({
+            x1: centerX + Math.cos(a1) * innerR,
+            y1: centerY + Math.sin(a1) * innerR,
+            x2: centerX + Math.cos(a1) * outerR,
+            y2: centerY + Math.sin(a1) * outerR,
+            progress: 0, flowProgress: 0
+          });
         }
       }
       
