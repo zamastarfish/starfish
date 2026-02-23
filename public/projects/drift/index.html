@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drift — zama.starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0f; 
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    canvas { 
+      display: block;
+      cursor: crosshair;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.3);
+      font-family: monospace;
+      font-size: 12px;
+    }
+    #info a { color: rgba(255,255,255,0.5); }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="info">
+    drift — <a href="https://starfish.zama.space">zama.starfish</a>
+  </div>
+  
+  <script>
+    // Simplex noise implementation (fast, good quality)
+    const SimplexNoise = (function() {
+      const F2 = 0.5 * (Math.sqrt(3) - 1);
+      const G2 = (3 - Math.sqrt(3)) / 6;
+      const grad3 = [
+        [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+        [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+        [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+      ];
+      
+      function Noise(seed = Math.random() * 10000) {
+        this.perm = new Uint8Array(512);
+        this.permMod12 = new Uint8Array(512);
+        const p = new Uint8Array(256);
+        for (let i = 0; i < 256; i++) p[i] = i;
+        
+        // Shuffle with seed
+        let s = seed;
+        for (let i = 255; i > 0; i--) {
+          s = (s * 16807) % 2147483647;
+          const j = s % (i + 1);
+          [p[i], p[j]] = [p[j], p[i]];
+        }
+        
+        for (let i = 0; i < 512; i++) {
+          this.perm[i] = p[i & 255];
+          this.permMod12[i] = this.perm[i] % 12;
+        }
+      }
+      
+      Noise.prototype.noise2D = function(x, y) {
+        const s = (x + y) * F2;
+        const i = Math.floor(x + s);
+        const j = Math.floor(y + s);
+        const t = (i + j) * G2;
+        const X0 = i - t;
+        const Y0 = j - t;
+        const x0 = x - X0;
+        const y0 = y - Y0;
+        
+        const i1 = x0 > y0 ? 1 : 0;
+        const j1 = x0 > y0 ? 0 : 1;
+        
+        const x1 = x0 - i1 + G2;
+        const y1 = y0 - j1 + G2;
+        const x2 = x0 - 1 + 2 * G2;
+        const y2 = y0 - 1 + 2 * G2;
+        
+        const ii = i & 255;
+        const jj = j & 255;
+        
+        let n0 = 0, n1 = 0, n2 = 0;
+        
+        let t0 = 0.5 - x0*x0 - y0*y0;
+        if (t0 >= 0) {
+          const gi0 = this.permMod12[ii + this.perm[jj]];
+          t0 *= t0;
+          n0 = t0 * t0 * (grad3[gi0][0] * x0 + grad3[gi0][1] * y0);
+        }
+        
+        let t1 = 0.5 - x1*x1 - y1*y1;
+        if (t1 >= 0) {
+          const gi1 = this.permMod12[ii + i1 + this.perm[jj + j1]];
+          t1 *= t1;
+          n1 = t1 * t1 * (grad3[gi1][0] * x1 + grad3[gi1][1] * y1);
+        }
+        
+        let t2 = 0.5 - x2*x2 - y2*y2;
+        if (t2 >= 0) {
+          const gi2 = this.permMod12[ii + 1 + this.perm[jj + 1]];
+          t2 *= t2;
+          n2 = t2 * t2 * (grad3[gi2][0] * x2 + grad3[gi2][1] * y2);
+        }
+        
+        return 70 * (n0 + n1 + n2);
+      };
+      
+      return Noise;
+    })();
+    
+    // Main sketch
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let particles = [];
+    let noise;
+    let time = 0;
+    let mouseX = -1000, mouseY = -1000;
+    let mouseInfluence = 0;
+    
+    const CONFIG = {
+      particleCount: 3000,
+      noiseScale: 0.003,
+      noiseSpeed: 0.0003,
+      particleSpeed: 1.5,
+      fadeAlpha: 0.03,
+      trailLength: 0.97,
+      mouseRadius: 150,
+      mouseStrength: 2
+    };
+    
+    // Color palette - deep ocean
+    const colors = [
+      { r: 20, g: 60, b: 90 },    // deep blue
+      { r: 40, g: 100, b: 120 },  // teal
+      { r: 80, g: 140, b: 160 },  // light teal
+      { r: 200, g: 220, b: 230 }, // pale
+      { r: 255, g: 255, b: 255 }  // white accent
+    ];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      ctx.fillStyle = '#0a0a0f';
+      ctx.fillRect(0, 0, width, height);
+    }
+    
+    function createParticle() {
+      const colorIdx = Math.random() < 0.1 ? 4 : Math.floor(Math.random() * 4);
+      const color = colors[colorIdx];
+      const alpha = colorIdx === 4 ? 0.8 : 0.3 + Math.random() * 0.4;
+      
+      return {
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: 0,
+        vy: 0,
+        color: `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`,
+        size: colorIdx === 4 ? 1 : 0.5 + Math.random() * 1
+      };
+    }
+    
+    function init() {
+      noise = new SimplexNoise();
+      particles = [];
+      for (let i = 0; i < CONFIG.particleCount; i++) {
+        particles.push(createParticle());
+      }
+    }
+    
+    function getFlowAngle(x, y) {
+      const n = noise.noise2D(
+        x * CONFIG.noiseScale + time * 0.1, 
+        y * CONFIG.noiseScale + time * 0.1
+      );
+      return n * Math.PI * 2;
+    }
+    
+    function update() {
+      time += CONFIG.noiseSpeed;
+      mouseInfluence *= 0.95;
+      
+      for (const p of particles) {
+        // Get flow field angle
+        let angle = getFlowAngle(p.x, p.y);
+        
+        // Mouse influence
+        const dx = mouseX - p.x;
+        const dy = mouseY - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < CONFIG.mouseRadius && mouseInfluence > 0.1) {
+          const strength = (1 - dist / CONFIG.mouseRadius) * CONFIG.mouseStrength * mouseInfluence;
+          const mouseAngle = Math.atan2(dy, dx) + Math.PI / 2; // perpendicular swirl
+          angle = angle * (1 - strength * 0.5) + mouseAngle * strength * 0.5;
+        }
+        
+        // Apply flow
+        const targetVx = Math.cos(angle) * CONFIG.particleSpeed;
+        const targetVy = Math.sin(angle) * CONFIG.particleSpeed;
+        
+        p.vx = p.vx * 0.9 + targetVx * 0.1;
+        p.vy = p.vy * 0.9 + targetVy * 0.1;
+        
+        p.x += p.vx;
+        p.y += p.vy;
+        
+        // Wrap around edges
+        if (p.x < 0) p.x = width;
+        if (p.x > width) p.x = 0;
+        if (p.y < 0) p.y = height;
+        if (p.y > height) p.y = 0;
+      }
+    }
+    
+    function draw() {
+      // Fade effect
+      ctx.fillStyle = `rgba(10, 10, 15, ${CONFIG.fadeAlpha})`;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw particles
+      for (const p of particles) {
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Event listeners
+    window.addEventListener('resize', resize);
+    
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      mouseInfluence = 1;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      mouseX = e.touches[0].clientX;
+      mouseY = e.touches[0].clientY;
+      mouseInfluence = 1;
+    }, { passive: false });
+    
+    canvas.addEventListener('touchend', () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    // Start
+    resize();
+    init();
+    animate();
+  </script>
+</body>
+</html>
