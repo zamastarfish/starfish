@@ -28,7 +28,7 @@
   <script>
     // ========================================
     // KINTSUGI - 金継ぎ
-    // Phase 1: Physical Presence
+    // The Japanese art of golden repair
     // ========================================
     
     const canvas = document.getElementById('canvas');
@@ -867,14 +867,15 @@
           break;
           
         case 'shattered':
-          if (updatePhysics() || now - stateTimer > 2800) {
+          if (updatePhysics() || now - stateTimer > 2500) {
             state = 'pause';
             stateTimer = now;
           }
           break;
           
         case 'pause':
-          if (now - stateTimer > 2200) {
+          // The silence is important - sit with the damage
+          if (now - stateTimer > 2800) {
             state = 'mending';
             stateTimer = now;
             startGoldSound();
@@ -882,7 +883,8 @@
           break;
           
         case 'mending':
-          const progress = Math.min(1, (now - stateTimer) / 14000);
+          // 16 seconds - slow enough to be meditative
+          const progress = Math.min(1, (now - stateTimer) / 16000);
           updateMending(progress);
           
           if (progress >= 1) {
@@ -935,8 +937,8 @@
       }
       else if (state === 'mending') {
         // Warmth bloom - subtle golden tint as healing progresses
-        const mendProgress = Math.min(1, (Date.now() - stateTimer) / 14000);
-        const warmth = Math.sin(mendProgress * Math.PI) * 0.08; // peaks at middle
+        const mendProgress = Math.min(1, (Date.now() - stateTimer) / 16000);
+        const warmth = Math.sin(mendProgress * Math.PI) * 0.06;
         if (warmth > 0) {
           ctx.fillStyle = `rgba(255, 200, 100, ${warmth})`;
           ctx.fillRect(0, 0, size, size);
@@ -946,6 +948,16 @@
         drawGoldSeams(goldSeams);
         drawGoldSeams(fragments.newSeams, true);
         drawParticles();
+        
+        // Near completion - subtle pulse
+        if (mendProgress > 0.9) {
+          const pulse = (mendProgress - 0.9) / 0.1;
+          const pulseAlpha = Math.sin(pulse * Math.PI) * 0.1;
+          ctx.fillStyle = `rgba(255, 220, 150, ${pulseAlpha})`;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, bowlRadius * 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
       
       ctx.restore();
