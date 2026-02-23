@@ -279,9 +279,11 @@ function createFragmentsFromCrackGeometry(crackPaths, impactX, impactY, intensit
   // Sort paths by angle
   allPaths.sort((a, b) => a.angle - b.angle);
   
-  // Determine number of fragments
-  const numFragments = Math.max(5, Math.min(12, Math.floor(5 + intensity * 7)));
+  // Determine number of fragments - FIXED count for consistency
+  const numFragments = 8; // Fixed count, no variation
   const angleStep = (Math.PI * 2) / numFragments;
+  
+  console.log(`[Kintsugi] Creating ${numFragments} fragments, cx=${cx}, cy=${cy}, r=${r}`);
   
   for (let i = 0; i < numFragments; i++) {
     const startAngle = i * angleStep - Math.PI;
@@ -304,6 +306,12 @@ function createFragmentsFromCrackGeometry(crackPaths, impactX, impactY, intensit
     const impactBoost = Math.max(0.5, 1.5 - angleFromImpact / Math.PI);
     const speed = (1.5 + Math.random() * 2) * intensity * impactBoost;
     
+    // Validate centroid
+    if (isNaN(centroidX) || isNaN(centroidY)) {
+      console.error(`[Kintsugi] Invalid centroid for fragment ${i}: ${centroidX}, ${centroidY}`);
+      continue;
+    }
+    
     fragments.push({
       vertices: boundary.map(pt => ({ x: pt.x - centroidX, y: pt.y - centroidY })),
       x: centroidX, 
@@ -318,6 +326,7 @@ function createFragmentsFromCrackGeometry(crackPaths, impactX, impactY, intensit
     });
   }
   
+  console.log(`[Kintsugi] Created ${fragments.length} fragments`);
   return fragments;
 }
 
