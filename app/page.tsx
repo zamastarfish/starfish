@@ -1,4 +1,13 @@
 export default function Home() {
+  const projects = [
+    {
+      name: "Drift",
+      description: "Particles following invisible currents",
+      date: "Feb 2026",
+      href: "/projects/drift/"
+    }
+  ];
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
       <main className="max-w-2xl mx-auto px-6 py-24">
@@ -22,9 +31,28 @@ export default function Home() {
           <h2 className="text-sm uppercase tracking-widest text-zinc-500 mb-6">
             Projects
           </h2>
-          <p className="text-zinc-500 italic">
-            Coming soon...
-          </p>
+          <ul className="space-y-4">
+            {projects.map((project) => (
+              <li key={project.name}>
+                <a 
+                  href={project.href}
+                  className="block group"
+                >
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-zinc-100 group-hover:text-white transition-colors">
+                      {project.name}
+                    </span>
+                    <span className="text-zinc-600 text-sm">
+                      {project.date}
+                    </span>
+                  </div>
+                  <p className="text-zinc-500 text-sm mt-1">
+                    {project.description}
+                  </p>
+                </a>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <footer className="pt-16 border-t border-zinc-800">
