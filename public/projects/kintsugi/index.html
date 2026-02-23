@@ -34,6 +34,171 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     
+    // ========================================
+    // AUDIO
+    // ========================================
+    
+    let audioCtx = null;
+    let audioEnabled = false;
+    
+    function initAudio() {
+      if (audioCtx) return;
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioEnabled = true;
+      } catch (e) {
+        audioEnabled = false;
+      }
+    }
+    
+    function playBreakSound(intensity) {
+      if (!audioEnabled || !audioCtx) return;
+      
+      // Ceramic crack - noise burst with resonance
+      const duration = 0.15 + intensity * 0.1;
+      const now = audioCtx.currentTime;
+      
+      // Noise burst
+      const bufferSize = audioCtx.sampleRate * duration;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        const t = i / bufferSize;
+        // Sharp attack, quick decay
+        const envelope = Math.exp(-t * 15) * (1 - t);
+        data[i] = (Math.random() * 2 - 1) * envelope;
+      }
+      
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+      
+      // Bandpass filter for ceramic quality
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 2000 + intensity * 1500;
+      filter.Q.value = 1.5;
+      
+      // Volume
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.3 + intensity * 0.2;
+      
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      noise.start(now);
+      noise.stop(now + duration);
+      
+      // Secondary crack resonance
+      const osc = audioCtx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = 400 + intensity * 200;
+      
+      const oscGain = audioCtx.createGain();
+      oscGain.gain.setValueAtTime(0.1, now);
+      oscGain.gain.exponentialDecayTo = 0.001;
+      oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      
+      osc.connect(oscGain);
+      oscGain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    }
+    
+    let goldDrone = null;
+    let goldDroneGain = null;
+    
+    function startGoldSound() {
+      if (!audioEnabled || !audioCtx) return;
+      if (goldDrone) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Warm singing bowl drone
+      goldDrone = audioCtx.createOscillator();
+      goldDrone.type = 'sine';
+      goldDrone.frequency.value = 174; // F3 - healing frequency
+      
+      // Add harmonics
+      const harm2 = audioCtx.createOscillator();
+      harm2.type = 'sine';
+      harm2.frequency.value = 174 * 2;
+      
+      const harm3 = audioCtx.createOscillator();
+      harm3.type = 'sine';
+      harm3.frequency.value = 174 * 3;
+      
+      // Gains for each
+      goldDroneGain = audioCtx.createGain();
+      goldDroneGain.gain.setValueAtTime(0, now);
+      goldDroneGain.gain.linearRampToValueAtTime(0.08, now + 2);
+      
+      const harm2Gain = audioCtx.createGain();
+      harm2Gain.gain.value = 0.03;
+      
+      const harm3Gain = audioCtx.createGain();
+      harm3Gain.gain.value = 0.015;
+      
+      // Connect
+      goldDrone.connect(goldDroneGain);
+      harm2.connect(harm2Gain);
+      harm3.connect(harm3Gain);
+      
+      harm2Gain.connect(goldDroneGain);
+      harm3Gain.connect(goldDroneGain);
+      
+      goldDroneGain.connect(audioCtx.destination);
+      
+      goldDrone.start(now);
+      harm2.start(now);
+      harm3.start(now);
+      
+      // Store for cleanup
+      goldDrone._harmonics = [harm2, harm3];
+    }
+    
+    function stopGoldSound() {
+      if (!goldDrone || !audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      goldDroneGain.gain.linearRampToValueAtTime(0, now + 1.5);
+      
+      setTimeout(() => {
+        if (goldDrone) {
+          goldDrone.stop();
+          goldDrone._harmonics.forEach(h => h.stop());
+          goldDrone = null;
+          goldDroneGain = null;
+        }
+      }, 1600);
+    }
+    
+    function playCompleteSound() {
+      if (!audioEnabled || !audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Gentle resolution chord
+      const freqs = [261.63, 329.63, 392]; // C major
+      
+      freqs.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0, now + i * 0.1);
+        gain.gain.linearRampToValueAtTime(0.06, now + i * 0.1 + 0.3);
+        gain.gain.linearRampToValueAtTime(0, now + i * 0.1 + 2);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start(now + i * 0.1);
+        osc.stop(now + i * 0.1 + 2.1);
+      });
+    }
+    
     let size, centerX, centerY, bowlRadius;
     
     function resize() {
@@ -697,6 +862,7 @@
             state = 'shattered';
             stateTimer = now;
             breakCount++;
+            playBreakSound(intensity);
           }
           break;
           
@@ -711,6 +877,7 @@
           if (now - stateTimer > 2200) {
             state = 'mending';
             stateTimer = now;
+            startGoldSound();
           }
           break;
           
@@ -726,6 +893,8 @@
             dustParticles = [];
             goldParticles = [];
             state = 'whole';
+            stopGoldSound();
+            playCompleteSound();
           }
           break;
       }
@@ -807,6 +976,9 @@
     
     function startHold(clientX, clientY) {
       if (state !== 'whole') return;
+      
+      // Initialize audio on first interaction (browser requirement)
+      initAudio();
       
       const coords = getCanvasCoords(clientX, clientY);
       breakPoint = { x: coords.x, y: coords.y };
