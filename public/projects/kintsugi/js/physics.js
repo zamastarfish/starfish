@@ -57,16 +57,29 @@ export function updateFragments(fragments) {
  * @param {number} progress - Mending progress (0-1)
  */
 export function updateMending(fragments, progress) {
-  const lerpFactor = 0.06;
-  const rotationDecay = 0.94;
+  // Ease-in: start slow, accelerate as we progress
+  // This makes the final assembly feel more magical
+  const easedProgress = progress * progress * (3 - 2 * progress); // smoothstep
+  const lerpFactor = 0.04 + easedProgress * 0.12; // 0.04 -> 0.16 as progress increases
+  const rotationDecay = 0.92 - easedProgress * 0.15; // faster rotation correction over time
   
   for (const f of fragments) {
     // Lerp position toward origin
     f.x += (f.originX - f.x) * lerpFactor;
     f.y += (f.originY - f.y) * lerpFactor;
     
-    // Decay rotation
+    // Decay rotation toward 0
     f.rotation *= rotationDecay;
+    
+    // Snap to exact position when very close (prevents jitter at end)
+    if (progress > 0.85) {
+      const dist = Math.hypot(f.x - f.originX, f.y - f.originY);
+      if (dist < 2) {
+        f.x = f.originX;
+        f.y = f.originY;
+        f.rotation = 0;
+      }
+    }
   }
 }
 

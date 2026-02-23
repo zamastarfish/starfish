@@ -237,7 +237,26 @@ function draw() {
       const mendProgress = state.stateElapsed() / TIMING.mendDuration;
       renderer.drawMendingWarmth(ctx, mendProgress);
       
-      renderer.drawFragments(ctx, state.state.fragments);
+      // As mending nears completion, fade in the intact bowl underneath
+      // This masks any small alignment imperfections in the fragments
+      if (mendProgress > 0.7) {
+        const bowlAlpha = (mendProgress - 0.7) / 0.3; // 0 -> 1 over last 30%
+        ctx.save();
+        ctx.globalAlpha = bowlAlpha;
+        renderer.drawBowl(ctx);
+        ctx.restore();
+      }
+      
+      // Draw fragments (fade out as bowl fades in)
+      if (mendProgress < 0.95) {
+        const fragAlpha = mendProgress > 0.7 ? 1 - ((mendProgress - 0.7) / 0.25) : 1;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, fragAlpha);
+        renderer.drawFragments(ctx, state.state.fragments);
+        ctx.restore();
+      }
+      
+      // Gold always visible
       gold.drawPaths(ctx, state.state.goldPaths);
       gold.drawSeams(ctx, state.state.goldSeams);
       gold.drawPools(ctx, state.state.goldPools);
