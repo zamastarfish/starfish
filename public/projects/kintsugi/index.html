@@ -335,16 +335,32 @@
         ctx.fill();
       }
       
-      // Gold sparkles
+      // Gold sparkles - more magical
       for (const p of goldParticles) {
-        ctx.globalAlpha = p.life;
-        ctx.fillStyle = COLORS.goldBright;
-        ctx.shadowColor = COLORS.goldGlow;
+        const alpha = p.life * p.life; // Fade out faster at end
+        ctx.globalAlpha = alpha;
+        
+        // Outer glow
+        ctx.fillStyle = 'rgba(255, 200, 80, 0.4)';
+        ctx.shadowColor = 'rgba(255, 200, 100, 0.8)';
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Bright core
         ctx.shadowBlur = 8;
+        ctx.fillStyle = COLORS.goldBright;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
+        
+        // White hot center
         ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255, 255, 240, 0.9)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 0.4, 0, Math.PI * 2);
+        ctx.fill();
       }
       
       ctx.globalAlpha = 1;
@@ -410,12 +426,15 @@
             seam.progress = seam.flowProgress;
             
             // Spawn gold sparkles along flowing edge
-            if (seam.flowProgress > 0 && seam.flowProgress < 1 && Math.random() < 0.15) {
+            if (seam.flowProgress > 0 && seam.flowProgress < 1 && Math.random() < 0.35) {
               const t = seam.flowProgress;
-              createGoldSparkle(
-                seam.x1 + (seam.x2 - seam.x1) * t,
-                seam.y1 + (seam.y2 - seam.y1) * t
-              );
+              const x = seam.x1 + (seam.x2 - seam.x1) * t;
+              const y = seam.y1 + (seam.y2 - seam.y1) * t;
+              createGoldSparkle(x, y);
+              // Sometimes spawn a second one nearby
+              if (Math.random() < 0.3) {
+                createGoldSparkle(x + (Math.random()-0.5)*15, y + (Math.random()-0.5)*15);
+              }
             }
           }
         }
@@ -542,17 +561,11 @@
       ctx.restore();
     }
     
-    function drawGoldSeams(seams, glowing = false) {
+    function drawGoldSeams(seams, flowing = false) {
       if (!seams || seams.length === 0) return;
       
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      
-      // Glow layer
-      if (glowing) {
-        ctx.shadowColor = COLORS.goldGlow;
-        ctx.shadowBlur = 20;
-      }
       
       for (const seam of seams) {
         if (seam.progress <= 0) continue;
@@ -561,32 +574,65 @@
         const x2 = seam.x1 + (seam.x2 - seam.x1) * p;
         const y2 = seam.y1 + (seam.y2 - seam.y1) * p;
         
-        // Outer glow
-        ctx.strokeStyle = 'rgba(255, 200, 60, 0.25)';
-        ctx.lineWidth = 10;
+        // Ambient glow (wider, softer)
+        ctx.shadowColor = 'rgba(255, 190, 50, 0.6)';
+        ctx.shadowBlur = flowing ? 25 : 15;
+        
+        // Outer glow layer
+        ctx.strokeStyle = 'rgba(255, 200, 60, 0.2)';
+        ctx.lineWidth = 14;
         ctx.beginPath();
         ctx.moveTo(seam.x1, seam.y1);
         ctx.lineTo(x2, y2);
         ctx.stroke();
         
-        // Main gold
+        ctx.shadowBlur = 0;
+        
+        // Mid glow
+        ctx.strokeStyle = 'rgba(255, 190, 50, 0.35)';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(seam.x1, seam.y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        
+        // Main gold body
         ctx.strokeStyle = COLORS.gold;
-        ctx.lineWidth = 5;
+        ctx.lineWidth = 4.5;
         ctx.beginPath();
         ctx.moveTo(seam.x1, seam.y1);
         ctx.lineTo(x2, y2);
         ctx.stroke();
         
-        // Bright center
+        // Bright center highlight
         ctx.strokeStyle = COLORS.goldBright;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
         ctx.moveTo(seam.x1, seam.y1);
         ctx.lineTo(x2, y2);
         ctx.stroke();
+        
+        // Flowing leading edge effect
+        if (flowing && p > 0 && p < 1) {
+          // Bright droplet at the leading edge
+          ctx.fillStyle = COLORS.goldBright;
+          ctx.shadowColor = 'rgba(255, 220, 100, 0.9)';
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.arc(x2, y2, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          
+          // Liquid drip effect (slight bulge behind leading edge)
+          const dripT = Math.max(0, p - 0.05);
+          const dripX = seam.x1 + (seam.x2 - seam.x1) * dripT;
+          const dripY = seam.y1 + (seam.y2 - seam.y1) * dripT;
+          ctx.fillStyle = 'rgba(255, 210, 80, 0.5)';
+          ctx.beginPath();
+          ctx.arc(dripX, dripY, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
-      
-      ctx.shadowBlur = 0;
     }
     
     function drawTension(intensity) {
@@ -719,6 +765,14 @@
         drawParticles();
       }
       else if (state === 'mending') {
+        // Warmth bloom - subtle golden tint as healing progresses
+        const mendProgress = Math.min(1, (Date.now() - stateTimer) / 14000);
+        const warmth = Math.sin(mendProgress * Math.PI) * 0.08; // peaks at middle
+        if (warmth > 0) {
+          ctx.fillStyle = `rgba(255, 200, 100, ${warmth})`;
+          ctx.fillRect(0, 0, size, size);
+        }
+        
         for (const f of fragments) drawFragment(f);
         drawGoldSeams(goldSeams);
         drawGoldSeams(fragments.newSeams, true);
