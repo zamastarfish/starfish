@@ -251,8 +251,8 @@ function lineIntersection(s1, s2) {
 // ===========================================================================
 
 /**
- * Create fragments as pie wedges of the BOWL (centered on bowl center)
- * Edges can follow crack paths for organic look, but geometry guarantees full circle
+ * Create fragments centered on IMPACT POINT using crack paths as dividers
+ * Falls back to simple wedges if not enough cracks
  */
 function createFragmentsFromCrackGeometry(crackPaths, impactX, impactY, intensity) {
   const cx = canvas.centerX;
@@ -260,74 +260,125 @@ function createFragmentsFromCrackGeometry(crackPaths, impactX, impactY, intensit
   const r = canvas.bowlRadius;
   const fragments = [];
   
-  // Collect all crack paths with their angles FROM BOWL CENTER
-  const allPaths = [];
-  function collectPaths(paths) {
-    for (const path of paths) {
-      if (path.points.length >= 2) {
-        const smoothed = getSmoothedPoints(path, 3);
-        // Angle from BOWL CENTER to the crack's outer endpoint
-        const lastPt = smoothed[smoothed.length - 1];
-        const angle = Math.atan2(lastPt.y - cy, lastPt.x - cx);
-        allPaths.push({ points: smoothed, angle: angle });
-      }
-      if (path.branches && path.branches.length > 0) collectPaths(path.branches);
+  // Collect all main crack paths (not branches) with angles from IMPACT point
+  const mainCracks = [];
+  for (const path of crackPaths) {
+    if (path.points.length >= 2) {
+      const smoothed = getSmoothedPoints(path, 3);
+      const lastPt = smoothed[smoothed.length - 1];
+      const angle = Math.atan2(lastPt.y - impactY, lastPt.x - impactX);
+      mainCracks.push({ points: smoothed, angle: angle });
     }
   }
-  collectPaths(crackPaths);
   
-  // Sort paths by angle
-  allPaths.sort((a, b) => a.angle - b.angle);
+  // Sort by angle
+  mainCracks.sort((a, b) => a.angle - b.angle);
   
-  // Determine number of fragments - FIXED count for consistency
-  const numFragments = 8; // Fixed count, no variation
-  const angleStep = (Math.PI * 2) / numFragments;
-  
-  console.log(`[Kintsugi] Creating ${numFragments} fragments, cx=${cx}, cy=${cy}, r=${r}`);
-  
-  for (let i = 0; i < numFragments; i++) {
-    const startAngle = i * angleStep - Math.PI;
-    const endAngle = startAngle + angleStep;
-    const midAngle = (startAngle + endAngle) / 2;
-    
-    // Build fragment as a pie wedge of the bowl
-    // Use simple guaranteed geometry - crack paths are decorative only
-    const boundary = buildSimpleWedge(startAngle, endAngle, cx, cy, r);
-    
-    // Calculate centroid
-    let centroidX = 0, centroidY = 0;
-    for (const pt of boundary) { centroidX += pt.x; centroidY += pt.y; }
-    centroidX /= boundary.length;
-    centroidY /= boundary.length;
-    
-    // Velocity: fly outward from bowl center, influenced by impact point
-    const toImpact = Math.atan2(impactY - cy, impactX - cx);
-    const angleFromImpact = Math.abs(midAngle - toImpact);
-    const impactBoost = Math.max(0.5, 1.5 - angleFromImpact / Math.PI);
-    const speed = (1.5 + Math.random() * 2) * intensity * impactBoost;
-    
-    // Validate centroid
-    if (isNaN(centroidX) || isNaN(centroidY)) {
-      console.error(`[Kintsugi] Invalid centroid for fragment ${i}: ${centroidX}, ${centroidY}`);
-      continue;
+  // Use cracks as fragment dividers if we have enough
+  if (mainCracks.length >= 3) {
+    for (let i = 0; i < mainCracks.length; i++) {
+      const crack1 = mainCracks[i];
+      const crack2 = mainCracks[(i + 1) % mainCracks.length];
+      
+      const boundary = buildCrackBoundedFragment(crack1, crack2, impactX, impactY, cx, cy, r);
+      addFragmentFromBoundary(fragments, boundary, impactX, impactY, intensity);
     }
-    
-    fragments.push({
-      vertices: boundary.map(pt => ({ x: pt.x - centroidX, y: pt.y - centroidY })),
-      x: centroidX, 
-      y: centroidY,
-      originX: centroidX,  // Return to this exact spot
-      originY: centroidY,
-      vx: Math.cos(midAngle) * speed + (Math.random() - 0.5) * 1,
-      vy: Math.sin(midAngle) * speed + (Math.random() - 0.5) * 1,
-      rotation: 0,
-      rotationVel: (Math.random() - 0.5) * 0.1 * intensity,
-      thickness: 6 + Math.random() * 4,
-    });
+  } else {
+    // Fallback: simple wedges from bowl center
+    const numFragments = 8;
+    const angleStep = (Math.PI * 2) / numFragments;
+    for (let i = 0; i < numFragments; i++) {
+      const boundary = buildSimpleWedge(i * angleStep - Math.PI, (i + 1) * angleStep - Math.PI, cx, cy, r);
+      addFragmentFromBoundary(fragments, boundary, impactX, impactY, intensity);
+    }
   }
   
-  console.log(`[Kintsugi] Created ${fragments.length} fragments`);
   return fragments;
+}
+
+/**
+ * Build fragment boundary between two crack paths, centered on impact point
+ */
+function buildCrackBoundedFragment(crack1, crack2, impactX, impactY, cx, cy, r) {
+  const boundary = [];
+  const rimR = r * 0.98;
+  
+  // Start at impact point
+  boundary.push({ x: impactX, y: impactY });
+  
+  // Follow crack1 outward (skip points too close to impact)
+  for (const pt of crack1.points) {
+    if (Math.hypot(pt.x - impactX, pt.y - impactY) > 8) {
+      boundary.push({ x: pt.x, y: pt.y });
+    }
+  }
+  
+  // Ensure we reach the rim
+  const last1 = boundary[boundary.length - 1];
+  if (Math.hypot(last1.x - cx, last1.y - cy) < rimR * 0.8) {
+    const extAngle = Math.atan2(last1.y - impactY, last1.x - impactX);
+    boundary.push({ x: cx + Math.cos(extAngle) * rimR, y: cy + Math.sin(extAngle) * rimR });
+  }
+  
+  // Arc along rim to crack2
+  const angle1 = Math.atan2(boundary[boundary.length - 1].y - cy, boundary[boundary.length - 1].x - cx);
+  const crack2End = crack2.points[crack2.points.length - 1];
+  let angle2 = Math.atan2(crack2End.y - cy, crack2End.x - cx);
+  
+  // Go the right way around (short arc vs long arc based on crack angles)
+  let arcDelta = angle2 - angle1;
+  if (arcDelta < 0) arcDelta += Math.PI * 2;
+  if (arcDelta > Math.PI * 1.8) arcDelta -= Math.PI * 2; // Wrap if needed
+  
+  const arcSteps = Math.max(2, Math.ceil(Math.abs(arcDelta) / 0.3));
+  for (let s = 1; s <= arcSteps; s++) {
+    const t = s / arcSteps;
+    const angle = angle1 + arcDelta * t;
+    const wobble = Math.sin(angle * 7) * 2;
+    boundary.push({ x: cx + Math.cos(angle) * (rimR + wobble), y: cy + Math.sin(angle) * (rimR + wobble) });
+  }
+  
+  // Follow crack2 back inward (reverse order)
+  for (let i = crack2.points.length - 1; i >= 0; i--) {
+    const pt = crack2.points[i];
+    if (Math.hypot(pt.x - impactX, pt.y - impactY) > 8) {
+      boundary.push({ x: pt.x, y: pt.y });
+    }
+  }
+  
+  return boundary;
+}
+
+/**
+ * Add a fragment to the array from boundary points
+ */
+function addFragmentFromBoundary(fragments, boundary, impactX, impactY, intensity) {
+  if (boundary.length < 3) return;
+  
+  // Calculate centroid
+  let centroidX = 0, centroidY = 0;
+  for (const pt of boundary) { centroidX += pt.x; centroidY += pt.y; }
+  centroidX /= boundary.length;
+  centroidY /= boundary.length;
+  
+  if (isNaN(centroidX) || isNaN(centroidY)) return;
+  
+  // Velocity outward from impact
+  const outAngle = Math.atan2(centroidY - impactY, centroidX - impactX);
+  const speed = (1.5 + Math.random() * 2) * intensity;
+  
+  fragments.push({
+    vertices: boundary.map(pt => ({ x: pt.x - centroidX, y: pt.y - centroidY })),
+    x: centroidX,
+    y: centroidY,
+    originX: centroidX,
+    originY: centroidY,
+    vx: Math.cos(outAngle) * speed + (Math.random() - 0.5) * 1,
+    vy: Math.sin(outAngle) * speed + (Math.random() - 0.5) * 1,
+    rotation: 0,
+    rotationVel: (Math.random() - 0.5) * 0.1 * intensity,
+    thickness: 6 + Math.random() * 4,
+  });
 }
 
 /**
