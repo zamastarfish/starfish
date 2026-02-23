@@ -23,6 +23,12 @@ export default function Home() {
       description: "Starling murmuration. Three simple rules, complex emergent behavior. Your cursor is a hawk",
       date: "Feb 2026",
       href: "/projects/flocking/"
+    },
+    {
+      name: "Kintsugi",
+      description: "The Japanese art of golden repair. Break the bowl. Watch it mend. The scars become the beauty",
+      date: "Feb 2026",
+      href: "/projects/kintsugi/"
     }
   ];
 

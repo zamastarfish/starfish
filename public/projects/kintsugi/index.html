@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Kintsugi</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #1a1918;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <script>
+    // ========================================
+    // KINTSUGI
+    // ========================================
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Sizing
+    let size, centerX, centerY, bowlRadius;
+    
+    function resize() {
+      const minDim = Math.min(window.innerWidth, window.innerHeight);
+      size = Math.min(minDim * 0.9, 600);
+      canvas.width = size;
+      canvas.height = size;
+      centerX = size / 2;
+      centerY = size / 2;
+      bowlRadius = size * 0.38;
+    }
+    
+    // ========================================
+    // COLORS
+    // ========================================
+    
+    const COLORS = {
+      bg: '#1a1918',
+      ceramic: '#e8e4df',
+      ceramicShadow: '#c9c4bc',
+      ceramicEdge: '#d1ccc5',
+      gold: '#d4a847',
+      goldBright: '#ffd700',
+      goldDark: '#a67c00',
+      goldGlow: 'rgba(212, 168, 71, 0.4)'
+    };
+    
+    // ========================================
+    // STATE
+    // ========================================
+    
+    let state = 'whole'; // whole, tension, shattered, pause, mending, complete
+    let holdTime = 0;
+    let holdStart = 0;
+    let isHolding = false;
+    let stateTimer = 0;
+    
+    let fragments = [];
+    let goldSeams = []; // Accumulated gold from all breaks
+    let currentSeams = []; // Seams from current break (animating)
+    let breakCount = 0;
+    
+    // ========================================
+    // VORONOI FRAGMENTATION
+    // ========================================
+    
+    function generatePoints(count, radius) {
+      const points = [];
+      // Center point
+      points.push({ x: centerX, y: centerY });
+      
+      // Random points within bowl
+      for (let i = 0; i < count - 1; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * radius * 0.9;
+        points.push({
+          x: centerX + Math.cos(angle) * r,
+          y: centerY + Math.sin(angle) * r
+        });
+      }
+      return points;
+    }
+    
+    function computeVoronoi(points, radius) {
+      // Simple Voronoi approximation using pixel sampling
+      // For each point, find its cell boundary
+      const cells = points.map(() => []);
+      
+      // Sample boundary points for each cell
+      const samples = 360;
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        
+        for (let a = 0; a < samples; a++) {
+          const angle = (a / samples) * Math.PI * 2;
+          
+          // Ray march to find boundary
+          for (let r = 1; r < radius * 2; r += 2) {
+            const x = p.x + Math.cos(angle) * r;
+            const y = p.y + Math.sin(angle) * r;
+            
+            // Check if still in bowl
+            const distToCenter = Math.hypot(x - centerX, y - centerY);
+            if (distToCenter > radius) {
+              cells[i].push({ x, y, edge: true });
+              break;
+            }
+            
+            // Check if closer to another point
+            let dominated = false;
+            for (let j = 0; j < points.length; j++) {
+              if (i === j) continue;
+              const distToOther = Math.hypot(x - points[j].x, y - points[j].y);
+              const distToSelf = Math.hypot(x - p.x, y - p.y);
+              if (distToOther < distToSelf - 1) {
+                dominated = true;
+                break;
+              }
+            }
+            
+            if (dominated) {
+              cells[i].push({ x, y, edge: false });
+              break;
+            }
+          }
+        }
+      }
+      
+      return cells;
+    }
+    
+    function createFragments(intensity) {
+      const numPoints = Math.floor(5 + intensity * 15);
+      const points = generatePoints(numPoints, bowlRadius);
+      const cells = computeVoronoi(points, bowlRadius);
+      
+      fragments = [];
+      currentSeams = [];
+      
+      for (let i = 0; i < cells.length; i++) {
+        if (cells[i].length < 3) continue;
+        
+        // Create fragment
+        const centroid = points[i];
+        const vertices = cells[i];
+        
+        // Calculate physics properties
+        const angle = Math.atan2(centroid.y - centerY, centroid.x - centerX);
+        const dist = Math.hypot(centroid.x - centerX, centroid.y - centerY);
+        const speed = (2 + Math.random() * 3) * intensity;
+        
+        fragments.push({
+          vertices: vertices.map(v => ({ 
+            x: v.x - centroid.x, 
+            y: v.y - centroid.y,
+            edge: v.edge 
+          })),
+          x: centroid.x,
+          y: centroid.y,
+          originX: centroid.x,
+          originY: centroid.y,
+          vx: Math.cos(angle + (Math.random() - 0.5) * 0.5) * speed * (0.5 + dist / bowlRadius),
+          vy: Math.sin(angle + (Math.random() - 0.5) * 0.5) * speed * (0.5 + dist / bowlRadius),
+          rotation: 0,
+          rotationVel: (Math.random() - 0.5) * 0.1 * intensity,
+          settled: false
+        });
+        
+        // Create seams for this fragment
+        for (let j = 0; j < vertices.length; j++) {
+          const v1 = vertices[j];
+          const v2 = vertices[(j + 1) % vertices.length];
+          if (!v1.edge && !v2.edge) {
+            currentSeams.push({
+              x1: v1.x, y1: v1.y,
+              x2: v2.x, y2: v2.y,
+              progress: 0
+            });
+          }
+        }
+      }
+    }
+    
+    // ========================================
+    // PHYSICS
+    // ========================================
+    
+    function updatePhysics(dt) {
+      const friction = 0.96;
+      const gravity = 0.05;
+      
+      for (const f of fragments) {
+        if (f.settled) continue;
+        
+        f.vy += gravity;
+        f.x += f.vx;
+        f.y += f.vy;
+        f.vx *= friction;
+        f.vy *= friction;
+        f.rotation += f.rotationVel;
+        f.rotationVel *= 0.98;
+        
+        // Check if settled
+        if (Math.abs(f.vx) < 0.1 && Math.abs(f.vy) < 0.1) {
+          f.settled = true;
+        }
+        
+        // Boundary
+        const dist = Math.hypot(f.x - centerX, f.y - centerY);
+        if (dist > bowlRadius * 1.8) {
+          const angle = Math.atan2(f.y - centerY, f.x - centerX);
+          f.x = centerX + Math.cos(angle) * bowlRadius * 1.8;
+          f.y = centerY + Math.sin(angle) * bowlRadius * 1.8;
+          f.vx *= -0.3;
+          f.vy *= -0.3;
+        }
+      }
+    }
+    
+    function updateMending(progress) {
+      // Move fragments back to origin
+      const eased = easeInOutCubic(progress);
+      
+      for (const f of fragments) {
+        f.x = f.x + (f.originX - f.x) * eased * 0.1;
+        f.y = f.y + (f.originY - f.y) * eased * 0.1;
+        f.rotation *= 0.95;
+      }
+      
+      // Animate gold seams
+      for (const seam of currentSeams) {
+        seam.progress = Math.min(1, seam.progress + 0.02);
+      }
+    }
+    
+    function easeInOutCubic(t) {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+    
+    // ========================================
+    // RENDERING
+    // ========================================
+    
+    function drawBowl() {
+      // Outer shadow
+      const shadowGradient = ctx.createRadialGradient(
+        centerX, centerY, bowlRadius * 0.8,
+        centerX, centerY, bowlRadius * 1.1
+      );
+      shadowGradient.addColorStop(0, 'rgba(0,0,0,0)');
+      shadowGradient.addColorStop(1, 'rgba(0,0,0,0.3)');
+      ctx.fillStyle = shadowGradient;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, bowlRadius * 1.1, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Bowl base
+      const bowlGradient = ctx.createRadialGradient(
+        centerX - bowlRadius * 0.3, centerY - bowlRadius * 0.3, 0,
+        centerX, centerY, bowlRadius
+      );
+      bowlGradient.addColorStop(0, COLORS.ceramic);
+      bowlGradient.addColorStop(0.7, COLORS.ceramicShadow);
+      bowlGradient.addColorStop(1, '#b8b3ab');
+      
+      ctx.fillStyle = bowlGradient;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, bowlRadius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Inner depth suggestion
+      const innerGradient = ctx.createRadialGradient(
+        centerX, centerY, 0,
+        centerX, centerY, bowlRadius * 0.6
+      );
+      innerGradient.addColorStop(0, 'rgba(0,0,0,0.08)');
+      innerGradient.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = innerGradient;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, bowlRadius * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw accumulated gold seams
+      drawGoldSeams(goldSeams, 1);
+    }
+    
+    function drawFragment(f) {
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.rotation);
+      
+      // Fragment fill
+      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, bowlRadius * 0.3);
+      gradient.addColorStop(0, COLORS.ceramic);
+      gradient.addColorStop(1, COLORS.ceramicShadow);
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      if (f.vertices.length > 0) {
+        ctx.moveTo(f.vertices[0].x, f.vertices[0].y);
+        for (let i = 1; i < f.vertices.length; i++) {
+          ctx.lineTo(f.vertices[i].x, f.vertices[i].y);
+        }
+      }
+      ctx.closePath();
+      ctx.fill();
+      
+      // Edge highlight (raw ceramic)
+      ctx.strokeStyle = COLORS.ceramicEdge;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      
+      ctx.restore();
+    }
+    
+    function drawGoldSeams(seams, globalAlpha = 1) {
+      if (seams.length === 0) return;
+      
+      ctx.save();
+      ctx.globalAlpha = globalAlpha;
+      
+      // Glow layer
+      ctx.shadowColor = COLORS.goldGlow;
+      ctx.shadowBlur = 15;
+      ctx.strokeStyle = COLORS.gold;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      
+      for (const seam of seams) {
+        if (seam.progress <= 0) continue;
+        
+        const x2 = seam.x1 + (seam.x2 - seam.x1) * seam.progress;
+        const y2 = seam.y1 + (seam.y2 - seam.y1) * seam.progress;
+        
+        ctx.beginPath();
+        ctx.moveTo(seam.x1, seam.y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      
+      // Bright center
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = COLORS.goldBright;
+      ctx.lineWidth = 1.5;
+      
+      for (const seam of seams) {
+        if (seam.progress <= 0) continue;
+        
+        const x2 = seam.x1 + (seam.x2 - seam.x1) * seam.progress;
+        const y2 = seam.y1 + (seam.y2 - seam.y1) * seam.progress;
+        
+        ctx.beginPath();
+        ctx.moveTo(seam.x1, seam.y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      
+      ctx.restore();
+    }
+    
+    function drawTensionEffect(intensity) {
+      // Subtle cracks appearing
+      ctx.save();
+      ctx.globalAlpha = intensity * 0.3;
+      ctx.strokeStyle = '#999';
+      ctx.lineWidth = 0.5;
+      
+      const numCracks = Math.floor(intensity * 8);
+      for (let i = 0; i < numCracks; i++) {
+        const angle = (i / numCracks) * Math.PI * 2 + Math.sin(Date.now() * 0.01 + i) * 0.1;
+        const len = bowlRadius * (0.3 + intensity * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(
+          centerX + Math.cos(angle) * len,
+          centerY + Math.sin(angle) * len
+        );
+        ctx.stroke();
+      }
+      ctx.restore();
+      
+      // Tremble
+      if (intensity > 0.3) {
+        const shake = intensity * 3;
+        ctx.translate(
+          (Math.random() - 0.5) * shake,
+          (Math.random() - 0.5) * shake
+        );
+      }
+    }
+    
+    // ========================================
+    // MAIN LOOP
+    // ========================================
+    
+    function update() {
+      const now = Date.now();
+      
+      switch (state) {
+        case 'whole':
+          // Waiting for interaction
+          break;
+          
+        case 'tension':
+          holdTime = (now - holdStart) / 1000;
+          if (!isHolding) {
+            // Released - break!
+            const intensity = Math.min(1, holdTime / 2);
+            createFragments(intensity);
+            state = 'shattered';
+            stateTimer = now;
+            breakCount++;
+          }
+          break;
+          
+        case 'shattered':
+          updatePhysics(16);
+          // Check if all settled
+          const allSettled = fragments.every(f => f.settled);
+          if (allSettled || now - stateTimer > 2000) {
+            state = 'pause';
+            stateTimer = now;
+          }
+          break;
+          
+        case 'pause':
+          if (now - stateTimer > 2500) {
+            state = 'mending';
+            stateTimer = now;
+          }
+          break;
+          
+        case 'mending':
+          const elapsed = now - stateTimer;
+          const mendDuration = 15000; // 15 seconds
+          const progress = Math.min(1, elapsed / mendDuration);
+          updateMending(progress);
+          
+          if (progress >= 1) {
+            // Transfer current seams to permanent gold
+            for (const seam of currentSeams) {
+              goldSeams.push({ ...seam, progress: 1 });
+            }
+            currentSeams = [];
+            fragments = [];
+            state = 'whole';
+          }
+          break;
+      }
+    }
+    
+    function draw() {
+      ctx.fillStyle = COLORS.bg;
+      ctx.fillRect(0, 0, size, size);
+      
+      ctx.save();
+      
+      if (state === 'whole') {
+        // Draw whole bowl with accumulated gold
+        drawBowl();
+        
+        // Subtle hover glow
+        if (isHovering) {
+          ctx.globalAlpha = 0.1 + Math.sin(Date.now() * 0.003) * 0.05;
+          ctx.fillStyle = COLORS.goldGlow;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, bowlRadius * 1.05, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
+      else if (state === 'tension') {
+        const intensity = Math.min(1, holdTime / 2);
+        drawTensionEffect(intensity);
+        drawBowl();
+      }
+      else if (state === 'shattered' || state === 'pause') {
+        // Draw scattered fragments
+        for (const f of fragments) {
+          drawFragment(f);
+        }
+      }
+      else if (state === 'mending') {
+        // Draw fragments moving back
+        for (const f of fragments) {
+          drawFragment(f);
+        }
+        // Draw gold flowing
+        drawGoldSeams(goldSeams, 1);
+        drawGoldSeams(currentSeams, 1);
+      }
+      
+      ctx.restore();
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // ========================================
+    // INPUT
+    // ========================================
+    
+    let isHovering = false;
+    
+    function isInsideBowl(x, y) {
+      const rect = canvas.getBoundingClientRect();
+      const canvasX = (x - rect.left) * (canvas.width / rect.width);
+      const canvasY = (y - rect.top) * (canvas.height / rect.height);
+      const dist = Math.hypot(canvasX - centerX, canvasY - centerY);
+      return dist < bowlRadius;
+    }
+    
+    function startHold() {
+      if (state !== 'whole') return;
+      isHolding = true;
+      holdStart = Date.now();
+      state = 'tension';
+    }
+    
+    function endHold() {
+      isHolding = false;
+    }
+    
+    canvas.addEventListener('mousedown', (e) => {
+      if (isInsideBowl(e.clientX, e.clientY)) {
+        startHold();
+      }
+    });
+    
+    canvas.addEventListener('mouseup', endHold);
+    canvas.addEventListener('mouseleave', endHold);
+    
+    canvas.addEventListener('mousemove', (e) => {
+      isHovering = isInsideBowl(e.clientX, e.clientY);
+      canvas.style.cursor = isHovering && state === 'whole' ? 'pointer' : 'default';
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      if (isInsideBowl(touch.clientX, touch.clientY)) {
+        startHold();
+      }
+    }, { passive: false });
+    
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      endHold();
+    }, { passive: false });
+    
+    // ========================================
+    // INIT
+    // ========================================
+    
+    window.addEventListener('resize', resize);
+    resize();
+    animate();
+  </script>
+</body>
+</html>
