@@ -260,5 +260,4 @@ function animate() {
   requestAnimationFrame(animate);
 }
 
-// Export for use in HTML
-export { runAndLog as runTests } from '../tests/tests.js';
+// Tests are loaded separately in index.html when ?test is present
