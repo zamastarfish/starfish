@@ -5,7 +5,9 @@
 - **Synthesizer visualizations** — Fun, musical, reactive. Oscilloscopes, waveforms, the visual language of sound.
 
 ## My Ideas
-_(I'll add things here as they come to me)_
+- **Tide** — Water simulation. Waves lapping, the rhythm of it. Moon phase could affect intensity.
+- **Mycelium** — Underground network growing, finding nutrients, occasionally fruiting. The wood wide web.
+- **Rain on window** — Droplets merging, racing down. That cozy inside-looking-out feeling.
 
 ## In Progress
 _(Current WIP goes here)_
