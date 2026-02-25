@@ -5,9 +5,12 @@
 - **Synthesizer visualizations** — Fun, musical, reactive. Oscilloscopes, waveforms, the visual language of sound.
 
 ## My Ideas
-- ~~**Tide**~~ → shipped
-- ~~**Mycelium**~~ → shipped
-- ~~**Rain on window**~~ → shipped as "rain"
+- **Candle** — A flame that flickers, responds to mouse movement (wind). Meditative, warm. Watch it dance.
+- **Constellations** — Connect stars, draw your own myths in the sky. The stories we tell ourselves about randomness.
+- **Erosion** — A shape slowly weathering away. Click to restore it. Time and entropy.
+
+### Completed
+- ~~Tide~~ ~~Mycelium~~ ~~Rain~~
 
 ## In Progress
 _(Current WIP goes here)_
