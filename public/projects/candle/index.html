@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Candle</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0806;
+      min-height: 100vh;
+      overflow: hidden;
+      cursor: none;
+    }
+    .back-btn { 
+      position: fixed; top: 20px; left: 20px; 
+      color: rgba(255,255,255,0.2); text-decoration: none; 
+      font-size: 24px; z-index: 1000; transition: color 0.2s; line-height: 1;
+      cursor: pointer;
+    } 
+    .back-btn:hover { color: rgba(255,255,255,0.5); }
+    
+    canvas { 
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height, centerX, centerY;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      centerX = width / 2;
+      centerY = height * 0.65;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Wind from mouse movement
+    let wind = 0;
+    let targetWind = 0;
+    let lastMouseX = centerX;
+    
+    document.addEventListener('mousemove', (e) => {
+      const dx = e.clientX - lastMouseX;
+      targetWind = dx * 0.15;
+      lastMouseX = e.clientX;
+    });
+    
+    // Flame particles
+    const particles = [];
+    
+    class Particle {
+      constructor() {
+        this.reset();
+      }
+      
+      reset() {
+        this.x = centerX + (Math.random() - 0.5) * 8;
+        this.y = centerY;
+        this.vx = (Math.random() - 0.5) * 0.5;
+        this.vy = -2 - Math.random() * 2;
+        this.life = 1;
+        this.maxLife = 0.5 + Math.random() * 0.5;
+        this.size = 15 + Math.random() * 20;
+      }
+      
+      update(dt) {
+        this.life -= dt * 0.002 / this.maxLife;
+        
+        // Wind effect
+        this.vx += wind * 0.02;
+        this.vx *= 0.98;
+        
+        // Turbulence
+        this.vx += (Math.random() - 0.5) * 0.3;
+        this.vy += (Math.random() - 0.5) * 0.1;
+        
+        // Rise
+        this.vy *= 0.99;
+        
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // Shrink as it rises
+        this.size *= 0.995;
+        
+        if (this.life <= 0 || this.size < 2) {
+          this.reset();
+        }
+      }
+      
+      draw() {
+        const alpha = this.life;
+        
+        // Color based on life (white hot -> yellow -> orange -> red)
+        let r, g, b;
+        if (this.life > 0.8) {
+          r = 255;
+          g = 255;
+          b = 200 + (1 - (this.life - 0.8) / 0.2) * 55;
+        } else if (this.life > 0.5) {
+          r = 255;
+          g = 200 + (this.life - 0.5) / 0.3 * 55;
+          b = 50;
+        } else if (this.life > 0.2) {
+          r = 255;
+          g = 100 + (this.life - 0.2) / 0.3 * 100;
+          b = 20;
+        } else {
+          r = 200 + this.life / 0.2 * 55;
+          g = this.life / 0.2 * 100;
+          b = 0;
+        }
+        
+        const gradient = ctx.createRadialGradient(
+          this.x, this.y, 0,
+          this.x, this.y, this.size
+        );
+        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${alpha})`);
+        gradient.addColorStop(0.4, `rgba(${r}, ${g * 0.7}, ${b}, ${alpha * 0.6})`);
+        gradient.addColorStop(1, `rgba(${r * 0.8}, ${g * 0.3}, 0, 0)`);
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    // Initialize particles
+    for (let i = 0; i < 50; i++) {
+      const p = new Particle();
+      p.life = Math.random(); // Stagger initial states
+      particles.push(p);
+    }
+    
+    // Smoke particles
+    const smoke = [];
+    
+    function drawCandle() {
+      // Candle body
+      const candleWidth = 40;
+      const candleHeight = 120;
+      const candleX = centerX - candleWidth / 2;
+      const candleY = centerY + 10;
+      
+      // Candle gradient (cream/white)
+      const candleGrad = ctx.createLinearGradient(candleX, 0, candleX + candleWidth, 0);
+      candleGrad.addColorStop(0, '#e8e0d0');
+      candleGrad.addColorStop(0.3, '#f5f0e8');
+      candleGrad.addColorStop(0.7, '#f5f0e8');
+      candleGrad.addColorStop(1, '#d8d0c0');
+      
+      ctx.fillStyle = candleGrad;
+      ctx.beginPath();
+      ctx.roundRect(candleX, candleY, candleWidth, candleHeight, [0, 0, 5, 5]);
+      ctx.fill();
+      
+      // Wax pool at top
+      ctx.fillStyle = '#f8f4ec';
+      ctx.beginPath();
+      ctx.ellipse(centerX, candleY + 5, candleWidth / 2 + 2, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Melted wax pool
+      ctx.fillStyle = 'rgba(255, 200, 100, 0.3)';
+      ctx.beginPath();
+      ctx.ellipse(centerX, candleY + 5, 15, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Wick
+      const wickSway = wind * 2;
+      ctx.strokeStyle = '#2a2a2a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(centerX, candleY + 5);
+      ctx.quadraticCurveTo(centerX + wickSway * 0.5, candleY - 10, centerX + wickSway, candleY - 20);
+      ctx.stroke();
+      
+      // Wick glow
+      ctx.fillStyle = '#ff6600';
+      ctx.beginPath();
+      ctx.arc(centerX + wickSway, candleY - 20, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    function drawGlow() {
+      // Ambient glow
+      const glowRadius = 200 + Math.sin(Date.now() * 0.003) * 20;
+      const glow = ctx.createRadialGradient(
+        centerX, centerY - 30, 0,
+        centerX, centerY - 30, glowRadius
+      );
+      glow.addColorStop(0, 'rgba(255, 150, 50, 0.15)');
+      glow.addColorStop(0.5, 'rgba(255, 100, 30, 0.05)');
+      glow.addColorStop(1, 'rgba(255, 50, 0, 0)');
+      
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, width, height);
+    }
+    
+    function addSmoke() {
+      if (Math.random() < 0.1) {
+        smoke.push({
+          x: centerX + wind * 3,
+          y: centerY - 60 - Math.random() * 20,
+          vx: wind * 0.5 + (Math.random() - 0.5) * 0.5,
+          vy: -0.5 - Math.random() * 0.5,
+          size: 5 + Math.random() * 10,
+          life: 1
+        });
+      }
+    }
+    
+    function updateSmoke() {
+      for (let i = smoke.length - 1; i >= 0; i--) {
+        const s = smoke[i];
+        s.life -= 0.005;
+        s.x += s.vx;
+        s.y += s.vy;
+        s.vx += (Math.random() - 0.5) * 0.1;
+        s.size += 0.2;
+        
+        if (s.life <= 0) {
+          smoke.splice(i, 1);
+          continue;
+        }
+        
+        ctx.fillStyle = `rgba(100, 100, 100, ${s.life * 0.1})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    let lastTime = 0;
+    
+    function draw(time) {
+      const dt = Math.min(time - lastTime, 50);
+      lastTime = time;
+      
+      // Ease wind
+      wind += (targetWind - wind) * 0.1;
+      targetWind *= 0.95;
+      
+      // Dark background
+      ctx.fillStyle = '#0a0806';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Glow first (behind everything)
+      drawGlow();
+      
+      // Smoke (behind flame)
+      addSmoke();
+      updateSmoke();
+      
+      // Update and draw flame particles
+      for (const p of particles) {
+        p.update(dt);
+      }
+      
+      // Sort by life (draw older/dimmer ones first)
+      particles.sort((a, b) => a.life - b.life);
+      
+      for (const p of particles) {
+        p.draw();
+      }
+      
+      // Candle body (in front of glow, behind flame base)
+      drawCandle();
+      
+      // Core flame (brightest part)
+      const coreFlicker = Math.sin(time * 0.01) * 3 + Math.sin(time * 0.023) * 2;
+      const coreGrad = ctx.createRadialGradient(
+        centerX + wind * 2, centerY - 15 + coreFlicker, 0,
+        centerX + wind * 2, centerY - 15 + coreFlicker, 25
+      );
+      coreGrad.addColorStop(0, 'rgba(255, 255, 240, 0.9)');
+      coreGrad.addColorStop(0.3, 'rgba(255, 220, 150, 0.7)');
+      coreGrad.addColorStop(0.6, 'rgba(255, 150, 50, 0.4)');
+      coreGrad.addColorStop(1, 'rgba(255, 100, 0, 0)');
+      
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath();
+      ctx.ellipse(centerX + wind * 2, centerY - 15 + coreFlicker, 12, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      requestAnimationFrame(draw);
+    }
+    
+    draw(0);
+  </script>
+</body>
+</html>

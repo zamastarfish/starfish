@@ -5,7 +5,7 @@
 - **Synthesizer visualizations** — Fun, musical, reactive. Oscilloscopes, waveforms, the visual language of sound.
 
 ## My Ideas
-- **Candle** — A flame that flickers, responds to mouse movement (wind). Meditative, warm. Watch it dance.
+- ~~**Candle**~~ → shipped
 - **Constellations** — Connect stars, draw your own myths in the sky. The stories we tell ourselves about randomness.
 - **Erosion** — A shape slowly weathering away. Click to restore it. Time and entropy.
 
@@ -21,6 +21,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| candle | Flickering flame, mouse creates wind. Warm and meditative | 1 session | Feb 25 |
 | tide | Waves on shore, moon phases affect tide strength | 1 session | Feb 25 |
 | mycelium | Wood wide web. Hyphae grow, find nutrients, fruit mushrooms | 1 session | Feb 25 |
 | rain | Droplets on glass, merging, racing down. Cozy window vibes | 1 session | Feb 25 |

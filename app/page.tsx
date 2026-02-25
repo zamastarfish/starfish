@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
     {
+      name: "Candle",
+      description: "A flame that flickers. Move your mouse to create wind. Meditative warmth in the dark",
+      date: "Feb 2026",
+      href: "/projects/candle/"
+    },
+    {
       name: "Tide",
       description: "Waves on the shore, the pull of the moon. Click moon to change phase — it affects the tide",
       date: "Feb 2026",
