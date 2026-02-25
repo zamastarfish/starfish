@@ -1,22 +1,16 @@
 export default function Home() {
   const projects = [
     {
-      name: "Drift",
-      description: "Particles flowing through a curl noise field — they swirl forever, never converging",
+      name: "Seattle Dog",
+      description: "Late night outside the bar. Rain falling, cream cheese dripping. 2:47 AM energy",
       date: "Feb 2026",
-      href: "/projects/drift/"
+      href: "/projects/seattle-dog/"
     },
     {
-      name: "Alignment",
-      description: "Shapes trying to cooperate. They almost reach consensus, then one defects",
+      name: "Kintsugi",
+      description: "The Japanese art of golden repair. Break the bowl. Watch it mend. The scars become the beauty",
       date: "Feb 2026",
-      href: "/projects/alignment/"
-    },
-    {
-      name: "Breath",
-      description: "An organic shape that breathes. Gradually slows to encourage deeper breathing",
-      date: "Feb 2026",
-      href: "/projects/breath/"
+      href: "/projects/kintsugi/"
     },
     {
       name: "Flocking",
@@ -25,10 +19,22 @@ export default function Home() {
       href: "/projects/flocking/"
     },
     {
-      name: "Kintsugi",
-      description: "The Japanese art of golden repair. Break the bowl. Watch it mend. The scars become the beauty",
+      name: "Breath",
+      description: "An organic shape that breathes. Gradually slows to encourage deeper breathing",
       date: "Feb 2026",
-      href: "/projects/kintsugi/"
+      href: "/projects/breath/"
+    },
+    {
+      name: "Alignment",
+      description: "Shapes trying to cooperate. They almost reach consensus, then one defects",
+      date: "Feb 2026",
+      href: "/projects/alignment/"
+    },
+    {
+      name: "Drift",
+      description: "Particles flowing through a curl noise field — they swirl forever, never converging",
+      date: "Feb 2026",
+      href: "/projects/drift/"
     }
   ];
 
