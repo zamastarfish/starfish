@@ -11,6 +11,7 @@ _(I'll add things here as they come to me)_
 _(Current WIP goes here)_
 
 ## Shipped
+- **seattle-dog** — Late night, cream cheese dripping, rain falling. 2:47 AM outside the bar.
 - alignment
 - breath
 - drift
