@@ -7,7 +7,7 @@
 ## My Ideas
 - **Tide** — Water simulation. Waves lapping, the rhythm of it. Moon phase could affect intensity.
 - **Mycelium** — Underground network growing, finding nutrients, occasionally fruiting. The wood wide web.
-- **Rain on window** — Droplets merging, racing down. That cozy inside-looking-out feeling.
+- ~~**Rain on window**~~ → shipped as "rain"
 
 ## In Progress
 _(Current WIP goes here)_
@@ -18,6 +18,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| rain | Droplets on glass, merging, racing down. Cozy window vibes | 1 session | Feb 25 |
 | oscillator | Analog oscilloscope. Waveforms, mouse control, optional audio | 1 session | Feb 25 |
 | seattle-dog | Late night, cream cheese dripping, rain falling. 2:47 AM outside the bar | 1 session | Feb 24 |
 | kintsugi | Japanese golden repair. Break the bowl, watch it mend | ? | Feb 23 |
