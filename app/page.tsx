@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
     {
+      name: "Tide",
+      description: "Waves on the shore, the pull of the moon. Click moon to change phase — it affects the tide",
+      date: "Feb 2026",
+      href: "/projects/tide/"
+    },
+    {
       name: "Mycelium",
       description: "The wood wide web. Hyphae spread underground, find nutrients, send up mushrooms. Click to feed",
       date: "Feb 2026",

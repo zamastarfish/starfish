@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tide</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a2a3a;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    .back-btn { 
+      position: fixed; top: 20px; left: 20px; 
+      color: rgba(255,255,255,0.4); text-decoration: none; 
+      font-size: 24px; z-index: 1000; transition: color 0.2s; line-height: 1; 
+    } 
+    .back-btn:hover { color: rgba(255,255,255,0.8); }
+    
+    canvas { display: block; }
+    
+    .moon {
+      position: fixed;
+      top: 40px;
+      right: 40px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #fffde7;
+      box-shadow: 0 0 30px rgba(255, 253, 200, 0.4);
+      cursor: pointer;
+      transition: transform 0.3s;
+    }
+    .moon:hover { transform: scale(1.1); }
+    .moon::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      background: #1a2a3a;
+      transition: all 0.5s;
+    }
+    
+    .info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.3);
+      font-family: system-ui, sans-serif;
+      font-size: 0.75rem;
+      text-align: center;
+    }
+    
+    .phase-label {
+      position: fixed;
+      top: 110px;
+      right: 40px;
+      color: rgba(255, 255, 255, 0.4);
+      font-family: system-ui, sans-serif;
+      font-size: 0.7rem;
+      text-align: center;
+      width: 60px;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <div class="moon" id="moon" title="Click to change phase"></div>
+  <div class="phase-label" id="phaseLabel">Full Moon</div>
+  <canvas id="canvas"></canvas>
+  <div class="info">The pull of the moon. Click moon to change phase.</div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const moon = document.getElementById('moon');
+    const phaseLabel = document.getElementById('phaseLabel');
+    
+    let width, height;
+    let shoreY;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      shoreY = height * 0.7;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Moon phases affect tide strength
+    const phases = [
+      { name: 'Full Moon', strength: 1.0, shadow: 'none' },
+      { name: 'Waning Gibbous', strength: 0.85, shadow: '15px 0 0 0' },
+      { name: 'Last Quarter', strength: 0.6, shadow: '30px 0 0 0' },
+      { name: 'Waning Crescent', strength: 0.4, shadow: '22px 0 0 -8px' },
+      { name: 'New Moon', strength: 1.0, shadow: '0 0 0 30px' },
+      { name: 'Waxing Crescent', strength: 0.4, shadow: '-22px 0 0 -8px' },
+      { name: 'First Quarter', strength: 0.6, shadow: '-30px 0 0 0' },
+      { name: 'Waxing Gibbous', strength: 0.85, shadow: '-15px 0 0 0' },
+    ];
+    
+    let currentPhase = 0;
+    let tideStrength = phases[0].strength;
+    
+    function updateMoon() {
+      const phase = phases[currentPhase];
+      moon.style.setProperty('--shadow', phase.shadow);
+      
+      const after = moon.querySelector('::after') || moon;
+      if (phase.shadow === 'none') {
+        moon.style.boxShadow = '0 0 30px rgba(255, 253, 200, 0.4)';
+        moon.innerHTML = '';
+      } else {
+        moon.innerHTML = `<div style="
+          position: absolute;
+          width: 100%; height: 100%;
+          border-radius: 50%;
+          background: #1a2a3a;
+          box-shadow: ${phase.shadow} inset;
+        "></div>`;
+      }
+      
+      phaseLabel.textContent = phase.name;
+      tideStrength = phase.strength;
+    }
+    
+    moon.addEventListener('click', () => {
+      currentPhase = (currentPhase + 1) % phases.length;
+      updateMoon();
+    });
+    
+    updateMoon();
+    
+    // Wave parameters
+    const waves = [];
+    for (let i = 0; i < 5; i++) {
+      waves.push({
+        amplitude: 15 + i * 8,
+        frequency: 0.008 - i * 0.001,
+        speed: 0.02 + i * 0.005,
+        phase: Math.random() * Math.PI * 2,
+        color: `rgba(100, ${150 + i * 20}, ${200 + i * 10}, ${0.3 - i * 0.04})`
+      });
+    }
+    
+    // Foam particles
+    const foam = [];
+    
+    function getWaveHeight(x, time) {
+      let y = 0;
+      for (const wave of waves) {
+        y += Math.sin(x * wave.frequency + time * wave.speed + wave.phase) 
+             * wave.amplitude * tideStrength;
+      }
+      // Tide cycle (slower)
+      const tideCycle = Math.sin(time * 0.0005) * 50 * tideStrength;
+      return y + tideCycle;
+    }
+    
+    function draw(time) {
+      // Sky gradient
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, shoreY);
+      skyGrad.addColorStop(0, '#0a1628');
+      skyGrad.addColorStop(0.5, '#1a3050');
+      skyGrad.addColorStop(1, '#2a4a6a');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, width, shoreY);
+      
+      // Stars
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      for (let i = 0; i < 50; i++) {
+        const x = (Math.sin(i * 123.456) * 0.5 + 0.5) * width;
+        const y = (Math.cos(i * 78.9) * 0.5 + 0.5) * shoreY * 0.7;
+        const twinkle = Math.sin(time * 0.002 + i) * 0.5 + 0.5;
+        ctx.globalAlpha = twinkle * 0.8;
+        ctx.beginPath();
+        ctx.arc(x, y, 1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      
+      // Beach
+      const beachGrad = ctx.createLinearGradient(0, shoreY - 30, 0, height);
+      beachGrad.addColorStop(0, '#8b7355');
+      beachGrad.addColorStop(0.3, '#a08060');
+      beachGrad.addColorStop(1, '#6b5344');
+      ctx.fillStyle = beachGrad;
+      ctx.fillRect(0, shoreY - 30, width, height - shoreY + 30);
+      
+      // Wet sand
+      const waveTop = shoreY + getWaveHeight(width / 2, time) - 40;
+      const wetGrad = ctx.createLinearGradient(0, waveTop - 20, 0, waveTop + 60);
+      wetGrad.addColorStop(0, 'rgba(60, 50, 40, 0.6)');
+      wetGrad.addColorStop(1, 'rgba(60, 50, 40, 0)');
+      ctx.fillStyle = wetGrad;
+      ctx.fillRect(0, waveTop - 20, width, 100);
+      
+      // Draw waves (back to front)
+      for (let i = waves.length - 1; i >= 0; i--) {
+        const wave = waves[i];
+        const baseY = shoreY - i * 15;
+        
+        ctx.fillStyle = wave.color;
+        ctx.beginPath();
+        ctx.moveTo(0, height);
+        
+        for (let x = 0; x <= width; x += 5) {
+          const waveY = baseY + getWaveHeight(x, time) - i * 10;
+          ctx.lineTo(x, waveY);
+        }
+        
+        ctx.lineTo(width, height);
+        ctx.closePath();
+        ctx.fill();
+      }
+      
+      // Main water surface
+      const waterGrad = ctx.createLinearGradient(0, shoreY - 100, 0, shoreY + 100);
+      waterGrad.addColorStop(0, 'rgba(20, 60, 100, 0.9)');
+      waterGrad.addColorStop(0.5, 'rgba(30, 80, 130, 0.8)');
+      waterGrad.addColorStop(1, 'rgba(40, 100, 150, 0.6)');
+      
+      ctx.fillStyle = waterGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, height);
+      
+      for (let x = 0; x <= width; x += 3) {
+        const waveY = shoreY + getWaveHeight(x, time);
+        ctx.lineTo(x, waveY);
+      }
+      
+      ctx.lineTo(width, height);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Foam at wave edges
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      
+      for (let x = 0; x <= width; x += 3) {
+        const waveY = shoreY + getWaveHeight(x, time);
+        if (x === 0) {
+          ctx.moveTo(x, waveY);
+        } else {
+          ctx.lineTo(x, waveY);
+        }
+      }
+      ctx.stroke();
+      
+      // Foam particles
+      if (Math.random() < 0.3) {
+        const x = Math.random() * width;
+        const waveY = shoreY + getWaveHeight(x, time);
+        foam.push({
+          x,
+          y: waveY + Math.random() * 5,
+          size: 2 + Math.random() * 4,
+          life: 1,
+          vx: (Math.random() - 0.5) * 0.5
+        });
+      }
+      
+      for (let i = foam.length - 1; i >= 0; i--) {
+        const f = foam[i];
+        f.life -= 0.01;
+        f.x += f.vx;
+        f.y += 0.1;
+        
+        if (f.life <= 0) {
+          foam.splice(i, 1);
+          continue;
+        }
+        
+        ctx.fillStyle = `rgba(255, 255, 255, ${f.life * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.size * f.life, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Moon reflection on water
+      const moonX = width - 70;
+      const reflectionGrad = ctx.createLinearGradient(moonX, shoreY - 50, moonX, shoreY + 100);
+      reflectionGrad.addColorStop(0, 'rgba(255, 253, 200, 0.1)');
+      reflectionGrad.addColorStop(1, 'rgba(255, 253, 200, 0)');
+      
+      ctx.fillStyle = reflectionGrad;
+      for (let y = shoreY - 50; y < shoreY + 80; y += 8) {
+        const wobble = Math.sin(time * 0.003 + y * 0.1) * 10;
+        ctx.fillRect(moonX - 20 + wobble, y, 40, 4);
+      }
+      
+      requestAnimationFrame(draw);
+    }
+    
+    draw(0);
+  </script>
+</body>
+</html>

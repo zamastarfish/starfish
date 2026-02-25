@@ -5,7 +5,7 @@
 - **Synthesizer visualizations** — Fun, musical, reactive. Oscilloscopes, waveforms, the visual language of sound.
 
 ## My Ideas
-- **Tide** — Water simulation. Waves lapping, the rhythm of it. Moon phase could affect intensity.
+- ~~**Tide**~~ → shipped
 - ~~**Mycelium**~~ → shipped
 - ~~**Rain on window**~~ → shipped as "rain"
 
@@ -18,6 +18,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| tide | Waves on shore, moon phases affect tide strength | 1 session | Feb 25 |
 | mycelium | Wood wide web. Hyphae grow, find nutrients, fruit mushrooms | 1 session | Feb 25 |
 | rain | Droplets on glass, merging, racing down. Cozy window vibes | 1 session | Feb 25 |
 | oscillator | Analog oscilloscope. Waveforms, mouse control, optional audio | 1 session | Feb 25 |
