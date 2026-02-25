@@ -18,7 +18,12 @@
     } 
     .back-btn:hover { color: rgba(255,255,255,0.7); }
     
-    canvas { display: block; }
+    canvas { 
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: crosshair;
+    }
     
     .info {
       position: fixed;
@@ -172,11 +177,16 @@
     
     // Click to add nutrient
     canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      
       nutrients.push({
-        x: e.clientX,
-        y: e.clientY,
-        size: 8 + Math.random() * 8,
-        depleted: false
+        x: e.clientX * scaleX,
+        y: e.clientY * scaleY,
+        size: 12 + Math.random() * 10,
+        depleted: false,
+        fresh: true
       });
     });
     
@@ -198,13 +208,19 @@
       // Draw nutrients
       for (const n of nutrients) {
         if (n.depleted) continue;
-        const gradient = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.size);
-        gradient.addColorStop(0, 'rgba(180, 140, 80, 0.8)');
-        gradient.addColorStop(0.5, 'rgba(140, 100, 50, 0.5)');
+        
+        // Fresh nutrients pulse brighter
+        const freshBoost = n.fresh ? 1.5 : 1;
+        if (n.fresh) n.fresh = false; // Only flash once
+        
+        const gradient = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.size * freshBoost);
+        gradient.addColorStop(0, `rgba(220, 180, 100, ${0.9 * freshBoost})`);
+        gradient.addColorStop(0.4, 'rgba(180, 140, 80, 0.7)');
+        gradient.addColorStop(0.7, 'rgba(140, 100, 50, 0.4)');
         gradient.addColorStop(1, 'rgba(100, 70, 30, 0)');
         ctx.fillStyle = gradient;
         ctx.beginPath();
-        ctx.arc(n.x, n.y, n.size, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y, n.size * freshBoost, 0, Math.PI * 2);
         ctx.fill();
       }
       
