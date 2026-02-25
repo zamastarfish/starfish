@@ -16,6 +16,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| oscillator | Analog oscilloscope. Waveforms, mouse control, optional audio | 1 session | Feb 25 |
 | seattle-dog | Late night, cream cheese dripping, rain falling. 2:47 AM outside the bar | 1 session | Feb 24 |
 | kintsugi | Japanese golden repair. Break the bowl, watch it mend | ? | Feb 23 |
 | flocking | Starling murmuration. Cursor is a hawk | ? | Feb 23 |

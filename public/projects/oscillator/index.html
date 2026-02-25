@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oscillator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+    }
+    .back-btn { position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.4); text-decoration: none; font-size: 24px; z-index: 1000; transition: color 0.2s; line-height: 1; } .back-btn:hover { color: rgba(255,255,255,0.8); }
+    
+    .scope-container {
+      position: relative;
+      padding: 30px;
+      background: #1a1a1a;
+      border-radius: 20px;
+      box-shadow: 
+        inset 0 0 50px rgba(0,0,0,0.5),
+        0 10px 40px rgba(0,0,0,0.8);
+    }
+    
+    canvas {
+      display: block;
+      border-radius: 10px;
+      box-shadow: inset 0 0 30px rgba(0,255,100,0.1);
+    }
+    
+    .controls {
+      display: flex;
+      gap: 2rem;
+      margin-top: 1.5rem;
+      justify-content: center;
+    }
+    
+    .control-group {
+      text-align: center;
+    }
+    
+    .control-group label {
+      display: block;
+      color: #00ff66;
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+    }
+    
+    .wave-buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+    
+    .wave-btn {
+      width: 36px;
+      height: 36px;
+      border: 1px solid #00ff6644;
+      background: transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .wave-btn:hover {
+      border-color: #00ff66;
+      background: #00ff6611;
+    }
+    
+    .wave-btn.active {
+      border-color: #00ff66;
+      background: #00ff6633;
+      box-shadow: 0 0 10px #00ff6644;
+    }
+    
+    .wave-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: #00ff66;
+      fill: none;
+      stroke-width: 2;
+    }
+    
+    .info {
+      position: fixed;
+      bottom: 20px;
+      color: #00ff6666;
+      font-size: 0.7rem;
+      text-align: center;
+    }
+    
+    .sound-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      border: 1px solid #00ff6644;
+      background: transparent;
+      border-radius: 50%;
+      cursor: pointer;
+      color: #00ff6666;
+      font-size: 1.2rem;
+      transition: all 0.2s;
+    }
+    
+    .sound-toggle:hover {
+      border-color: #00ff66;
+      color: #00ff66;
+    }
+    
+    .sound-toggle.active {
+      background: #00ff6633;
+      color: #00ff66;
+      box-shadow: 0 0 15px #00ff6644;
+    }
+    
+    .readout {
+      color: #00ff66;
+      font-size: 0.8rem;
+      font-variant-numeric: tabular-nums;
+      min-width: 80px;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  
+  <button class="sound-toggle" id="soundToggle" title="Toggle sound">♪</button>
+  
+  <div class="scope-container">
+    <canvas id="scope" width="600" height="400"></canvas>
+    
+    <div class="controls">
+      <div class="control-group">
+        <label>Waveform</label>
+        <div class="wave-buttons">
+          <button class="wave-btn active" data-wave="sine" title="Sine">
+            <svg viewBox="0 0 24 24"><path d="M2 12 Q 6 4, 12 12 Q 18 20, 22 12"/></svg>
+          </button>
+          <button class="wave-btn" data-wave="square" title="Square">
+            <svg viewBox="0 0 24 24"><path d="M2 16 L2 8 L8 8 L8 16 L14 16 L14 8 L20 8 L20 16 L22 16"/></svg>
+          </button>
+          <button class="wave-btn" data-wave="triangle" title="Triangle">
+            <svg viewBox="0 0 24 24"><path d="M2 12 L7 6 L12 18 L17 6 L22 12"/></svg>
+          </button>
+          <button class="wave-btn" data-wave="sawtooth" title="Sawtooth">
+            <svg viewBox="0 0 24 24"><path d="M2 12 L8 6 L8 18 L14 6 L14 18 L20 6 L20 12"/></svg>
+          </button>
+        </div>
+      </div>
+      
+      <div class="control-group">
+        <label>Frequency</label>
+        <div class="readout" id="freqReadout">220 Hz</div>
+      </div>
+      
+      <div class="control-group">
+        <label>Amplitude</label>
+        <div class="readout" id="ampReadout">50%</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="info">
+    Move mouse: X = frequency (20-2000 Hz) · Y = amplitude<br>
+    Click waveform buttons to change shape
+  </div>
+  
+  <script>
+    const canvas = document.getElementById('scope');
+    const ctx = canvas.getContext('2d');
+    const freqReadout = document.getElementById('freqReadout');
+    const ampReadout = document.getElementById('ampReadout');
+    const soundToggle = document.getElementById('soundToggle');
+    
+    let waveform = 'sine';
+    let frequency = 220;
+    let amplitude = 0.5;
+    let phase = 0;
+    let audioContext = null;
+    let oscillator = null;
+    let gainNode = null;
+    let soundEnabled = false;
+    
+    // Phosphor trail buffer
+    const trailCanvas = document.createElement('canvas');
+    trailCanvas.width = canvas.width;
+    trailCanvas.height = canvas.height;
+    const trailCtx = trailCanvas.getContext('2d');
+    
+    // Wave button handlers
+    document.querySelectorAll('.wave-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelector('.wave-btn.active').classList.remove('active');
+        btn.classList.add('active');
+        waveform = btn.dataset.wave;
+        if (oscillator) {
+          oscillator.type = waveform;
+        }
+      });
+    });
+    
+    // Sound toggle
+    soundToggle.addEventListener('click', () => {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        gainNode = audioContext.createGain();
+        gainNode.connect(audioContext.destination);
+        gainNode.gain.value = 0;
+      }
+      
+      soundEnabled = !soundEnabled;
+      soundToggle.classList.toggle('active', soundEnabled);
+      
+      if (soundEnabled) {
+        if (!oscillator) {
+          oscillator = audioContext.createOscillator();
+          oscillator.type = waveform;
+          oscillator.frequency.value = frequency;
+          oscillator.connect(gainNode);
+          oscillator.start();
+        }
+        gainNode.gain.setTargetAtTime(amplitude * 0.3, audioContext.currentTime, 0.1);
+      } else {
+        gainNode.gain.setTargetAtTime(0, audioContext.currentTime, 0.1);
+      }
+    });
+    
+    // Mouse control
+    document.addEventListener('mousemove', (e) => {
+      const x = e.clientX / window.innerWidth;
+      const y = 1 - (e.clientY / window.innerHeight);
+      
+      // Frequency: 20Hz - 2000Hz (logarithmic)
+      frequency = 20 * Math.pow(100, x);
+      amplitude = Math.max(0.05, Math.min(1, y));
+      
+      freqReadout.textContent = frequency < 1000 
+        ? `${Math.round(frequency)} Hz`
+        : `${(frequency / 1000).toFixed(2)} kHz`;
+      ampReadout.textContent = `${Math.round(amplitude * 100)}%`;
+      
+      if (oscillator) {
+        oscillator.frequency.setTargetAtTime(frequency, audioContext.currentTime, 0.05);
+      }
+      if (gainNode && soundEnabled) {
+        gainNode.gain.setTargetAtTime(amplitude * 0.3, audioContext.currentTime, 0.05);
+      }
+    });
+    
+    // Generate waveform value
+    function getWaveValue(t) {
+      const p = (t * frequency * Math.PI * 2 + phase) % (Math.PI * 2);
+      
+      switch (waveform) {
+        case 'sine':
+          return Math.sin(p);
+        case 'square':
+          return Math.sin(p) > 0 ? 1 : -1;
+        case 'triangle':
+          return 2 * Math.abs(2 * (p / (Math.PI * 2) - Math.floor(p / (Math.PI * 2) + 0.5))) - 1;
+        case 'sawtooth':
+          return 2 * (p / (Math.PI * 2) - Math.floor(p / (Math.PI * 2) + 0.5));
+        default:
+          return Math.sin(p);
+      }
+    }
+    
+    // Draw grid
+    function drawGrid() {
+      ctx.strokeStyle = '#00ff6615';
+      ctx.lineWidth = 1;
+      
+      // Vertical lines
+      for (let x = 0; x <= canvas.width; x += 50) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      
+      // Horizontal lines
+      for (let y = 0; y <= canvas.height; y += 50) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+      
+      // Center lines (brighter)
+      ctx.strokeStyle = '#00ff6633';
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.stroke();
+    }
+    
+    // Main draw loop
+    let lastTime = 0;
+    function draw(time) {
+      const dt = (time - lastTime) / 1000;
+      lastTime = time;
+      
+      // Fade trail (phosphor decay)
+      trailCtx.fillStyle = 'rgba(0, 10, 5, 0.15)';
+      trailCtx.fillRect(0, 0, trailCanvas.width, trailCanvas.height);
+      
+      // Draw waveform to trail
+      trailCtx.strokeStyle = '#00ff66';
+      trailCtx.lineWidth = 2;
+      trailCtx.shadowColor = '#00ff66';
+      trailCtx.shadowBlur = 10;
+      trailCtx.beginPath();
+      
+      const centerY = canvas.height / 2;
+      const displayAmplitude = amplitude * (canvas.height / 2 - 20);
+      
+      // Time scale based on frequency (show ~3-4 cycles)
+      const cycles = 3.5;
+      const timeScale = cycles / frequency;
+      
+      for (let x = 0; x < canvas.width; x++) {
+        const t = (x / canvas.width) * timeScale;
+        const y = centerY - getWaveValue(t) * displayAmplitude;
+        
+        if (x === 0) {
+          trailCtx.moveTo(x, y);
+        } else {
+          trailCtx.lineTo(x, y);
+        }
+      }
+      
+      trailCtx.stroke();
+      trailCtx.shadowBlur = 0;
+      
+      // Draw to main canvas
+      ctx.fillStyle = '#000a05';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      drawGrid();
+      
+      // Draw trail
+      ctx.drawImage(trailCanvas, 0, 0);
+      
+      // Beam dot at end
+      const endT = timeScale;
+      const endY = centerY - getWaveValue(endT) * displayAmplitude;
+      
+      ctx.fillStyle = '#00ff66';
+      ctx.shadowColor = '#00ff66';
+      ctx.shadowBlur = 20;
+      ctx.beginPath();
+      ctx.arc(canvas.width - 1, endY, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      
+      // Update phase for animation
+      phase += dt * frequency * Math.PI * 2 * 0.1; // Slow drift
+      
+      requestAnimationFrame(draw);
+    }
+    
+    draw(0);
+  </script>
+</body>
+</html>

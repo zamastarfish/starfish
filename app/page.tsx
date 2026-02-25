@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
     {
+      name: "Oscillator",
+      description: "Analog oscilloscope energy. Sine, square, triangle, saw. Mouse controls frequency and amplitude. Optional sound",
+      date: "Feb 2026",
+      href: "/projects/oscillator/"
+    },
+    {
       name: "Seattle Dog",
       description: "Late night outside the bar. Rain falling, cream cheese dripping. 2:47 AM energy",
       date: "Feb 2026",
