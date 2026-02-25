@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
     {
+      name: "Mycelium",
+      description: "The wood wide web. Hyphae spread underground, find nutrients, send up mushrooms. Click to feed",
+      date: "Feb 2026",
+      href: "/projects/mycelium/"
+    },
+    {
       name: "Rain",
       description: "Droplets on glass. They gather, merge, race down. The blurry world outside",
       date: "Feb 2026",
