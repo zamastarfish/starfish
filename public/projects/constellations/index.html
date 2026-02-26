@@ -34,6 +34,7 @@
       font-family: system-ui, sans-serif;
       font-size: 0.75rem;
       text-align: center;
+      pointer-events: none;
     }
     
     .controls {
@@ -67,28 +68,171 @@
       color: rgba(255,255,255,0.3);
       border-color: rgba(255,255,255,0.2);
     }
+    .btn.primary {
+      background: rgba(100, 150, 255, 0.2);
+      border-color: rgba(100, 150, 255, 0.4);
+      color: rgba(200, 220, 255, 0.8);
+    }
+    .btn.primary:hover {
+      background: rgba(100, 150, 255, 0.3);
+      border-color: rgba(100, 150, 255, 0.6);
+      color: rgba(200, 220, 255, 1);
+    }
+    .btn.primary:disabled {
+      background: rgba(100, 150, 255, 0.1);
+    }
+    
+    /* Modal overlay */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 15, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s, visibility 0.3s;
+    }
+    .modal-overlay.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+    
+    .modal {
+      max-width: 90vw;
+      max-height: 90vh;
+      position: relative;
+    }
+    
+    .modal img {
+      max-width: 100%;
+      max-height: 85vh;
+      border-radius: 8px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    
+    .modal-close {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      color: rgba(255,255,255,0.5);
+      background: transparent;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 8px;
+      transition: color 0.2s;
+    }
+    .modal-close:hover {
+      color: rgba(255,255,255,0.8);
+    }
+    
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 15, 0.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1500;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s, visibility 0.3s;
+    }
+    .loading-overlay.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+    
+    .loading-text {
+      color: rgba(200, 220, 255, 0.8);
+      font-family: system-ui, sans-serif;
+      font-size: 1rem;
+      margin-top: 20px;
+    }
+    
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 2px solid rgba(100, 150, 255, 0.2);
+      border-top-color: rgba(100, 150, 255, 0.8);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .error-toast {
+      position: fixed;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(255, 100, 100, 0.2);
+      border: 1px solid rgba(255, 100, 100, 0.4);
+      color: rgba(255, 200, 200, 0.9);
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-family: system-ui, sans-serif;
+      font-size: 0.875rem;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s, visibility 0.3s, transform 0.3s;
+      z-index: 1500;
+    }
+    .error-toast.visible {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
   </style>
 </head>
 <body>
   <a href="/" class="back-btn">←</a>
   <div class="controls">
+    <button class="btn primary" id="imagineBtn" disabled>Imagine</button>
     <button class="btn" id="undoBtn" disabled>Undo</button>
     <button class="btn" id="clearBtn">Clear</button>
   </div>
   <canvas id="canvas"></canvas>
   <div class="info">Click stars to connect them — keep clicking to draw your myth</div>
   
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+    <div class="loading-text">Imagining your constellation...</div>
+  </div>
+  
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <button class="modal-close" id="modalClose">×</button>
+      <img id="generatedImage" src="" alt="Generated constellation art">
+    </div>
+  </div>
+  
+  <div class="error-toast" id="errorToast"></div>
+  
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const clearBtn = document.getElementById('clearBtn');
     const undoBtn = document.getElementById('undoBtn');
+    const imagineBtn = document.getElementById('imagineBtn');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalClose = document.getElementById('modalClose');
+    const generatedImage = document.getElementById('generatedImage');
+    const errorToast = document.getElementById('errorToast');
     
     let width, height;
     const stars = [];
     const lines = [];
     let selectedStar = null;
     let mouseX = 0, mouseY = 0;
+    let isGenerating = false;
     
     function resize() {
       width = canvas.width = window.innerWidth;
@@ -138,8 +282,90 @@
       return nearest;
     }
     
-    function updateUndoBtn() {
+    function updateButtons() {
       undoBtn.disabled = lines.length === 0;
+      imagineBtn.disabled = lines.length < 2 || isGenerating;
+    }
+    
+    function showError(message) {
+      errorToast.textContent = message;
+      errorToast.classList.add('visible');
+      setTimeout(() => {
+        errorToast.classList.remove('visible');
+      }, 4000);
+    }
+    
+    // Get stars that are part of the constellation
+    function getConstellationStars() {
+      const starIndices = new Set();
+      for (const line of lines) {
+        const aIndex = stars.indexOf(line.a);
+        const bIndex = stars.indexOf(line.b);
+        if (aIndex !== -1) starIndices.add(aIndex);
+        if (bIndex !== -1) starIndices.add(bIndex);
+      }
+      return Array.from(starIndices);
+    }
+    
+    // Generate image from constellation
+    async function generateImage() {
+      if (lines.length < 2 || isGenerating) return;
+      
+      isGenerating = true;
+      updateButtons();
+      loadingOverlay.classList.add('visible');
+      
+      try {
+        // Collect constellation data
+        const constellationStarIndices = getConstellationStars();
+        const constellationStars = constellationStarIndices.map(i => ({
+          x: stars[i].x,
+          y: stars[i].y
+        }));
+        
+        // Map lines to use indices within constellation stars
+        const indexMap = new Map();
+        constellationStarIndices.forEach((globalIdx, localIdx) => {
+          indexMap.set(globalIdx, localIdx);
+        });
+        
+        const constellationLines = lines.map(line => ({
+          a: indexMap.get(stars.indexOf(line.a)),
+          b: indexMap.get(stars.indexOf(line.b))
+        }));
+        
+        const response = await fetch('/api/imagine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            constellation: {
+              stars: constellationStars,
+              lines: constellationLines,
+              width,
+              height
+            }
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to generate image');
+        }
+        
+        // Show the generated image
+        generatedImage.src = data.image;
+        loadingOverlay.classList.remove('visible');
+        modalOverlay.classList.add('visible');
+        
+      } catch (error) {
+        console.error('Generation error:', error);
+        loadingOverlay.classList.remove('visible');
+        showError(error.message || 'Failed to generate image. Please try again.');
+      } finally {
+        isGenerating = false;
+        updateButtons();
+      }
     }
     
     // Mouse handling
@@ -158,7 +384,6 @@
       
       if (clickedStar) {
         if (selectedStar && selectedStar !== clickedStar) {
-          // Check if line already exists
           const exists = lines.some(line => 
             (line.a === selectedStar && line.b === clickedStar) ||
             (line.a === clickedStar && line.b === selectedStar)
@@ -166,24 +391,20 @@
           
           if (!exists) {
             lines.push({ a: selectedStar, b: clickedStar });
-            updateUndoBtn();
+            updateButtons();
           }
-          // Stay in connect mode - new star becomes selected
           selectedStar = clickedStar;
         } else if (selectedStar === clickedStar) {
-          // Clicking same star deselects (exit connect mode)
           selectedStar = null;
         } else {
-          // First star selected
           selectedStar = clickedStar;
         }
       } else {
-        // Clicked empty space - deselect
         selectedStar = null;
       }
     });
     
-    // Touch support for mobile
+    // Touch support
     canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
       const touch = e.changedTouches[0];
@@ -191,7 +412,7 @@
       const x = (touch.clientX - rect.left) * (canvas.width / rect.width);
       const y = (touch.clientY - rect.top) * (canvas.height / rect.height);
       
-      const clickedStar = findNearestStar(x, y, 40); // Larger touch target
+      const clickedStar = findNearestStar(x, y, 40);
       
       if (clickedStar) {
         if (selectedStar && selectedStar !== clickedStar) {
@@ -202,7 +423,7 @@
           
           if (!exists) {
             lines.push({ a: selectedStar, b: clickedStar });
-            updateUndoBtn();
+            updateButtons();
           }
           selectedStar = clickedStar;
         } else if (selectedStar === clickedStar) {
@@ -215,12 +436,14 @@
       }
     }, { passive: false });
     
+    // Imagine button
+    imagineBtn.addEventListener('click', generateImage);
+    
     // Undo button
     undoBtn.addEventListener('click', () => {
       if (lines.length > 0) {
         lines.pop();
-        updateUndoBtn();
-        // Optionally deselect after undo
+        updateButtons();
         selectedStar = null;
       }
     });
@@ -229,7 +452,18 @@
     clearBtn.addEventListener('click', () => {
       lines.length = 0;
       selectedStar = null;
-      updateUndoBtn();
+      updateButtons();
+    });
+    
+    // Modal close
+    modalClose.addEventListener('click', () => {
+      modalOverlay.classList.remove('visible');
+    });
+    
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) {
+        modalOverlay.classList.remove('visible');
+      }
     });
     
     // Keyboard shortcuts
@@ -238,12 +472,17 @@
         e.preventDefault();
         if (lines.length > 0) {
           lines.pop();
-          updateUndoBtn();
+          updateButtons();
           selectedStar = null;
         }
       }
       if (e.key === 'Escape') {
         selectedStar = null;
+        modalOverlay.classList.remove('visible');
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        generateImage();
       }
     });
     
@@ -256,7 +495,7 @@
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, width, height);
       
-      // Draw faint background stars (non-interactive)
+      // Draw faint background stars
       ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
       for (let i = 0; i < 200; i++) {
         const x = (Math.sin(i * 456.789) * 0.5 + 0.5) * width;
@@ -297,7 +536,6 @@
         const twinkle = Math.sin(time * star.twinkleSpeed + star.twinklePhase);
         const brightness = star.brightness * (0.7 + twinkle * 0.3);
         
-        // Star glow
         const glowSize = star.size * 3;
         const glow = ctx.createRadialGradient(
           star.x, star.y, 0,
@@ -310,7 +548,6 @@
         ctx.arc(star.x, star.y, glowSize, 0, Math.PI * 2);
         ctx.fill();
         
-        // Star core
         ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
