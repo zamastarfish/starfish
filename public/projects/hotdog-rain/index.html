@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hotdog Rain</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      overflow: hidden;
+      cursor: none;
+    }
+    .back-btn { 
+      position: fixed; top: 20px; left: 20px; 
+      color: rgba(255,255,255,0.3); text-decoration: none; 
+      font-size: 24px; z-index: 1000; transition: color 0.2s; line-height: 1;
+    } 
+    .back-btn:hover { color: rgba(255,255,255,0.6); }
+    
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    
+    .wind-indicator {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.2);
+      font-family: system-ui, sans-serif;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      pointer-events: none;
+    }
+    
+    /* Custom cursor - a little umbrella or hand */
+    .cursor {
+      position: fixed;
+      pointer-events: none;
+      z-index: 1000;
+      font-size: 32px;
+      transform: translate(-50%, -50%);
+      transition: transform 0.1s ease-out;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  <div class="cursor" id="cursor">🌂</div>
+  <div class="wind-indicator">move to control the wind</div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const cursorEl = document.getElementById('cursor');
+    
+    let width, height;
+    let mouseX = 0.5, mouseY = 0.5; // Normalized 0-1
+    let wind = 0; // -1 to 1
+    let targetWind = 0;
+    
+    const hotdogs = [];
+    const MAX_HOTDOGS = 150;
+    const HOTDOG_EMOJI = '🌭';
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    resize();
+    window.addEventListener('resize', resize);
+    
+    class Hotdog {
+      constructor() {
+        this.reset();
+        // Start at random y for initial population
+        this.y = Math.random() * height;
+      }
+      
+      reset() {
+        this.x = Math.random() * width;
+        this.y = -50;
+        this.size = 20 + Math.random() * 25;
+        this.speed = 2 + Math.random() * 3;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+        this.wobble = Math.random() * Math.PI * 2;
+        this.wobbleSpeed = 0.02 + Math.random() * 0.03;
+        this.wobbleAmount = 0.5 + Math.random() * 1;
+      }
+      
+      update() {
+        // Fall down
+        this.y += this.speed;
+        
+        // Wind affects horizontal position
+        this.x += wind * (this.speed * 0.8);
+        
+        // Wobble
+        this.wobble += this.wobbleSpeed;
+        this.x += Math.sin(this.wobble) * this.wobbleAmount;
+        
+        // Rotation affected by wind
+        this.rotation += this.rotationSpeed + wind * 0.02;
+        
+        // Reset when off screen
+        if (this.y > height + 50 || this.x < -100 || this.x > width + 100) {
+          this.reset();
+          // Spawn from appropriate side based on wind
+          if (wind > 0.3) {
+            this.x = -30 + Math.random() * width * 0.5;
+          } else if (wind < -0.3) {
+            this.x = width * 0.5 + Math.random() * width * 0.5 + 30;
+          }
+        }
+      }
+      
+      draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.font = `${this.size}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(HOTDOG_EMOJI, 0, 0);
+        ctx.restore();
+      }
+    }
+    
+    // Initialize hotdogs
+    for (let i = 0; i < MAX_HOTDOGS; i++) {
+      hotdogs.push(new Hotdog());
+    }
+    
+    // Mouse/touch handling
+    function updateMouse(clientX, clientY) {
+      mouseX = clientX / width;
+      mouseY = clientY / height;
+      
+      // Wind based on horizontal position (-1 to 1)
+      targetWind = (mouseX - 0.5) * 2;
+      
+      // Update cursor position
+      cursorEl.style.left = clientX + 'px';
+      cursorEl.style.top = clientY + 'px';
+      
+      // Tilt umbrella based on wind
+      const tilt = targetWind * 20;
+      cursorEl.style.transform = `translate(-50%, -50%) rotate(${tilt}deg)`;
+    }
+    
+    document.addEventListener('mousemove', (e) => {
+      updateMouse(e.clientX, e.clientY);
+    });
+    
+    document.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      updateMouse(touch.clientX, touch.clientY);
+    }, { passive: false });
+    
+    // Hide cursor when mouse leaves
+    document.addEventListener('mouseleave', () => {
+      cursorEl.style.opacity = '0';
+    });
+    document.addEventListener('mouseenter', () => {
+      cursorEl.style.opacity = '1';
+    });
+    
+    // Draw puddle/ground
+    function drawGround() {
+      const gradient = ctx.createLinearGradient(0, height - 60, 0, height);
+      gradient.addColorStop(0, 'rgba(15, 52, 96, 0)');
+      gradient.addColorStop(1, 'rgba(15, 52, 96, 0.5)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, height - 60, width, 60);
+    }
+    
+    // Splatter particles for when hotdogs hit ground
+    const splatters = [];
+    
+    function animate() {
+      // Clear with slight trail for dreamy effect
+      ctx.fillStyle = 'rgba(26, 26, 46, 0.3)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Smooth wind transition
+      wind += (targetWind - wind) * 0.05;
+      
+      // Draw ground
+      drawGround();
+      
+      // Update and draw hotdogs
+      for (const hotdog of hotdogs) {
+        hotdog.update();
+        hotdog.draw();
+      }
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Start centered
+    updateMouse(width / 2, height / 2);
+    
+    animate();
+  </script>
+</body>
+</html>
