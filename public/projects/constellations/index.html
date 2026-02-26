@@ -416,8 +416,8 @@
       return Array.from(starIndices);
     }
     
-    // Get bounding box of constellation with padding
-    function getConstellationBounds(padding = 50) {
+    // Get bounding box of constellation - SQUARE with padding
+    function getConstellationBounds(padding = 60) {
       const constellationStarIndices = getConstellationStars();
       if (constellationStarIndices.length === 0) return null;
       
@@ -431,13 +431,53 @@
         maxY = Math.max(maxY, star.y);
       }
       
-      // Add padding
-      minX = Math.max(0, minX - padding);
-      minY = Math.max(0, minY - padding);
-      maxX = Math.min(width, maxX + padding);
-      maxY = Math.min(height, maxY + padding);
+      // Calculate center and make it square
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      const sizeX = maxX - minX;
+      const sizeY = maxY - minY;
       
-      return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+      // Use the larger dimension to make a square, plus padding
+      const size = Math.max(sizeX, sizeY) + padding * 2;
+      
+      // Calculate square bounds centered on constellation
+      let squareMinX = centerX - size / 2;
+      let squareMinY = centerY - size / 2;
+      let squareMaxX = centerX + size / 2;
+      let squareMaxY = centerY + size / 2;
+      
+      // Clamp to canvas bounds, but try to maintain square
+      if (squareMinX < 0) {
+        squareMaxX -= squareMinX;
+        squareMinX = 0;
+      }
+      if (squareMinY < 0) {
+        squareMaxY -= squareMinY;
+        squareMinY = 0;
+      }
+      if (squareMaxX > width) {
+        squareMinX -= (squareMaxX - width);
+        squareMaxX = width;
+      }
+      if (squareMaxY > height) {
+        squareMinY -= (squareMaxY - height);
+        squareMaxY = height;
+      }
+      
+      // Final clamp
+      squareMinX = Math.max(0, squareMinX);
+      squareMinY = Math.max(0, squareMinY);
+      squareMaxX = Math.min(width, squareMaxX);
+      squareMaxY = Math.min(height, squareMaxY);
+      
+      return { 
+        minX: squareMinX, 
+        minY: squareMinY, 
+        maxX: squareMaxX, 
+        maxY: squareMaxY, 
+        width: squareMaxX - squareMinX, 
+        height: squareMaxY - squareMinY 
+      };
     }
     
     // Store current bounds for overlay positioning

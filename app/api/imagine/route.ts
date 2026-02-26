@@ -63,35 +63,90 @@ export async function POST(request: NextRequest) {
     }
 
     const ai = new GoogleGenAI({ apiKey });
+    const shapeDescription = describeConstellation(constellation);
 
-    // Build the prompt with the constellation image if available
-    const prompt = `You are looking at a constellation pattern drawn by a user connecting stars in the night sky.
+    // STEP 1: Generate title and story FIRST based on the shape
+    // This ensures the mythology drives the image, not the other way around
+    const mythPrompt = `You are an ancient astronomer naming a new constellation.
 
-Your task:
-1. Study the exact shape formed by the connected stars - these are the ONLY stars that exist
-2. Imagine what mythological figure, creature, or symbol this constellation could represent
-3. Create an artistic illustration where the figure naturally fits the star positions
+Looking at the star pattern described below, imagine what mythological figure, creature, or symbol it could represent. Consider the shape's characteristics carefully.
 
-CRITICAL STYLE REQUIREMENTS:
-- Dark night sky background that seamlessly extends to all edges
-- NO borders, frames, or decorative edges
-- NO title labels, cartouches, or text of any kind
-- NO additional stars beyond the constellation points shown - use ONLY the exact stars visible in the reference
-- The figure should be semi-transparent/ethereal, drawn with soft ink wash technique
-- Muted sepia and blue-grey tones that blend with the night sky
-- The illustration should look like it could seamlessly overlay the original star field
-- Edges should fade naturally into the dark background, not have hard boundaries
+Shape: ${shapeDescription}
 
-The figure should be positioned so its key anatomical points (joints, eyes, hands, etc.) align with the star positions in the reference image.
+Create a mythological identity for this constellation. Generate a JSON response with:
+- "title": A classical constellation name (e.g., "Cygnus", "The Archer's Bow", "Serpens Minor", "The Weeping Maiden")
+- "figure": What the constellation depicts - be specific (e.g., "a swan in flight", "a hunter drawing a bow", "a coiled serpent")
+- "story": A 2-3 sentence mythological origin story in the style of ancient Greek/Roman star lore
 
-Generate ONLY the figure on a dark sky - no frames, no labels, no extra stars.`;
+The figure should naturally fit the described shape - if it's tall and vertical, perhaps a standing figure; if horizontal with extensions, perhaps a creature with outstretched limbs.`;
+
+    const mythResponse = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: mythPrompt,
+      config: {
+        responseMimeType: "application/json",
+        responseJsonSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: {
+              type: Type.STRING,
+              description: "Classical constellation name",
+            },
+            figure: {
+              type: Type.STRING,
+              description: "What the constellation depicts",
+            },
+            story: {
+              type: Type.STRING,
+              description: "Mythological origin story",
+            },
+          },
+          required: ["title", "figure", "story"],
+        },
+      },
+    });
+
+    let title = "Unknown Constellation";
+    let figure = "a mythological figure";
+    let story = "";
+
+    try {
+      const mythText = mythResponse.text;
+      if (mythText) {
+        const parsed = JSON.parse(mythText);
+        title = parsed.title || title;
+        figure = parsed.figure || figure;
+        story = parsed.story || story;
+      }
+    } catch (e) {
+      console.error("Failed to parse myth response:", e);
+    }
+
+    // STEP 2: Generate image using the mythology as guidance
+    const imagePrompt = `Create an illustration of the constellation "${title}" which depicts ${figure}.
+
+CRITICAL REQUIREMENTS:
+1. The attached image shows the EXACT star positions - these are sacred anchor points
+2. Your illustration must use ALL visible stars as key points of the figure (joints, eyes, extremities, etc.)
+3. Do NOT add any additional stars - only the ones shown should appear
+4. Do NOT move or reposition any stars - they must remain in their exact locations
+5. The figure (${figure}) should be drawn so its anatomy naturally connects through these star positions
+
+STYLE:
+- Semi-transparent ethereal figure in sepia/blue-grey ink wash style
+- Dark night sky background that extends seamlessly to all edges
+- NO borders, frames, or decorative elements
+- NO title text or labels
+- The figure should blend naturally with the star field
+- Soft, classical astronomical illustration aesthetic
+
+The constellation lines in the reference show how stars connect - the figure should follow this structure while depicting ${figure}.`;
 
     // Prepare content parts
     const contentParts: Array<string | { inlineData: { data: string; mimeType: string } }> = [];
     
-    // Add the constellation canvas image if provided
+    // Add the constellation canvas image
     if (canvasImage) {
-      // canvasImage is expected to be a data URL like "data:image/png;base64,..."
       const base64Match = canvasImage.match(/^data:([^;]+);base64,(.+)$/);
       if (base64Match) {
         contentParts.push({
@@ -103,7 +158,7 @@ Generate ONLY the figure on a dark sky - no frames, no labels, no extra stars.`;
       }
     }
     
-    contentParts.push(prompt);
+    contentParts.push(imagePrompt);
 
     // Generate the image
     const imageResponse = await ai.models.generateContent({
@@ -130,53 +185,6 @@ Generate ONLY the figure on a dark sky - no frames, no labels, no extra stars.`;
         { error: "No image was generated." },
         { status: 500 }
       );
-    }
-
-    // Now generate the title and story using a text model
-    const storyPrompt = `Based on a constellation pattern that was just interpreted as a mythological figure, create a brief mythological backstory.
-
-The constellation appears to be: ${describeConstellation(constellation)}
-
-Generate a JSON response with:
-- "title": A mythological name for this constellation (e.g., "Andromeda", "The Hunter's Bow", "Serpens Minor")
-- "story": A 2-3 sentence mythological origin story in the style of ancient Greek/Roman star lore
-
-Respond with valid JSON only.`;
-
-    const storyResponse = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: storyPrompt,
-      config: {
-        responseMimeType: "application/json",
-        responseJsonSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: {
-              type: Type.STRING,
-              description: "Mythological name for the constellation",
-            },
-            story: {
-              type: Type.STRING,
-              description: "Brief mythological origin story",
-            },
-          },
-          required: ["title", "story"],
-        },
-      },
-    });
-
-    let title = "Unknown Constellation";
-    let story = "";
-
-    try {
-      const storyText = storyResponse.text;
-      if (storyText) {
-        const parsed = JSON.parse(storyText);
-        title = parsed.title || title;
-        story = parsed.story || story;
-      }
-    } catch (e) {
-      console.error("Failed to parse story response:", e);
     }
 
     return NextResponse.json({
@@ -209,28 +217,28 @@ function describeConstellation(constellation: {
   if (stars.length === 1) return "a single bright star";
   if (lines.length === 0) return "scattered stars";
 
-  const normalized = stars.map(s => ({
-    x: s.x / width,
-    y: s.y / height,
-  }));
-
-  const minX = Math.min(...normalized.map(s => s.x));
-  const maxX = Math.max(...normalized.map(s => s.x));
-  const minY = Math.min(...normalized.map(s => s.y));
-  const maxY = Math.max(...normalized.map(s => s.y));
+  // Normalize to the constellation's own bounding box for shape analysis
+  const minX = Math.min(...stars.map(s => s.x));
+  const maxX = Math.max(...stars.map(s => s.x));
+  const minY = Math.min(...stars.map(s => s.y));
+  const maxY = Math.max(...stars.map(s => s.y));
   
-  const shapeWidth = maxX - minX;
-  const shapeHeight = maxY - minY;
-  const aspectRatio = shapeWidth / (shapeHeight || 0.01);
+  const shapeWidth = maxX - minX || 1;
+  const shapeHeight = maxY - minY || 1;
+  const aspectRatio = shapeWidth / shapeHeight;
   
   const descriptions: string[] = [];
   
-  if (aspectRatio > 2) {
-    descriptions.push("horizontally elongated");
-  } else if (aspectRatio < 0.5) {
-    descriptions.push("vertically elongated, tall");
+  // Shape orientation
+  if (aspectRatio > 1.8) {
+    descriptions.push("horizontally elongated, wider than tall");
+  } else if (aspectRatio < 0.55) {
+    descriptions.push("vertically elongated, taller than wide");
+  } else {
+    descriptions.push("roughly square in proportion");
   }
   
+  // Connection analysis
   const connectionCounts = new Array(stars.length).fill(0);
   for (const line of lines) {
     if (line.a < stars.length) connectionCounts[line.a]++;
@@ -241,22 +249,38 @@ function describeConstellation(constellation: {
   const hubCount = connectionCounts.filter(c => c === maxConnections && c > 2).length;
   
   if (hubCount > 0) {
-    descriptions.push(`with ${hubCount} central hub point${hubCount > 1 ? 's' : ''}`);
+    descriptions.push(`with ${hubCount} central hub point${hubCount > 1 ? 's' : ''} where multiple lines meet`);
   }
   
+  // Detect loops/closed shapes
   const hasLoop = detectLoop(lines, stars.length);
   if (hasLoop) {
-    descriptions.push("forming a closed shape");
+    descriptions.push("forming a closed loop or ring shape");
   }
   
+  // Endpoints (potential extremities)
   const endpoints = connectionCounts.filter(c => c === 1).length;
-  if (endpoints > 2) {
-    descriptions.push(`with ${endpoints} extending points or limbs`);
+  if (endpoints >= 4) {
+    descriptions.push(`with ${endpoints} extending endpoints (like limbs or rays)`);
+  } else if (endpoints === 2) {
+    descriptions.push("with two terminal points (like a line or arc)");
+  } else if (endpoints === 3) {
+    descriptions.push("with three terminal points (like a trident or fork)");
+  }
+  
+  // Relative positions of key stars
+  const topStars = stars.filter(s => s.y < minY + shapeHeight * 0.3).length;
+  const bottomStars = stars.filter(s => s.y > maxY - shapeHeight * 0.3).length;
+  
+  if (topStars === 1 && bottomStars > 2) {
+    descriptions.push("with a single point at top spreading to a wider base");
+  } else if (bottomStars === 1 && topStars > 2) {
+    descriptions.push("with a wide top narrowing to a single point at bottom");
   }
   
   descriptions.push(`composed of ${stars.length} stars connected by ${lines.length} lines`);
   
-  return descriptions.join(", ") || "an abstract pattern of connected stars";
+  return descriptions.join(", ");
 }
 
 function detectLoop(lines: Array<{ a: number; b: number }>, numStars: number): boolean {
