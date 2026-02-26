@@ -126,21 +126,24 @@ The figure should naturally fit the described shape - if it's tall and vertical,
     const imagePrompt = `Create an illustration of the constellation "${title}" which depicts ${figure}.
 
 CRITICAL REQUIREMENTS:
-1. The attached image shows the EXACT star positions - these are sacred anchor points
-2. Your illustration must use ALL visible stars as key points of the figure (joints, eyes, extremities, etc.)
-3. Do NOT add any additional stars - only the ones shown should appear
-4. Do NOT move or reposition any stars - they must remain in their exact locations
-5. The figure (${figure}) should be drawn so its anatomy naturally connects through these star positions
+1. The attached image shows the shape/pose the figure should match
+2. Your illustration should depict ${figure} in a pose that follows this general shape
+3. Do NOT draw any stars or dots - we will overlay the real stars separately
+4. Do NOT draw any constellation lines - we will overlay those separately
+5. ONLY draw the mythological figure itself
 
 STYLE:
 - Semi-transparent ethereal figure in sepia/blue-grey ink wash style
-- Dark night sky background that extends seamlessly to all edges
+- Dark night sky background (solid dark blue-black, no stars)
 - NO borders, frames, or decorative elements
 - NO title text or labels
-- The figure should blend naturally with the star field
+- NO stars, sparkles, or dots of any kind
+- NO lines connecting anything
+- ONLY the figure itself, ghostly and translucent
 - Soft, classical astronomical illustration aesthetic
+- The figure should look like it could overlay a star field
 
-The constellation lines in the reference show how stars connect - the figure should follow this structure while depicting ${figure}.`;
+Output ONLY the ethereal figure on a plain dark background. No stars. No lines.`;
 
     // Prepare content parts
     const contentParts: Array<string | { inlineData: { data: string; mimeType: string } }> = [];
