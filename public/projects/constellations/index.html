@@ -82,6 +82,97 @@
       background: rgba(100, 150, 255, 0.1);
     }
     
+    /* Overlay image */
+    .constellation-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+      z-index: 50;
+      background-size: cover;
+      background-position: center;
+      mix-blend-mode: screen;
+    }
+    .constellation-overlay.visible {
+      opacity: 0.6;
+    }
+    .constellation-overlay.full {
+      opacity: 1;
+      mix-blend-mode: normal;
+    }
+    
+    /* Story panel */
+    .story-panel {
+      position: fixed;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(10, 15, 25, 0.9);
+      border: 1px solid rgba(100, 150, 255, 0.3);
+      padding: 20px 30px;
+      border-radius: 12px;
+      max-width: 500px;
+      text-align: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.4s, visibility 0.4s, transform 0.4s;
+      z-index: 100;
+    }
+    .story-panel.visible {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
+    .story-panel h2 {
+      color: rgba(200, 220, 255, 0.9);
+      font-family: 'Georgia', serif;
+      font-size: 1.5rem;
+      font-weight: normal;
+      font-style: italic;
+      margin-bottom: 10px;
+    }
+    .story-panel p {
+      color: rgba(255, 255, 255, 0.6);
+      font-family: system-ui, sans-serif;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    .story-panel .close-story {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      color: rgba(255,255,255,0.3);
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 5px;
+    }
+    .story-panel .close-story:hover {
+      color: rgba(255,255,255,0.6);
+    }
+    
+    /* View toggle */
+    .view-toggle {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      gap: 8px;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s, visibility 0.3s;
+      z-index: 100;
+    }
+    .view-toggle.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+    
     /* Modal overlay */
     .modal-overlay {
       position: fixed;
@@ -199,7 +290,19 @@
     <button class="btn" id="clearBtn">Clear</button>
   </div>
   <canvas id="canvas"></canvas>
+  <div class="constellation-overlay" id="constellationOverlay"></div>
   <div class="info">Click stars to connect them — keep clicking to draw your myth</div>
+  
+  <div class="story-panel" id="storyPanel">
+    <button class="close-story" id="closeStory">×</button>
+    <h2 id="storyTitle"></h2>
+    <p id="storyText"></p>
+  </div>
+  
+  <div class="view-toggle" id="viewToggle">
+    <button class="btn" id="toggleOverlay">Show Art</button>
+    <button class="btn" id="viewFull">View Full</button>
+  </div>
   
   <div class="loading-overlay" id="loadingOverlay">
     <div class="spinner"></div>
@@ -226,6 +329,14 @@
     const modalClose = document.getElementById('modalClose');
     const generatedImage = document.getElementById('generatedImage');
     const errorToast = document.getElementById('errorToast');
+    const constellationOverlay = document.getElementById('constellationOverlay');
+    const storyPanel = document.getElementById('storyPanel');
+    const storyTitle = document.getElementById('storyTitle');
+    const storyText = document.getElementById('storyText');
+    const closeStory = document.getElementById('closeStory');
+    const viewToggle = document.getElementById('viewToggle');
+    const toggleOverlay = document.getElementById('toggleOverlay');
+    const viewFull = document.getElementById('viewFull');
     
     let width, height;
     const stars = [];
@@ -233,6 +344,8 @@
     let selectedStar = null;
     let mouseX = 0, mouseY = 0;
     let isGenerating = false;
+    let currentGeneratedImage = null;
+    let overlayVisible = false;
     
     function resize() {
       width = canvas.width = window.innerWidth;
@@ -295,7 +408,6 @@
       }, 4000);
     }
     
-    // Get stars that are part of the constellation
     function getConstellationStars() {
       const starIndices = new Set();
       for (const line of lines) {
@@ -307,7 +419,57 @@
       return Array.from(starIndices);
     }
     
-    // Generate image from constellation
+    // Capture constellation as image
+    function captureConstellationImage() {
+      // Create a temporary canvas with just the constellation
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext('2d');
+      
+      // Dark background
+      tempCtx.fillStyle = '#05080f';
+      tempCtx.fillRect(0, 0, width, height);
+      
+      // Draw constellation lines
+      tempCtx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
+      tempCtx.lineWidth = 2;
+      
+      for (const line of lines) {
+        tempCtx.beginPath();
+        tempCtx.moveTo(line.a.x, line.a.y);
+        tempCtx.lineTo(line.b.x, line.b.y);
+        tempCtx.stroke();
+      }
+      
+      // Draw constellation stars (brighter)
+      const constellationStarIndices = new Set(getConstellationStars());
+      for (let i = 0; i < stars.length; i++) {
+        const star = stars[i];
+        if (constellationStarIndices.has(i)) {
+          // Constellation star - bright
+          tempCtx.fillStyle = 'rgba(255, 255, 255, 1)';
+          tempCtx.beginPath();
+          tempCtx.arc(star.x, star.y, star.size * 2, 0, Math.PI * 2);
+          tempCtx.fill();
+          
+          // Glow
+          const glow = tempCtx.createRadialGradient(
+            star.x, star.y, 0,
+            star.x, star.y, star.size * 6
+          );
+          glow.addColorStop(0, 'rgba(200, 220, 255, 0.5)');
+          glow.addColorStop(1, 'rgba(200, 220, 255, 0)');
+          tempCtx.fillStyle = glow;
+          tempCtx.beginPath();
+          tempCtx.arc(star.x, star.y, star.size * 6, 0, Math.PI * 2);
+          tempCtx.fill();
+        }
+      }
+      
+      return tempCanvas.toDataURL('image/png');
+    }
+    
     async function generateImage() {
       if (lines.length < 2 || isGenerating) return;
       
@@ -315,7 +477,15 @@
       updateButtons();
       loadingOverlay.classList.add('visible');
       
+      // Hide previous overlay/story
+      constellationOverlay.classList.remove('visible', 'full');
+      storyPanel.classList.remove('visible');
+      viewToggle.classList.remove('visible');
+      
       try {
+        // Capture the constellation as an image
+        const canvasImage = captureConstellationImage();
+        
         // Collect constellation data
         const constellationStarIndices = getConstellationStars();
         const constellationStars = constellationStarIndices.map(i => ({
@@ -323,7 +493,6 @@
           y: stars[i].y
         }));
         
-        // Map lines to use indices within constellation stars
         const indexMap = new Map();
         constellationStarIndices.forEach((globalIdx, localIdx) => {
           indexMap.set(globalIdx, localIdx);
@@ -343,7 +512,8 @@
               lines: constellationLines,
               width,
               height
-            }
+            },
+            canvasImage
           })
         });
         
@@ -353,10 +523,24 @@
           throw new Error(data.error || 'Failed to generate image');
         }
         
-        // Show the generated image
+        // Store and display the generated image
+        currentGeneratedImage = data.image;
         generatedImage.src = data.image;
+        constellationOverlay.style.backgroundImage = `url(${data.image})`;
+        
+        // Update story panel
+        if (data.title) {
+          storyTitle.textContent = data.title;
+          storyText.textContent = data.story || '';
+          storyPanel.classList.add('visible');
+        }
+        
+        // Show view toggle
+        viewToggle.classList.add('visible');
+        overlayVisible = false;
+        toggleOverlay.textContent = 'Show Art';
+        
         loadingOverlay.classList.remove('visible');
-        modalOverlay.classList.add('visible');
         
       } catch (error) {
         console.error('Generation error:', error);
@@ -453,6 +637,35 @@
       lines.length = 0;
       selectedStar = null;
       updateButtons();
+      // Hide overlay and story
+      constellationOverlay.classList.remove('visible', 'full');
+      storyPanel.classList.remove('visible');
+      viewToggle.classList.remove('visible');
+      currentGeneratedImage = null;
+    });
+    
+    // View controls
+    toggleOverlay.addEventListener('click', () => {
+      overlayVisible = !overlayVisible;
+      if (overlayVisible) {
+        constellationOverlay.classList.add('visible');
+        constellationOverlay.classList.remove('full');
+        toggleOverlay.textContent = 'Hide Art';
+      } else {
+        constellationOverlay.classList.remove('visible');
+        toggleOverlay.textContent = 'Show Art';
+      }
+    });
+    
+    viewFull.addEventListener('click', () => {
+      if (currentGeneratedImage) {
+        modalOverlay.classList.add('visible');
+      }
+    });
+    
+    // Close story panel
+    closeStory.addEventListener('click', () => {
+      storyPanel.classList.remove('visible');
     });
     
     // Modal close
@@ -483,6 +696,10 @@
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         e.preventDefault();
         generateImage();
+      }
+      // Toggle overlay with 'o' key
+      if (e.key === 'o' && currentGeneratedImage) {
+        toggleOverlay.click();
       }
     });
     

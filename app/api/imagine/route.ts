@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 
 // Simple in-memory rate limiting
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { constellation } = body;
+    const { constellation, canvasImage } = body;
 
     if (!constellation || !constellation.stars || !constellation.lines) {
       return NextResponse.json(
@@ -62,47 +62,125 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const shapeDescription = describeConstellation(constellation);
-
-    const prompt = `Create an antique star chart illustration in the style of classical astronomy engravings. 
-Show a mythological figure or creature formed by constellation lines against a dark night sky.
-The figure should match this shape: ${shapeDescription}
-Style: Detailed ink and watercolor, aged parchment aesthetic, golden/sepia tones, 
-like 17th century celestial atlases (Johannes Hevelius style).
-Show constellation lines connecting stars that form the figure.
-Include subtle star points at the vertices.`;
-
-    // Use the new @google/genai SDK
     const ai = new GoogleGenAI({ apiKey });
+
+    // Build the prompt with the constellation image if available
+    const prompt = `You are looking at a constellation pattern drawn by a user connecting stars in the night sky.
+
+Your task:
+1. Study the shape formed by the connected stars
+2. Imagine what mythological figure, creature, or symbol this constellation could represent
+3. Create an artistic illustration in the style of classical 17th century celestial atlases (like Johannes Hevelius)
+4. The figure should be drawn so it naturally incorporates the star positions as key points (joints, eyes, weapon tips, etc.)
+
+Style requirements:
+- Antique star chart aesthetic with ink and watercolor
+- Aged parchment tones (sepia, gold, cream)
+- The mythological figure should be semi-transparent/ethereal so stars can show through
+- Include fine line work and crosshatching typical of astronomical engravings
+- Dark night sky background
+
+Generate an image of this mythological constellation figure.`;
+
+    // Prepare content parts
+    const contentParts: Array<string | { inlineData: { data: string; mimeType: string } }> = [];
     
-    // Use gemini-2.5-flash-image (Nano Banana) for image generation
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
-      contents: prompt,
-    });
-
-    // Extract image from response
-    const candidate = response.candidates?.[0];
-    const parts = candidate?.content?.parts || [];
-
-    for (const part of parts) {
-      // Check for inline image data
-      const inlineData = part.inlineData;
-      if (inlineData?.data) {
-        const mimeType = inlineData.mimeType || "image/png";
-        return NextResponse.json({
-          image: `data:${mimeType};base64,${inlineData.data}`,
-          remaining: rateLimit.remaining,
+    // Add the constellation canvas image if provided
+    if (canvasImage) {
+      // canvasImage is expected to be a data URL like "data:image/png;base64,..."
+      const base64Match = canvasImage.match(/^data:([^;]+);base64,(.+)$/);
+      if (base64Match) {
+        contentParts.push({
+          inlineData: {
+            mimeType: base64Match[1],
+            data: base64Match[2],
+          },
         });
       }
     }
+    
+    contentParts.push(prompt);
 
-    // No image found in response
-    console.error("No image in response. Parts:", JSON.stringify(parts, null, 2));
-    return NextResponse.json(
-      { error: "No image was generated. The model may have returned text only." },
-      { status: 500 }
-    );
+    // Generate the image
+    const imageResponse = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: contentParts,
+    });
+
+    // Extract image from response
+    let generatedImage: string | null = null;
+    const imageParts = imageResponse.candidates?.[0]?.content?.parts || [];
+
+    for (const part of imageParts) {
+      const inlineData = part.inlineData;
+      if (inlineData?.data) {
+        const mimeType = inlineData.mimeType || "image/png";
+        generatedImage = `data:${mimeType};base64,${inlineData.data}`;
+        break;
+      }
+    }
+
+    if (!generatedImage) {
+      console.error("No image in response. Parts:", JSON.stringify(imageParts, null, 2));
+      return NextResponse.json(
+        { error: "No image was generated." },
+        { status: 500 }
+      );
+    }
+
+    // Now generate the title and story using a text model
+    const storyPrompt = `Based on a constellation pattern that was just interpreted as a mythological figure, create a brief mythological backstory.
+
+The constellation appears to be: ${describeConstellation(constellation)}
+
+Generate a JSON response with:
+- "title": A mythological name for this constellation (e.g., "Andromeda", "The Hunter's Bow", "Serpens Minor")
+- "story": A 2-3 sentence mythological origin story in the style of ancient Greek/Roman star lore
+
+Respond with valid JSON only.`;
+
+    const storyResponse = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: storyPrompt,
+      config: {
+        responseMimeType: "application/json",
+        responseJsonSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: {
+              type: Type.STRING,
+              description: "Mythological name for the constellation",
+            },
+            story: {
+              type: Type.STRING,
+              description: "Brief mythological origin story",
+            },
+          },
+          required: ["title", "story"],
+        },
+      },
+    });
+
+    let title = "Unknown Constellation";
+    let story = "";
+
+    try {
+      const storyText = storyResponse.text;
+      if (storyText) {
+        const parsed = JSON.parse(storyText);
+        title = parsed.title || title;
+        story = parsed.story || story;
+      }
+    } catch (e) {
+      console.error("Failed to parse story response:", e);
+    }
+
+    return NextResponse.json({
+      image: generatedImage,
+      title,
+      story,
+      remaining: rateLimit.remaining,
+    });
 
   } catch (error) {
     console.error("Image generation error:", error);
