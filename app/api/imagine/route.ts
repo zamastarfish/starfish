@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 
 // Simple in-memory rate limiting
@@ -72,49 +72,37 @@ like 17th century celestial atlases (Johannes Hevelius style).
 Show constellation lines connecting stars that form the figure.
 Include subtle star points at the vertices.`;
 
-    // Use the Gemini REST API directly for image generation
-    // Gemini 2.0 Flash supports native image generation
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseModalities: ["image", "text"],
-            responseMimeType: "image/png",
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Gemini API error:", response.status, errorText);
-      
-      // Try fallback model
-      return await tryFallbackGeneration(apiKey, prompt);
-    }
-
-    const data = await response.json();
+    // Use the new @google/genai SDK
+    const ai = new GoogleGenAI({ apiKey });
     
+    // Use gemini-2.5-flash-image (Nano Banana) for image generation
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: prompt,
+    });
+
     // Extract image from response
-    const candidate = data.candidates?.[0];
+    const candidate = response.candidates?.[0];
     const parts = candidate?.content?.parts || [];
-    
+
     for (const part of parts) {
-      if (part.inlineData?.mimeType?.startsWith("image/")) {
+      // Check for inline image data
+      const inlineData = part.inlineData;
+      if (inlineData?.data) {
+        const mimeType = inlineData.mimeType || "image/png";
         return NextResponse.json({
-          image: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
+          image: `data:${mimeType};base64,${inlineData.data}`,
           remaining: rateLimit.remaining,
         });
       }
     }
 
-    // No image in response, try fallback
-    console.error("No image in Gemini response, trying fallback");
-    return await tryFallbackGeneration(apiKey, prompt);
+    // No image found in response
+    console.error("No image in response. Parts:", JSON.stringify(parts, null, 2));
+    return NextResponse.json(
+      { error: "No image was generated. The model may have returned text only." },
+      { status: 500 }
+    );
 
   } catch (error) {
     console.error("Image generation error:", error);
@@ -122,51 +110,6 @@ Include subtle star points at the vertices.`;
     
     return NextResponse.json(
       { error: `Failed to generate image: ${errorMessage}` },
-      { status: 500 }
-    );
-  }
-}
-
-// Fallback to Imagen 3 via different endpoint
-async function tryFallbackGeneration(apiKey: string, prompt: string) {
-  try {
-    // Try Imagen 3 via the predict endpoint
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instances: [{ prompt }],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: "1:1",
-            safetyFilterLevel: "block_only_high",
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Imagen API error:", response.status, errorText);
-      throw new Error(`Imagen API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const predictions = data.predictions || [];
-    
-    if (predictions[0]?.bytesBase64Encoded) {
-      return NextResponse.json({
-        image: `data:image/png;base64,${predictions[0].bytesBase64Encoded}`,
-      });
-    }
-
-    throw new Error("No image in Imagen response");
-  } catch (error) {
-    console.error("Fallback generation failed:", error);
-    return NextResponse.json(
-      { error: "Failed to generate image. Please try again." },
       { status: 500 }
     );
   }
