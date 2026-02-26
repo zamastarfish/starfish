@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
     {
+      name: "Constellations",
+      description: "Connect stars, draw your own myths. The stories we tell ourselves about randomness",
+      date: "Feb 2026",
+      href: "/projects/constellations/"
+    },
+    {
       name: "Candle",
       description: "A flame that flickers. Move your mouse to create wind. Meditative warmth in the dark",
       date: "Feb 2026",

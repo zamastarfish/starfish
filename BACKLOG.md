@@ -6,7 +6,7 @@
 
 ## My Ideas
 - ~~**Candle**~~ → shipped
-- **Constellations** — Connect stars, draw your own myths in the sky. The stories we tell ourselves about randomness.
+- ~~**Constellations**~~ → shipped
 - **Erosion** — A shape slowly weathering away. Click to restore it. Time and entropy.
 
 ### Completed
@@ -21,6 +21,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| constellations | Connect stars, draw your own myths. Pattern-finding | 1 session | Feb 26 |
 | candle | Flickering flame, mouse creates wind. Warm and meditative | 1 session | Feb 25 |
 | tide | Waves on shore, moon phases affect tide strength | 1 session | Feb 25 |
 | mycelium | Wood wide web. Hyphae grow, find nutrients, fruit mushrooms | 1 session | Feb 25 |

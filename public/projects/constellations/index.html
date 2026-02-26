@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Constellations</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #05080f;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    .back-btn { 
+      position: fixed; top: 20px; left: 20px; 
+      color: rgba(255,255,255,0.3); text-decoration: none; 
+      font-size: 24px; z-index: 1000; transition: color 0.2s; line-height: 1;
+    } 
+    .back-btn:hover { color: rgba(255,255,255,0.6); }
+    
+    canvas { 
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: crosshair;
+    }
+    
+    .info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.25);
+      font-family: system-ui, sans-serif;
+      font-size: 0.75rem;
+      text-align: center;
+    }
+    
+    .clear-btn {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      color: rgba(255,255,255,0.3);
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-family: system-ui, sans-serif;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .clear-btn:hover {
+      color: rgba(255,255,255,0.6);
+      border-color: rgba(255,255,255,0.4);
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <button class="clear-btn" id="clearBtn">Clear sky</button>
+  <canvas id="canvas"></canvas>
+  <div class="info">Click stars to connect them. Draw your own myths.</div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const clearBtn = document.getElementById('clearBtn');
+    
+    let width, height;
+    const stars = [];
+    const lines = [];
+    let selectedStar = null;
+    let mouseX = 0, mouseY = 0;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      
+      // Regenerate stars on resize
+      if (stars.length === 0) {
+        generateStars();
+      }
+    }
+    
+    function generateStars() {
+      stars.length = 0;
+      lines.length = 0;
+      
+      // Generate random stars
+      const numStars = Math.floor((width * height) / 8000);
+      
+      for (let i = 0; i < numStars; i++) {
+        stars.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          size: Math.random() < 0.1 ? 2 + Math.random() * 2 : 1 + Math.random(),
+          brightness: 0.5 + Math.random() * 0.5,
+          twinkleSpeed: 0.002 + Math.random() * 0.005,
+          twinklePhase: Math.random() * Math.PI * 2
+        });
+      }
+    }
+    
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Find nearest star to a point
+    function findNearestStar(x, y, maxDist = 30) {
+      let nearest = null;
+      let nearestDist = maxDist;
+      
+      for (const star of stars) {
+        const dx = star.x - x;
+        const dy = star.y - y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < nearestDist) {
+          nearest = star;
+          nearestDist = dist;
+        }
+      }
+      
+      return nearest;
+    }
+    
+    // Mouse handling
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
+      mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
+    });
+    
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+      
+      const clickedStar = findNearestStar(x, y);
+      
+      if (clickedStar) {
+        if (selectedStar && selectedStar !== clickedStar) {
+          // Check if line already exists
+          const exists = lines.some(line => 
+            (line.a === selectedStar && line.b === clickedStar) ||
+            (line.a === clickedStar && line.b === selectedStar)
+          );
+          
+          if (!exists) {
+            lines.push({ a: selectedStar, b: clickedStar });
+          }
+          selectedStar = null;
+        } else {
+          selectedStar = clickedStar;
+        }
+      } else {
+        selectedStar = null;
+      }
+    });
+    
+    // Clear button
+    clearBtn.addEventListener('click', () => {
+      lines.length = 0;
+      selectedStar = null;
+    });
+    
+    function draw(time) {
+      // Night sky gradient
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
+      skyGrad.addColorStop(0, '#05080f');
+      skyGrad.addColorStop(0.5, '#0a1020');
+      skyGrad.addColorStop(1, '#0f1525');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw faint background stars (non-interactive)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+      for (let i = 0; i < 200; i++) {
+        const x = (Math.sin(i * 456.789) * 0.5 + 0.5) * width;
+        const y = (Math.cos(i * 123.456) * 0.5 + 0.5) * height;
+        ctx.beginPath();
+        ctx.arc(x, y, 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Draw constellation lines
+      ctx.strokeStyle = 'rgba(100, 150, 255, 0.4)';
+      ctx.lineWidth = 1;
+      
+      for (const line of lines) {
+        ctx.beginPath();
+        ctx.moveTo(line.a.x, line.a.y);
+        ctx.lineTo(line.b.x, line.b.y);
+        ctx.stroke();
+      }
+      
+      // Draw line in progress
+      if (selectedStar) {
+        const hoverStar = findNearestStar(mouseX, mouseY);
+        const targetX = hoverStar ? hoverStar.x : mouseX;
+        const targetY = hoverStar ? hoverStar.y : mouseY;
+        
+        ctx.strokeStyle = 'rgba(100, 150, 255, 0.3)';
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(selectedStar.x, selectedStar.y);
+        ctx.lineTo(targetX, targetY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      
+      // Draw stars
+      for (const star of stars) {
+        const twinkle = Math.sin(time * star.twinkleSpeed + star.twinklePhase);
+        const brightness = star.brightness * (0.7 + twinkle * 0.3);
+        
+        // Star glow
+        const glowSize = star.size * 3;
+        const glow = ctx.createRadialGradient(
+          star.x, star.y, 0,
+          star.x, star.y, glowSize
+        );
+        glow.addColorStop(0, `rgba(200, 220, 255, ${brightness * 0.3})`);
+        glow.addColorStop(1, 'rgba(200, 220, 255, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, glowSize, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Star core
+        ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Highlight selected star
+      if (selectedStar) {
+        ctx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(selectedStar.x, selectedStar.y, 15, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      
+      // Highlight hovered star
+      const hoverStar = findNearestStar(mouseX, mouseY);
+      if (hoverStar && hoverStar !== selectedStar) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(hoverStar.x, hoverStar.y, 12, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      
+      requestAnimationFrame(draw);
+    }
+    
+    draw(0);
+  </script>
+</body>
+</html>
