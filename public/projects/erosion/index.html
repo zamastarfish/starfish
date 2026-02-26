@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Erosion</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0908; 
+      overflow: hidden;
+      font-family: system-ui, sans-serif;
+    }
+    canvas { 
+      display: block; 
+      cursor: crosshair;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(255, 248, 240, 0.3);
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      pointer-events: none;
+      transition: opacity 2s;
+    }
+    #info.faded { opacity: 0; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="info">click to create — watch it return</div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    
+    let width, height;
+    let particles = [];
+    let forms = [];
+    let time = 0;
+    
+    // Earthy, stone-like palette
+    const palette = [
+      [194, 178, 158], // sandstone
+      [139, 119, 101], // clay
+      [89, 79, 71],    // slate
+      [168, 153, 132], // limestone
+      [112, 98, 83],   // granite
+    ];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    class Particle {
+      constructor(x, y, color, formId) {
+        this.x = x;
+        this.y = y;
+        this.originX = x;
+        this.originY = y;
+        this.color = color;
+        this.formId = formId;
+        this.size = Math.random() * 2 + 1;
+        this.life = 1;
+        this.erosionRate = 0.00008 + Math.random() * 0.00012;
+        this.driftAngle = Math.random() * Math.PI * 2;
+        this.driftSpeed = 0;
+        this.detached = false;
+        this.detachTime = 0;
+        this.windOffset = Math.random() * 1000;
+      }
+      
+      update() {
+        // Slow, inevitable erosion
+        this.life -= this.erosionRate;
+        
+        // As life decreases, particles begin to drift
+        if (this.life < 0.7 && !this.detached) {
+          if (Math.random() < 0.001 * (0.7 - this.life)) {
+            this.detached = true;
+            this.detachTime = time;
+          }
+        }
+        
+        if (this.detached) {
+          const age = time - this.detachTime;
+          this.driftSpeed = Math.min(age * 0.00005, 0.3);
+          
+          // Wind influence - gentle, organic movement
+          const wind = Math.sin(time * 0.0003 + this.windOffset) * 0.1;
+          this.driftAngle += wind * 0.01;
+          
+          // Gravity pulls down, wind pulls sideways
+          const gravityInfluence = 0.02;
+          this.x += Math.cos(this.driftAngle) * this.driftSpeed + wind * 0.5;
+          this.y += Math.sin(this.driftAngle) * this.driftSpeed + gravityInfluence;
+          
+          // Fade faster once detached
+          this.life -= this.erosionRate * 2;
+        } else {
+          // Subtle trembling while still attached
+          this.x = this.originX + Math.sin(time * 0.002 + this.originY * 0.1) * 0.3;
+          this.y = this.originY + Math.cos(time * 0.002 + this.originX * 0.1) * 0.3;
+        }
+        
+        return this.life > 0 && this.y < height + 50;
+      }
+      
+      draw() {
+        const alpha = this.life * (this.detached ? 0.6 : 0.8);
+        const [r, g, b] = this.color;
+        
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    class Form {
+      constructor(x, y) {
+        this.id = Date.now() + Math.random();
+        this.x = x;
+        this.y = y;
+        this.color = palette[Math.floor(Math.random() * palette.length)];
+        this.createParticles();
+        this.born = time;
+      }
+      
+      createParticles() {
+        // Create an organic, stone-like shape
+        const particleCount = 800 + Math.random() * 400;
+        const baseRadius = 40 + Math.random() * 30;
+        
+        // Generate shape with noise
+        for (let i = 0; i < particleCount; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const distNoise = this.noise(angle * 3) * 0.4 + 0.6;
+          const dist = Math.random() * baseRadius * distNoise;
+          
+          const px = this.x + Math.cos(angle) * dist;
+          const py = this.y + Math.sin(angle) * dist;
+          
+          // Slight color variation
+          const colorVar = [
+            this.color[0] + (Math.random() - 0.5) * 20,
+            this.color[1] + (Math.random() - 0.5) * 20,
+            this.color[2] + (Math.random() - 0.5) * 20,
+          ];
+          
+          particles.push(new Particle(px, py, colorVar, this.id));
+        }
+      }
+      
+      noise(x) {
+        // Simple noise function for organic shapes
+        return (Math.sin(x * 2.3) + Math.sin(x * 5.7) * 0.5 + Math.sin(x * 11.1) * 0.25) / 1.75 * 0.5 + 0.5;
+      }
+      
+      hasParticles() {
+        return particles.some(p => p.formId === this.id);
+      }
+    }
+    
+    function createForm(x, y) {
+      forms.push(new Form(x, y));
+      info.classList.add('faded');
+    }
+    
+    function animate() {
+      time++;
+      
+      // Very slow fade of the background - traces linger
+      ctx.fillStyle = 'rgba(10, 9, 8, 0.02)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Update and draw particles
+      particles = particles.filter(p => {
+        const alive = p.update();
+        if (alive) p.draw();
+        return alive;
+      });
+      
+      // Remove forms with no particles
+      forms = forms.filter(f => f.hasParticles());
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Event listeners
+    window.addEventListener('resize', resize);
+    
+    canvas.addEventListener('click', (e) => {
+      createForm(e.clientX, e.clientY);
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      createForm(touch.clientX, touch.clientY);
+    }, { passive: false });
+    
+    // Initialize
+    resize();
+    animate();
+    
+    // Create initial form after a moment
+    setTimeout(() => {
+      createForm(width / 2, height / 2);
+    }, 1000);
+  </script>
+</body>
+</html>

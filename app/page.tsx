@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
     {
+      name: "Erosion",
+      description: "Click to create forms of stone. Watch them slowly wear away, particles drifting like sand. Impermanence made visible",
+      date: "Feb 2026",
+      href: "/projects/erosion/"
+    },
+    {
       name: "Constellations",
       description: "Connect stars, draw your own myths. The stories we tell ourselves about randomness",
       date: "Feb 2026",
