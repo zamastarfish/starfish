@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
     {
+      name: "Eternal Stallion",
+      description: "A vaporwave horse runs forever across a synthwave sunset. Cursor shifts the horizon. ∞",
+      date: "Feb 2026",
+      href: "/projects/eternal-stallion/"
+    },
+    {
       name: "Hotdog Rain",
       description: "It's raining hotdogs. Move your cursor to control the wind. That's it. That's the whole thing",
       date: "Feb 2026",
