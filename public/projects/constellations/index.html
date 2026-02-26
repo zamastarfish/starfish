@@ -82,23 +82,20 @@
       background: rgba(100, 150, 255, 0.1);
     }
     
-    /* Overlay image */
+    /* Overlay image - positioned to match constellation bounds */
     .constellation-overlay {
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
       pointer-events: none;
       opacity: 0;
       transition: opacity 0.5s ease;
       z-index: 50;
-      background-size: cover;
+      background-size: contain;
       background-position: center;
+      background-repeat: no-repeat;
       mix-blend-mode: screen;
     }
     .constellation-overlay.visible {
-      opacity: 0.6;
+      opacity: 0.7;
     }
     .constellation-overlay.full {
       opacity: 1;
@@ -419,17 +416,53 @@
       return Array.from(starIndices);
     }
     
-    // Capture constellation as image
+    // Get bounding box of constellation with padding
+    function getConstellationBounds(padding = 50) {
+      const constellationStarIndices = getConstellationStars();
+      if (constellationStarIndices.length === 0) return null;
+      
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      
+      for (const idx of constellationStarIndices) {
+        const star = stars[idx];
+        minX = Math.min(minX, star.x);
+        minY = Math.min(minY, star.y);
+        maxX = Math.max(maxX, star.x);
+        maxY = Math.max(maxY, star.y);
+      }
+      
+      // Add padding
+      minX = Math.max(0, minX - padding);
+      minY = Math.max(0, minY - padding);
+      maxX = Math.min(width, maxX + padding);
+      maxY = Math.min(height, maxY + padding);
+      
+      return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+    }
+    
+    // Store current bounds for overlay positioning
+    let currentBounds = null;
+    
+    // Capture constellation as image (cropped to bounds)
     function captureConstellationImage() {
-      // Create a temporary canvas with just the constellation
+      const bounds = getConstellationBounds(80);
+      if (!bounds) return null;
+      
+      currentBounds = bounds;
+      
+      // Create a canvas cropped to constellation bounds
       const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = width;
-      tempCanvas.height = height;
+      tempCanvas.width = bounds.width;
+      tempCanvas.height = bounds.height;
       const tempCtx = tempCanvas.getContext('2d');
       
       // Dark background
       tempCtx.fillStyle = '#05080f';
-      tempCtx.fillRect(0, 0, width, height);
+      tempCtx.fillRect(0, 0, bounds.width, bounds.height);
+      
+      // Offset for cropping
+      const offsetX = bounds.minX;
+      const offsetY = bounds.minY;
       
       // Draw constellation lines
       tempCtx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
@@ -437,8 +470,8 @@
       
       for (const line of lines) {
         tempCtx.beginPath();
-        tempCtx.moveTo(line.a.x, line.a.y);
-        tempCtx.lineTo(line.b.x, line.b.y);
+        tempCtx.moveTo(line.a.x - offsetX, line.a.y - offsetY);
+        tempCtx.lineTo(line.b.x - offsetX, line.b.y - offsetY);
         tempCtx.stroke();
       }
       
@@ -447,27 +480,37 @@
       for (let i = 0; i < stars.length; i++) {
         const star = stars[i];
         if (constellationStarIndices.has(i)) {
+          const sx = star.x - offsetX;
+          const sy = star.y - offsetY;
+          
           // Constellation star - bright
           tempCtx.fillStyle = 'rgba(255, 255, 255, 1)';
           tempCtx.beginPath();
-          tempCtx.arc(star.x, star.y, star.size * 2, 0, Math.PI * 2);
+          tempCtx.arc(sx, sy, star.size * 2, 0, Math.PI * 2);
           tempCtx.fill();
           
           // Glow
-          const glow = tempCtx.createRadialGradient(
-            star.x, star.y, 0,
-            star.x, star.y, star.size * 6
-          );
+          const glow = tempCtx.createRadialGradient(sx, sy, 0, sx, sy, star.size * 6);
           glow.addColorStop(0, 'rgba(200, 220, 255, 0.5)');
           glow.addColorStop(1, 'rgba(200, 220, 255, 0)');
           tempCtx.fillStyle = glow;
           tempCtx.beginPath();
-          tempCtx.arc(star.x, star.y, star.size * 6, 0, Math.PI * 2);
+          tempCtx.arc(sx, sy, star.size * 6, 0, Math.PI * 2);
           tempCtx.fill();
         }
       }
       
       return tempCanvas.toDataURL('image/png');
+    }
+    
+    // Position overlay to match constellation bounds
+    function positionOverlay() {
+      if (!currentBounds) return;
+      
+      constellationOverlay.style.left = currentBounds.minX + 'px';
+      constellationOverlay.style.top = currentBounds.minY + 'px';
+      constellationOverlay.style.width = currentBounds.width + 'px';
+      constellationOverlay.style.height = currentBounds.height + 'px';
     }
     
     async function generateImage() {
@@ -527,6 +570,7 @@
         currentGeneratedImage = data.image;
         generatedImage.src = data.image;
         constellationOverlay.style.backgroundImage = `url(${data.image})`;
+        positionOverlay();
         
         // Update story panel
         if (data.title) {

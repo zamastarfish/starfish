@@ -68,19 +68,23 @@ export async function POST(request: NextRequest) {
     const prompt = `You are looking at a constellation pattern drawn by a user connecting stars in the night sky.
 
 Your task:
-1. Study the shape formed by the connected stars
+1. Study the exact shape formed by the connected stars - these are the ONLY stars that exist
 2. Imagine what mythological figure, creature, or symbol this constellation could represent
-3. Create an artistic illustration in the style of classical 17th century celestial atlases (like Johannes Hevelius)
-4. The figure should be drawn so it naturally incorporates the star positions as key points (joints, eyes, weapon tips, etc.)
+3. Create an artistic illustration where the figure naturally fits the star positions
 
-Style requirements:
-- Antique star chart aesthetic with ink and watercolor
-- Aged parchment tones (sepia, gold, cream)
-- The mythological figure should be semi-transparent/ethereal so stars can show through
-- Include fine line work and crosshatching typical of astronomical engravings
-- Dark night sky background
+CRITICAL STYLE REQUIREMENTS:
+- Dark night sky background that seamlessly extends to all edges
+- NO borders, frames, or decorative edges
+- NO title labels, cartouches, or text of any kind
+- NO additional stars beyond the constellation points shown - use ONLY the exact stars visible in the reference
+- The figure should be semi-transparent/ethereal, drawn with soft ink wash technique
+- Muted sepia and blue-grey tones that blend with the night sky
+- The illustration should look like it could seamlessly overlay the original star field
+- Edges should fade naturally into the dark background, not have hard boundaries
 
-Generate an image of this mythological constellation figure.`;
+The figure should be positioned so its key anatomical points (joints, eyes, hands, etc.) align with the star positions in the reference image.
+
+Generate ONLY the figure on a dark sky - no frames, no labels, no extra stars.`;
 
     // Prepare content parts
     const contentParts: Array<string | { inlineData: { data: string; mimeType: string } }> = [];
