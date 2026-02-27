@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
     {
+      name: "Chime",
+      description: "Click to create tones. Pentatonic scale — always harmonious. Sound + light rippling outward",
+      date: "Feb 2026",
+      href: "/projects/chime/"
+    },
+    {
       name: "Dissolve",
       description: "Words decay as you read them. Letters fall away. The fragility of meaning",
       date: "Feb 2026",

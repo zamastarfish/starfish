@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chime</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0f;
+      overflow: hidden;
+    }
+    canvas { 
+      display: block;
+      cursor: crosshair;
+    }
+    .back-btn { 
+      position: fixed; top: 20px; left: 20px; 
+      color: rgba(255,255,255,0.1); text-decoration: none; 
+      font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1;
+    } 
+    .back-btn:hover { color: rgba(255,255,255,0.3); }
+    
+    #hint {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.2);
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+      letter-spacing: 0.15em;
+      pointer-events: none;
+      transition: opacity 2s;
+    }
+    #hint.hidden { opacity: 0; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  <div id="hint">click anywhere</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+    
+    let width, height;
+    let chimes = [];
+    let audioCtx = null;
+    
+    // Pentatonic scale frequencies (peaceful, always harmonious)
+    const scale = [
+      261.63, // C4
+      293.66, // D4
+      329.63, // E4
+      392.00, // G4
+      440.00, // A4
+      523.25, // C5
+      587.33, // D5
+      659.25, // E5
+    ];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+    
+    function playTone(freq, x, y) {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Main oscillator
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      // Gentle sine wave
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      
+      // Pan based on x position
+      const pan = audioCtx.createStereoPanner();
+      pan.pan.setValueAtTime((x / width) * 2 - 1, now);
+      
+      // Volume based on y position (higher = quieter)
+      const vol = 0.15 + (1 - y / height) * 0.1;
+      
+      // Bell-like envelope
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(vol, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 3);
+      
+      osc.connect(gain);
+      gain.connect(pan);
+      pan.connect(audioCtx.destination);
+      
+      osc.start(now);
+      osc.stop(now + 3);
+      
+      // Subtle overtone
+      const osc2 = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(freq * 2, now);
+      gain2.gain.setValueAtTime(0, now);
+      gain2.gain.linearRampToValueAtTime(vol * 0.2, now + 0.01);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+      
+      osc2.connect(gain2);
+      gain2.connect(pan);
+      
+      osc2.start(now);
+      osc2.stop(now + 1.5);
+    }
+    
+    class Chime {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 0;
+        this.maxRadius = Math.max(width, height) * 0.8;
+        this.speed = 2 + Math.random();
+        this.hue = (y / height) * 60 + 200; // Blue to purple range
+        this.life = 1;
+        
+        // Pick note based on position
+        const noteIndex = Math.floor((x / width) * scale.length);
+        this.freq = scale[noteIndex];
+        
+        playTone(this.freq, x, y);
+      }
+      
+      update() {
+        this.radius += this.speed;
+        this.life = 1 - (this.radius / this.maxRadius);
+        return this.life > 0;
+      }
+      
+      draw() {
+        const alpha = this.life * 0.6;
+        
+        // Multiple concentric rings
+        for (let i = 0; i < 3; i++) {
+          const r = this.radius - i * 15;
+          if (r > 0) {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+            ctx.strokeStyle = `hsla(${this.hue + i * 10}, 60%, 70%, ${alpha * (1 - i * 0.3)})`;
+            ctx.lineWidth = 2 - i * 0.5;
+            ctx.stroke();
+          }
+        }
+        
+        // Center glow
+        if (this.radius < 100) {
+          const glowAlpha = (1 - this.radius / 100) * 0.5;
+          const gradient = ctx.createRadialGradient(
+            this.x, this.y, 0,
+            this.x, this.y, 50
+          );
+          gradient.addColorStop(0, `hsla(${this.hue}, 70%, 80%, ${glowAlpha})`);
+          gradient.addColorStop(1, `hsla(${this.hue}, 70%, 80%, 0)`);
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, 50, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    
+    function draw() {
+      // Fade trails
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Update and draw chimes
+      chimes = chimes.filter(c => {
+        c.update();
+        c.draw();
+        return c.life > 0;
+      });
+    }
+    
+    function animate() {
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    function addChime(x, y) {
+      initAudio();
+      chimes.push(new Chime(x, y));
+      hint.classList.add('hidden');
+    }
+    
+    canvas.addEventListener('click', e => addChime(e.clientX, e.clientY));
+    
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      for (const touch of e.touches) {
+        addChime(touch.clientX, touch.clientY);
+      }
+    });
+    
+    // Multi-touch support
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>
