@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
     {
+      name: "Pool",
+      description: "Underwater light caustics. Click to ripple. Float here a while",
+      date: "Feb 2026",
+      href: "/projects/pool/"
+    },
+    {
       name: "Witness",
       description: "An eye watches. It follows you. Blinks when you stare. Slightly unsettling, oddly intimate",
       date: "Feb 2026",

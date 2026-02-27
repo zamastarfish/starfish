@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pool</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a1520;
+      overflow: hidden;
+    }
+    canvas { 
+      display: block;
+    }
+    .back-btn { 
+      position: fixed; top: 20px; left: 20px; 
+      color: rgba(255,255,255,0.15); text-decoration: none; 
+      font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1;
+    } 
+    .back-btn:hover { color: rgba(255,255,255,0.4); }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let time = 0;
+    let ripples = [];
+    
+    // Caustic parameters
+    const CAUSTIC_SCALE = 0.008;
+    const CAUSTIC_SPEED = 0.0008;
+    const NUM_WAVES = 5;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    class Ripple {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 0;
+        this.maxRadius = 300 + Math.random() * 200;
+        this.speed = 1.5 + Math.random() * 1;
+        this.strength = 0.3 + Math.random() * 0.4;
+        this.born = time;
+      }
+      
+      update() {
+        this.radius += this.speed;
+        return this.radius < this.maxRadius;
+      }
+      
+      getInfluence(x, y) {
+        const dx = x - this.x;
+        const dy = y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist > this.radius + 50 || dist < this.radius - 50) return 0;
+        
+        const age = (time - this.born) / 100;
+        const fade = Math.max(0, 1 - this.radius / this.maxRadius);
+        const wave = Math.sin((dist - this.radius) * 0.1) * fade * this.strength;
+        
+        return wave * Math.exp(-age * 0.5);
+      }
+    }
+    
+    // Simplex-like noise for caustics
+    function noise2D(x, y) {
+      const X = Math.floor(x) & 255;
+      const Y = Math.floor(y) & 255;
+      x -= Math.floor(x);
+      y -= Math.floor(y);
+      
+      const u = x * x * (3 - 2 * x);
+      const v = y * y * (3 - 2 * y);
+      
+      const a = pseudoRandom(X + Y * 256);
+      const b = pseudoRandom(X + 1 + Y * 256);
+      const c = pseudoRandom(X + (Y + 1) * 256);
+      const d = pseudoRandom(X + 1 + (Y + 1) * 256);
+      
+      return lerp(lerp(a, b, u), lerp(c, d, u), v);
+    }
+    
+    function pseudoRandom(n) {
+      const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+      return x - Math.floor(x);
+    }
+    
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+    
+    function getCausticValue(x, y, t) {
+      let value = 0;
+      let amplitude = 1;
+      let frequency = 1;
+      
+      for (let i = 0; i < NUM_WAVES; i++) {
+        // Multiple overlapping waves at different angles
+        const angle = (i / NUM_WAVES) * Math.PI;
+        const nx = x * Math.cos(angle) - y * Math.sin(angle);
+        const ny = x * Math.sin(angle) + y * Math.cos(angle);
+        
+        value += Math.sin(
+          nx * CAUSTIC_SCALE * frequency + 
+          Math.sin(ny * CAUSTIC_SCALE * 0.7 * frequency + t * CAUSTIC_SPEED * (i + 1)) * 2 +
+          t * CAUSTIC_SPEED * 0.5
+        ) * amplitude;
+        
+        // Add noise variation
+        value += noise2D(
+          x * CAUSTIC_SCALE * frequency * 0.5 + t * CAUSTIC_SPEED * 0.3,
+          y * CAUSTIC_SCALE * frequency * 0.5
+        ) * amplitude * 0.5;
+        
+        amplitude *= 0.6;
+        frequency *= 1.8;
+      }
+      
+      // Add ripple influences
+      ripples.forEach(ripple => {
+        value += ripple.getInfluence(x, y) * 2;
+      });
+      
+      return value;
+    }
+    
+    function draw() {
+      // Deep blue base
+      ctx.fillStyle = '#0a1824';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw caustics with a resolution optimization
+      const resolution = 4; // Pixel size for performance
+      const imageData = ctx.createImageData(width, height);
+      const data = imageData.data;
+      
+      for (let y = 0; y < height; y += resolution) {
+        for (let x = 0; x < width; x += resolution) {
+          const caustic = getCausticValue(x, y, time);
+          
+          // Map to color - underwater blue-green with bright caustic lines
+          const intensity = (caustic + 2) / 4; // Normalize roughly to 0-1
+          const bright = Math.pow(Math.max(0, intensity), 2);
+          
+          // Deep water color with caustic highlights
+          const r = Math.floor(10 + bright * 120);
+          const g = Math.floor(30 + bright * 180);
+          const b = Math.floor(50 + bright * 200);
+          
+          // Fill the resolution block
+          for (let dy = 0; dy < resolution && y + dy < height; dy++) {
+            for (let dx = 0; dx < resolution && x + dx < width; dx++) {
+              const idx = ((y + dy) * width + (x + dx)) * 4;
+              data[idx] = r;
+              data[idx + 1] = g;
+              data[idx + 2] = b;
+              data[idx + 3] = 255;
+            }
+          }
+        }
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+      
+      // Add a subtle gradient overlay for depth
+      const gradient = ctx.createRadialGradient(
+        width / 2, height / 2, 0,
+        width / 2, height / 2, Math.max(width, height) * 0.7
+      );
+      gradient.addColorStop(0, 'rgba(100, 200, 255, 0.05)');
+      gradient.addColorStop(1, 'rgba(0, 20, 40, 0.3)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Floating dust particles
+      ctx.fillStyle = 'rgba(200, 240, 255, 0.3)';
+      for (let i = 0; i < 30; i++) {
+        const px = (Math.sin(time * 0.001 + i * 47) * 0.5 + 0.5) * width;
+        const py = (Math.cos(time * 0.0007 + i * 31) * 0.5 + 0.5) * height;
+        const size = 1 + Math.sin(time * 0.002 + i) * 0.5;
+        ctx.beginPath();
+        ctx.arc(px, py, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function animate() {
+      time++;
+      
+      // Update ripples
+      ripples = ripples.filter(r => r.update());
+      
+      // Occasional ambient ripple
+      if (Math.random() < 0.005) {
+        ripples.push(new Ripple(
+          Math.random() * width,
+          Math.random() * height
+        ));
+      }
+      
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    function addRipple(x, y) {
+      ripples.push(new Ripple(x, y));
+    }
+    
+    canvas.addEventListener('click', e => addRipple(e.clientX, e.clientY));
+    canvas.addEventListener('touchstart', e => {
+      const touch = e.touches[0];
+      addRipple(touch.clientX, touch.clientY);
+      e.preventDefault();
+    });
+    
+    // Gentle ripples from mouse movement
+    let lastMoveTime = 0;
+    canvas.addEventListener('mousemove', e => {
+      if (time - lastMoveTime > 60) {
+        ripples.push(new Ripple(e.clientX, e.clientY));
+        lastMoveTime = time;
+      }
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>
