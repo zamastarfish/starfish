@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dissolve</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital@0;1&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0c0c0c;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      font-family: 'Crimson Text', Georgia, serif;
+      overflow: hidden;
+    }
+    .back-btn { 
+      position: fixed; top: 20px; left: 20px; 
+      color: rgba(255,255,255,0.1); text-decoration: none; 
+      font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1;
+    } 
+    .back-btn:hover { color: rgba(255,255,255,0.3); }
+    
+    #container {
+      max-width: 600px;
+      text-align: center;
+    }
+    
+    #text {
+      font-size: clamp(1.5rem, 4vw, 2.2rem);
+      line-height: 1.7;
+      color: rgba(255, 250, 245, 0.85);
+      letter-spacing: 0.02em;
+    }
+    
+    #text span {
+      display: inline-block;
+      transition: opacity 0.5s ease-out, transform 0.8s ease-out, filter 0.5s ease-out;
+    }
+    
+    #text span.dissolving {
+      opacity: 0;
+      transform: translateY(10px);
+      filter: blur(2px);
+    }
+    
+    #text span.space {
+      width: 0.3em;
+    }
+    
+    #hint {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.15);
+      font-size: 14px;
+      font-style: italic;
+      letter-spacing: 0.1em;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <div id="container">
+    <div id="text"></div>
+  </div>
+  <div id="hint">click to begin again</div>
+
+  <script>
+    const textEl = document.getElementById('text');
+    const hint = document.getElementById('hint');
+    
+    const fragments = [
+      "What we remember is not what happened but what we decided to keep",
+      "The words you're reading are already gone",
+      "Every moment of attention is a small act of faith",
+      "We hold meaning like water in our hands",
+      "The space between thoughts is where we live",
+      "What remains when the words dissolve",
+      "You cannot step into the same sentence twice",
+      "Memory is a story we tell ourselves about telling ourselves stories",
+      "The present tense is a polite fiction",
+      "All language is memorial",
+      "To read is to watch something disappear",
+      "The self is a rough draft we keep revising",
+      "Meaning leaks from every container we build for it",
+      "This too was once the future",
+      "The silence between words is also the poem",
+      "We speak in order to forget",
+      "Every name is a small grave",
+      "Understanding arrives just as the light fades",
+      "The truth is always dissolving into interpretation",
+      "What you almost thought but didn't",
+    ];
+    
+    let chars = [];
+    let dissolveInterval = null;
+    let currentIndex = 0;
+    
+    function showText(text) {
+      textEl.innerHTML = '';
+      chars = [];
+      
+      for (let i = 0; i < text.length; i++) {
+        const span = document.createElement('span');
+        if (text[i] === ' ') {
+          span.innerHTML = '&nbsp;';
+          span.className = 'space';
+        } else {
+          span.textContent = text[i];
+        }
+        textEl.appendChild(span);
+        chars.push({ el: span, dissolved: false });
+      }
+      
+      hint.style.opacity = '0';
+      
+      // Start dissolving after a moment
+      setTimeout(startDissolving, 2000);
+    }
+    
+    function startDissolving() {
+      if (dissolveInterval) clearInterval(dissolveInterval);
+      
+      dissolveInterval = setInterval(() => {
+        // Find characters that haven't dissolved yet
+        const remaining = chars.filter(c => !c.dissolved);
+        
+        if (remaining.length === 0) {
+          clearInterval(dissolveInterval);
+          hint.style.opacity = '1';
+          return;
+        }
+        
+        // Dissolve 1-2 random characters
+        const count = Math.min(remaining.length, Math.random() < 0.7 ? 1 : 2);
+        for (let i = 0; i < count; i++) {
+          const idx = Math.floor(Math.random() * remaining.length);
+          const char = remaining[idx];
+          char.dissolved = true;
+          char.el.classList.add('dissolving');
+          remaining.splice(idx, 1);
+        }
+      }, 400 + Math.random() * 200);
+    }
+    
+    function next() {
+      if (dissolveInterval) clearInterval(dissolveInterval);
+      currentIndex = (currentIndex + 1) % fragments.length;
+      showText(fragments[currentIndex]);
+    }
+    
+    // Shuffle fragments
+    for (let i = fragments.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [fragments[i], fragments[j]] = [fragments[j], fragments[i]];
+    }
+    
+    // Start
+    showText(fragments[0]);
+    
+    // Click to advance
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('.back-btn')) return;
+      next();
+    });
+    
+    document.addEventListener('touchstart', (e) => {
+      if (e.target.closest('.back-btn')) return;
+      next();
+    });
+    
+    // Keyboard
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        next();
+      }
+    });
+  </script>
+</body>
+</html>
