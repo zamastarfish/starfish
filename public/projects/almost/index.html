@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Almost</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0c;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+    }
+    canvas { 
+      display: block;
+    }
+    .back-btn { 
+      position: fixed; top: 20px; left: 20px; 
+      color: rgba(255,255,255,0.15); text-decoration: none; 
+      font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1;
+    } 
+    .back-btn:hover { color: rgba(255,255,255,0.4); }
+    
+    #whisper {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0);
+      font-size: 14px;
+      font-style: italic;
+      letter-spacing: 0.15em;
+      pointer-events: none;
+      transition: color 4s ease-out;
+      text-align: center;
+    }
+    #whisper.visible {
+      color: rgba(255, 255, 255, 0.25);
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  <div id="whisper"></div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const whisper = document.getElementById('whisper');
+    
+    let width, height;
+    let pairs = [];
+    let time = 0;
+    
+    const whispers = [
+      'the distance that remains',
+      'almost',
+      'not yet',
+      'so close',
+      'the space between',
+      'reaching',
+      'if only',
+      'nearly',
+      'just shy',
+      'on the edge of',
+    ];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    class Pair {
+      constructor() {
+        this.reset();
+      }
+      
+      reset() {
+        // Two particles that will orbit near each other
+        const centerX = Math.random() * width;
+        const centerY = Math.random() * height;
+        
+        // Orbital parameters
+        this.cx = centerX;
+        this.cy = centerY;
+        this.radius1 = 20 + Math.random() * 60;
+        this.radius2 = 20 + Math.random() * 60;
+        this.angle1 = Math.random() * Math.PI * 2;
+        this.angle2 = Math.random() * Math.PI * 2;
+        this.speed1 = (0.002 + Math.random() * 0.008) * (Math.random() > 0.5 ? 1 : -1);
+        this.speed2 = (0.002 + Math.random() * 0.008) * (Math.random() > 0.5 ? 1 : -1);
+        
+        // Offset from center
+        this.offset1 = { x: (Math.random() - 0.5) * 100, y: (Math.random() - 0.5) * 100 };
+        this.offset2 = { x: (Math.random() - 0.5) * 100, y: (Math.random() - 0.5) * 100 };
+        
+        // Color - soft pastels with low saturation
+        const hue = Math.random() * 360;
+        this.color1 = `hsla(${hue}, 30%, 70%, `;
+        this.color2 = `hsla(${(hue + 30 + Math.random() * 60) % 360}, 30%, 70%, `;
+        
+        // Size
+        this.size1 = 2 + Math.random() * 3;
+        this.size2 = 2 + Math.random() * 3;
+        
+        // Lifespan
+        this.life = 0;
+        this.maxLife = 500 + Math.random() * 1000;
+        this.fadeIn = 100;
+        this.fadeOut = 200;
+        
+        // Phase offset for approaching behavior
+        this.approachPhase = Math.random() * Math.PI * 2;
+        this.approachFreq = 0.003 + Math.random() * 0.005;
+      }
+      
+      getPositions() {
+        // Base orbital positions
+        let x1 = this.cx + this.offset1.x + Math.cos(this.angle1) * this.radius1;
+        let y1 = this.cy + this.offset1.y + Math.sin(this.angle1) * this.radius1;
+        let x2 = this.cx + this.offset2.x + Math.cos(this.angle2) * this.radius2;
+        let y2 = this.cy + this.offset2.y + Math.sin(this.angle2) * this.radius2;
+        
+        // Approaching/retreating modulation
+        const approach = Math.sin(this.life * this.approachFreq + this.approachPhase);
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist > 0) {
+          // Move toward each other based on approach factor, but never touch
+          const minDist = 8 + this.size1 + this.size2; // Minimum distance
+          const pullFactor = approach * 0.4; // How much they pull toward each other
+          
+          const targetDist = Math.max(minDist, dist * (1 - pullFactor * 0.5));
+          const currentDist = Math.max(targetDist, minDist);
+          
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          
+          // Adjust positions to maintain minimum distance
+          x1 = midX - nx * currentDist / 2;
+          y1 = midY - ny * currentDist / 2;
+          x2 = midX + nx * currentDist / 2;
+          y2 = midY + ny * currentDist / 2;
+        }
+        
+        return { x1, y1, x2, y2, dist };
+      }
+      
+      update() {
+        this.angle1 += this.speed1;
+        this.angle2 += this.speed2;
+        this.life++;
+        
+        // Slow drift
+        this.cx += Math.sin(time * 0.001 + this.approachPhase) * 0.1;
+        this.cy += Math.cos(time * 0.001 + this.approachPhase) * 0.05;
+        
+        if (this.life > this.maxLife) {
+          this.reset();
+        }
+      }
+      
+      draw() {
+        const { x1, y1, x2, y2, dist } = this.getPositions();
+        
+        // Calculate opacity based on life
+        let alpha = 1;
+        if (this.life < this.fadeIn) {
+          alpha = this.life / this.fadeIn;
+        } else if (this.life > this.maxLife - this.fadeOut) {
+          alpha = (this.maxLife - this.life) / this.fadeOut;
+        }
+        alpha *= 0.7;
+        
+        // Draw connecting line (faint)
+        const lineAlpha = alpha * 0.15 * Math.max(0, 1 - dist / 200);
+        if (lineAlpha > 0.01) {
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.strokeStyle = `rgba(255, 255, 255, ${lineAlpha})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+        
+        // Draw particles
+        ctx.beginPath();
+        ctx.arc(x1, y1, this.size1, 0, Math.PI * 2);
+        ctx.fillStyle = this.color1 + alpha + ')';
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.arc(x2, y2, this.size2, 0, Math.PI * 2);
+        ctx.fillStyle = this.color2 + alpha + ')';
+        ctx.fill();
+        
+        // Soft glow when close
+        if (dist < 50) {
+          const glowAlpha = alpha * 0.3 * (1 - dist / 50);
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2;
+          
+          const gradient = ctx.createRadialGradient(midX, midY, 0, midX, midY, 30);
+          gradient.addColorStop(0, `rgba(255, 255, 255, ${glowAlpha})`);
+          gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          
+          ctx.beginPath();
+          ctx.arc(midX, midY, 30, 0, Math.PI * 2);
+          ctx.fillStyle = gradient;
+          ctx.fill();
+        }
+      }
+    }
+    
+    function init() {
+      resize();
+      
+      // Create pairs based on screen size
+      const pairCount = Math.floor((width * height) / 40000);
+      for (let i = 0; i < Math.max(8, Math.min(25, pairCount)); i++) {
+        const pair = new Pair();
+        pair.life = Math.random() * pair.maxLife; // Stagger start
+        pairs.push(pair);
+      }
+      
+      // Show whisper occasionally
+      showWhisper();
+    }
+    
+    function showWhisper() {
+      setTimeout(() => {
+        whisper.textContent = whispers[Math.floor(Math.random() * whispers.length)];
+        whisper.classList.add('visible');
+        
+        setTimeout(() => {
+          whisper.classList.remove('visible');
+          showWhisper();
+        }, 6000);
+      }, 8000 + Math.random() * 15000);
+    }
+    
+    function animate() {
+      // Very subtle fade for trails
+      ctx.fillStyle = 'rgba(10, 10, 12, 0.08)';
+      ctx.fillRect(0, 0, width, height);
+      
+      pairs.forEach(pair => {
+        pair.update();
+        pair.draw();
+      });
+      
+      time++;
+      requestAnimationFrame(animate);
+    }
+    
+    window.addEventListener('resize', () => {
+      resize();
+    });
+    
+    // Touch/click creates a momentary pull
+    function handleInteraction(x, y) {
+      pairs.forEach(pair => {
+        const { x1, y1, x2, y2 } = pair.getPositions();
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        const dist = Math.sqrt((x - midX) ** 2 + (y - midY) ** 2);
+        
+        if (dist < 150) {
+          // Briefly speed up their approach
+          pair.approachPhase = Math.PI / 2; // Jump to max approach
+        }
+      });
+    }
+    
+    canvas.addEventListener('click', e => handleInteraction(e.clientX, e.clientY));
+    canvas.addEventListener('touchstart', e => {
+      const touch = e.touches[0];
+      handleInteraction(touch.clientX, touch.clientY);
+    });
+    
+    init();
+    animate();
+  </script>
+</body>
+</html>

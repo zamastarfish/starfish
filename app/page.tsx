@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
     {
+      name: "Almost",
+      description: "Particles that orbit, approach, but never touch. The space between. Near-misses made visible",
+      date: "Feb 2026",
+      href: "/projects/almost/"
+    },
+    {
       name: "Eternal Stallion",
       description: "A vaporwave horse runs forever across a synthwave sunset. Cursor shifts the horizon. ∞",
       date: "Feb 2026",
