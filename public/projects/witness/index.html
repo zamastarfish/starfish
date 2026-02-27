@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Witness</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0c0c0c;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    canvas { 
+      display: block;
+    }
+    .back-btn { 
+      position: fixed; top: 20px; left: 20px; 
+      color: rgba(255,255,255,0.1); text-decoration: none; 
+      font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1;
+    } 
+    .back-btn:hover { color: rgba(255,255,255,0.3); }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height, centerX, centerY;
+    let mouseX, mouseY;
+    let targetPupilX = 0, targetPupilY = 0;
+    let pupilX = 0, pupilY = 0;
+    let irisHue = 35; // Amber/hazel
+    let blinkProgress = 0;
+    let isBlinking = false;
+    let lastBlinkTime = 0;
+    let lookAwayTime = 0;
+    let isLookingAway = false;
+    let dilationTarget = 1;
+    let dilation = 1;
+    let time = 0;
+    
+    // Eye dimensions (will be set based on screen)
+    let eyeRadius, irisRadius, pupilRadius;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      centerX = width / 2;
+      centerY = height / 2;
+      
+      // Eye scales with viewport, but has limits
+      const minDim = Math.min(width, height);
+      eyeRadius = Math.min(180, minDim * 0.35);
+      irisRadius = eyeRadius * 0.55;
+      pupilRadius = irisRadius * 0.45;
+      
+      mouseX = centerX;
+      mouseY = centerY;
+    }
+    
+    function handleMove(x, y) {
+      mouseX = x;
+      mouseY = y;
+      lookAwayTime = time; // Reset "looking away" timer
+      isLookingAway = false;
+    }
+    
+    function drawEye() {
+      ctx.fillStyle = '#0c0c0c';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Calculate where the eye should look
+      const dx = mouseX - centerX;
+      const dy = mouseY - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      // Limit how far the pupil can move
+      const maxMove = irisRadius - pupilRadius * dilation - 5;
+      const moveRatio = Math.min(1, dist / (Math.max(width, height) * 0.4));
+      
+      targetPupilX = (dx / (dist || 1)) * maxMove * moveRatio;
+      targetPupilY = (dy / (dist || 1)) * maxMove * moveRatio;
+      
+      // Smooth follow
+      pupilX += (targetPupilX - pupilX) * 0.08;
+      pupilY += (targetPupilY - pupilY) * 0.08;
+      
+      // Dilation based on "darkness" (distance from eye)
+      dilationTarget = 0.8 + (dist / Math.max(width, height)) * 0.5;
+      dilation += (dilationTarget - dilation) * 0.05;
+      
+      // Blink logic
+      const now = time;
+      if (!isBlinking && now - lastBlinkTime > 180 + Math.random() * 300) {
+        // Blink more often if being stared at directly
+        if (dist < eyeRadius * 2 || Math.random() < 0.3) {
+          isBlinking = true;
+          lastBlinkTime = now;
+        }
+      }
+      
+      if (isBlinking) {
+        blinkProgress += 0.15;
+        if (blinkProgress >= Math.PI) {
+          blinkProgress = 0;
+          isBlinking = false;
+        }
+      }
+      
+      // Random micro-movements when idle
+      if (time - lookAwayTime > 180) {
+        isLookingAway = true;
+      }
+      
+      if (isLookingAway) {
+        targetPupilX += Math.sin(time * 0.02) * 5;
+        targetPupilY += Math.cos(time * 0.017) * 3;
+      }
+      
+      const blinkAmount = Math.sin(blinkProgress);
+      const eyelidClose = blinkAmount * eyeRadius;
+      
+      // Sclera (white of eye) with slight off-white and veins
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, eyeRadius, eyeRadius * 0.75, 0, 0, Math.PI * 2);
+      
+      const scleraGrad = ctx.createRadialGradient(
+        centerX - eyeRadius * 0.3, centerY - eyeRadius * 0.2, 0,
+        centerX, centerY, eyeRadius
+      );
+      scleraGrad.addColorStop(0, '#f5f0eb');
+      scleraGrad.addColorStop(0.7, '#ebe5df');
+      scleraGrad.addColorStop(1, '#d8d0c8');
+      ctx.fillStyle = scleraGrad;
+      ctx.fill();
+      
+      // Subtle veins
+      ctx.strokeStyle = 'rgba(180, 100, 100, 0.1)';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2 + 0.3;
+        const startR = eyeRadius * 0.7;
+        ctx.beginPath();
+        ctx.moveTo(
+          centerX + Math.cos(angle) * startR,
+          centerY + Math.sin(angle) * startR * 0.75
+        );
+        // Squiggly line outward
+        for (let j = 0; j < 5; j++) {
+          const r = startR + (eyeRadius - startR) * (j / 5);
+          const wobble = Math.sin(j * 2 + i) * 3;
+          ctx.lineTo(
+            centerX + Math.cos(angle + wobble * 0.02) * r,
+            centerY + Math.sin(angle) * r * 0.75 + wobble
+          );
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+      
+      // Iris
+      const irisX = centerX + pupilX;
+      const irisY = centerY + pupilY;
+      
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, eyeRadius, eyeRadius * 0.75, 0, 0, Math.PI * 2);
+      ctx.clip();
+      
+      // Iris base
+      const irisGrad = ctx.createRadialGradient(
+        irisX, irisY, pupilRadius * dilation,
+        irisX, irisY, irisRadius
+      );
+      irisGrad.addColorStop(0, `hsl(${irisHue}, 60%, 25%)`);
+      irisGrad.addColorStop(0.5, `hsl(${irisHue}, 50%, 35%)`);
+      irisGrad.addColorStop(0.8, `hsl(${irisHue}, 40%, 45%)`);
+      irisGrad.addColorStop(1, `hsl(${irisHue - 10}, 30%, 30%)`);
+      
+      ctx.beginPath();
+      ctx.arc(irisX, irisY, irisRadius, 0, Math.PI * 2);
+      ctx.fillStyle = irisGrad;
+      ctx.fill();
+      
+      // Iris texture (radial lines)
+      ctx.strokeStyle = `hsla(${irisHue}, 40%, 20%, 0.3)`;
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < 60; i++) {
+        const angle = (i / 60) * Math.PI * 2;
+        const innerR = pupilRadius * dilation + 2;
+        const outerR = irisRadius - 2 + Math.sin(i * 7) * 3;
+        ctx.beginPath();
+        ctx.moveTo(
+          irisX + Math.cos(angle) * innerR,
+          irisY + Math.sin(angle) * innerR
+        );
+        ctx.lineTo(
+          irisX + Math.cos(angle) * outerR,
+          irisY + Math.sin(angle) * outerR
+        );
+        ctx.stroke();
+      }
+      
+      // Pupil
+      ctx.beginPath();
+      ctx.arc(irisX, irisY, pupilRadius * dilation, 0, Math.PI * 2);
+      ctx.fillStyle = '#050505';
+      ctx.fill();
+      
+      // Catchlight (reflection)
+      const catchlightX = irisX - pupilRadius * 0.5;
+      const catchlightY = irisY - pupilRadius * 0.5;
+      
+      ctx.beginPath();
+      ctx.ellipse(catchlightX, catchlightY, pupilRadius * 0.3, pupilRadius * 0.25, -0.3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fill();
+      
+      // Secondary smaller catchlight
+      ctx.beginPath();
+      ctx.arc(irisX + pupilRadius * 0.4, irisY + pupilRadius * 0.3, pupilRadius * 0.1, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.fill();
+      
+      ctx.restore();
+      
+      // Eyelids
+      ctx.fillStyle = '#0c0c0c';
+      
+      // Top eyelid
+      ctx.beginPath();
+      ctx.moveTo(centerX - eyeRadius - 20, centerY - eyeRadius);
+      ctx.quadraticCurveTo(
+        centerX, centerY - eyeRadius * 0.75 + eyelidClose * 1.3,
+        centerX + eyeRadius + 20, centerY - eyeRadius
+      );
+      ctx.lineTo(centerX + eyeRadius + 20, 0);
+      ctx.lineTo(centerX - eyeRadius - 20, 0);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Bottom eyelid
+      ctx.beginPath();
+      ctx.moveTo(centerX - eyeRadius - 20, centerY + eyeRadius * 0.6);
+      ctx.quadraticCurveTo(
+        centerX, centerY + eyeRadius * 0.6 - eyelidClose * 0.5,
+        centerX + eyeRadius + 20, centerY + eyeRadius * 0.6
+      );
+      ctx.lineTo(centerX + eyeRadius + 20, height);
+      ctx.lineTo(centerX - eyeRadius - 20, height);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Eyelid crease shadow
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(centerX - eyeRadius * 0.9, centerY - eyeRadius * 0.65 + eyelidClose);
+      ctx.quadraticCurveTo(
+        centerX, centerY - eyeRadius * 0.85 + eyelidClose * 1.2,
+        centerX + eyeRadius * 0.9, centerY - eyeRadius * 0.65 + eyelidClose
+      );
+      ctx.stroke();
+      
+      // Inner corner shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.beginPath();
+      ctx.ellipse(centerX - eyeRadius * 0.85, centerY, 8, 15, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    function animate() {
+      time++;
+      drawEye();
+      requestAnimationFrame(animate);
+    }
+    
+    window.addEventListener('resize', resize);
+    
+    window.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+    window.addEventListener('touchmove', e => {
+      const touch = e.touches[0];
+      handleMove(touch.clientX, touch.clientY);
+    });
+    
+    // Click makes it blink
+    window.addEventListener('click', () => {
+      if (!isBlinking) {
+        isBlinking = true;
+        lastBlinkTime = time;
+      }
+    });
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>
