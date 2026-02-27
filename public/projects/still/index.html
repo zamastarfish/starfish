@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Still</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #080808;
+      overflow: hidden;
+      cursor: none;
+    }
+    canvas { 
+      display: block;
+    }
+    .back-btn { 
+      position: fixed; top: 20px; left: 20px; 
+      color: rgba(255,255,255,0.05); text-decoration: none; 
+      font-size: 24px; z-index: 1000; transition: color 0.5s; line-height: 1;
+      cursor: pointer;
+    } 
+    .back-btn:hover { color: rgba(255,255,255,0.15); }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let time = 0;
+    
+    // Very slow parameters
+    const BREATH_PERIOD = 60000; // One breath per minute
+    const DRIFT_SPEED = 0.00001;
+    const GRAIN_ALPHA = 0.015;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    function draw() {
+      // Near-black base
+      ctx.fillStyle = '#080808';
+      ctx.fillRect(0, 0, width, height);
+      
+      // The breath - a very subtle radial gradient that pulses imperceptibly
+      const breathPhase = (Date.now() % BREATH_PERIOD) / BREATH_PERIOD;
+      const breathAmount = Math.sin(breathPhase * Math.PI * 2) * 0.5 + 0.5;
+      
+      // The presence - barely visible
+      const centerX = width / 2 + Math.sin(time * DRIFT_SPEED) * 50;
+      const centerY = height / 2 + Math.cos(time * DRIFT_SPEED * 0.7) * 30;
+      const radius = Math.min(width, height) * (0.3 + breathAmount * 0.05);
+      
+      const gradient = ctx.createRadialGradient(
+        centerX, centerY, 0,
+        centerX, centerY, radius
+      );
+      
+      // So subtle you might imagine it
+      const alpha = 0.02 + breathAmount * 0.015;
+      gradient.addColorStop(0, `rgba(40, 35, 45, ${alpha})`);
+      gradient.addColorStop(0.5, `rgba(25, 22, 28, ${alpha * 0.5})`);
+      gradient.addColorStop(1, 'rgba(8, 8, 8, 0)');
+      
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Film grain - very sparse, very faint
+      if (Math.random() < 0.3) {
+        for (let i = 0; i < 20; i++) {
+          const x = Math.random() * width;
+          const y = Math.random() * height;
+          const bright = Math.random() * GRAIN_ALPHA;
+          ctx.fillStyle = `rgba(255, 255, 255, ${bright})`;
+          ctx.fillRect(x, y, 1, 1);
+        }
+      }
+      
+      // One tiny point of almost-light that drifts
+      const starX = width / 2 + Math.sin(time * 0.00003) * width * 0.3;
+      const starY = height / 2 + Math.cos(time * 0.00002) * height * 0.25;
+      const starAlpha = 0.03 + Math.sin(time * 0.0001) * 0.02;
+      
+      ctx.beginPath();
+      ctx.arc(starX, starY, 1, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200, 190, 210, ${starAlpha})`;
+      ctx.fill();
+      
+      time++;
+    }
+    
+    function animate() {
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>
