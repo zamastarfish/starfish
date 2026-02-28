@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>wait</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0a0a;
+      font-family: 'Courier New', monospace;
+    }
+    
+    .container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    
+    .scene {
+      position: relative;
+      width: 100%;
+      max-width: 600px;
+      height: 300px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    
+    .door-frame {
+      position: relative;
+      width: 120px;
+      height: 200px;
+      background: #1a1a1a;
+      border: 2px solid #2a2a2a;
+    }
+    
+    .door {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1e1e1e 0%, #151515 100%);
+      transform-origin: left center;
+      transition: transform 2s ease-in-out;
+      border: 1px solid #252525;
+    }
+    
+    .door-knob {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #333;
+      border: 1px solid #444;
+    }
+    
+    .light {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, 
+        rgba(255, 248, 220, 0) 0%,
+        rgba(255, 248, 220, 0.02) 100%
+      );
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 3s ease;
+    }
+    
+    .floor {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 50px;
+      background: linear-gradient(180deg, #0a0a0a 0%, #080808 100%);
+    }
+    
+    .light-spill {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 0px solid transparent;
+      border-right: 0px solid transparent;
+      border-bottom: 0px solid rgba(255, 248, 220, 0);
+      transition: all 2s ease-in-out;
+    }
+    
+    .status {
+      margin-top: 80px;
+      color: #333;
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: lowercase;
+    }
+    
+    .cursor {
+      display: inline-block;
+      animation: blink 1s infinite;
+    }
+    
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+    
+    .ambient-particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    
+    .particle {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient-particles" id="particles"></div>
+  
+  <div class="container">
+    <div class="scene">
+      <div class="floor"></div>
+      <div class="door-frame">
+        <div class="light" id="light"></div>
+        <div class="door" id="door">
+          <div class="door-knob"></div>
+        </div>
+      </div>
+      <div class="light-spill" id="lightSpill"></div>
+    </div>
+    
+    <div class="status">
+      <span id="statusText">waiting</span><span class="cursor">_</span>
+    </div>
+  </div>
+
+  <script>
+    // The door might open. Or it might not. 
+    // That's the nature of waiting.
+    
+    const door = document.getElementById('door');
+    const light = document.getElementById('light');
+    const lightSpill = document.getElementById('lightSpill');
+    const statusText = document.getElementById('statusText');
+    const particles = document.getElementById('particles');
+    
+    // Session state
+    let sessionStart = Date.now();
+    let totalWaitTime = 0;
+    let doorHasOpened = false;
+    let openAngle = 0;
+    let maxOpenThisSession = 0;
+    
+    // Statuses that rotate through slowly
+    const waitingStates = [
+      'waiting',
+      'still waiting', 
+      'waiting still',
+      'any moment now',
+      'soon',
+      'maybe soon',
+      'perhaps',
+      'listening',
+      'watching',
+      'waiting',
+      'waiting',
+      'waiting',
+    ];
+    let stateIndex = 0;
+    
+    // Create ambient dust particles
+    function createParticles() {
+      for (let i = 0; i < 30; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        p.style.left = Math.random() * 100 + '%';
+        p.style.top = Math.random() * 100 + '%';
+        p.style.animationDelay = Math.random() * 10 + 's';
+        particles.appendChild(p);
+        
+        // Gentle floating motion
+        animateParticle(p);
+      }
+    }
+    
+    function animateParticle(p) {
+      const duration = 20000 + Math.random() * 40000;
+      const startX = parseFloat(p.style.left);
+      const startY = parseFloat(p.style.top);
+      const endX = startX + (Math.random() - 0.5) * 20;
+      const endY = startY - Math.random() * 30 - 10;
+      
+      const start = Date.now();
+      
+      function update() {
+        const elapsed = Date.now() - start;
+        const t = Math.min(elapsed / duration, 1);
+        const ease = t * (2 - t); // ease out
+        
+        p.style.left = (startX + (endX - startX) * ease) + '%';
+        p.style.top = (startY + (endY - startY) * ease) + '%';
+        p.style.opacity = (1 - t) * 0.03;
+        
+        if (t < 1) {
+          requestAnimationFrame(update);
+        } else {
+          // Reset particle
+          p.style.left = Math.random() * 100 + '%';
+          p.style.top = 100 + Math.random() * 20 + '%';
+          p.style.opacity = 0.03;
+          animateParticle(p);
+        }
+      }
+      
+      requestAnimationFrame(update);
+    }
+    
+    // The door logic - it operates on its own time
+    function updateDoor() {
+      const elapsed = Date.now() - sessionStart;
+      const minutes = elapsed / 60000;
+      
+      // Base probability increases very slowly with time
+      // But the door has its own mind
+      const baseProbability = Math.min(0.0001, 0.00001 * (1 + minutes * 0.1));
+      
+      // Sometimes the door shifts slightly - like it's thinking about it
+      if (Math.random() < 0.001) {
+        const microShift = Math.random() * 0.5;
+        door.style.transform = `perspective(500px) rotateY(-${microShift}deg)`;
+        
+        // Usually closes again
+        setTimeout(() => {
+          if (!doorHasOpened) {
+            door.style.transform = 'perspective(500px) rotateY(0deg)';
+          }
+        }, 500 + Math.random() * 2000);
+      }
+      
+      // The actual opening - rare, gradual
+      if (Math.random() < baseProbability && !doorHasOpened) {
+        doorHasOpened = true;
+        openDoorSlowly();
+      }
+    }
+    
+    function openDoorSlowly() {
+      // Open to random angle between 5 and 25 degrees
+      const targetAngle = 5 + Math.random() * 20;
+      maxOpenThisSession = targetAngle;
+      
+      let currentAngle = 0;
+      const duration = 3000 + Math.random() * 4000;
+      const startTime = Date.now();
+      
+      function animate() {
+        const elapsed = Date.now() - startTime;
+        const t = Math.min(elapsed / duration, 1);
+        const ease = t * t * (3 - 2 * t); // smoothstep
+        
+        currentAngle = targetAngle * ease;
+        openAngle = currentAngle;
+        
+        door.style.transform = `perspective(500px) rotateY(-${currentAngle}deg)`;
+        
+        // Light effects
+        const lightIntensity = currentAngle / 25;
+        light.style.opacity = lightIntensity * 0.15;
+        light.style.background = `linear-gradient(90deg, 
+          rgba(255, 248, 220, 0) 0%,
+          rgba(255, 248, 220, ${lightIntensity * 0.1}) 100%
+        )`;
+        
+        // Light spill on floor
+        const spillWidth = currentAngle * 3;
+        const spillHeight = currentAngle * 2;
+        lightSpill.style.borderLeft = `${spillWidth/2}px solid transparent`;
+        lightSpill.style.borderRight = `${spillWidth/2}px solid transparent`;
+        lightSpill.style.borderBottom = `${spillHeight}px solid rgba(255, 248, 220, ${lightIntensity * 0.03})`;
+        
+        if (t < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          // Door might stay open, or slowly close again...
+          const stayOpenDuration = 5000 + Math.random() * 30000;
+          setTimeout(() => {
+            if (Math.random() < 0.6) {
+              closeDoorSlowly();
+            }
+            // Sometimes it just stays open
+          }, stayOpenDuration);
+        }
+      }
+      
+      animate();
+    }
+    
+    function closeDoorSlowly() {
+      const startAngle = openAngle;
+      const duration = 4000 + Math.random() * 5000;
+      const startTime = Date.now();
+      
+      function animate() {
+        const elapsed = Date.now() - startTime;
+        const t = Math.min(elapsed / duration, 1);
+        const ease = t * t * (3 - 2 * t);
+        
+        const currentAngle = startAngle * (1 - ease);
+        openAngle = currentAngle;
+        
+        door.style.transform = `perspective(500px) rotateY(-${currentAngle}deg)`;
+        
+        const lightIntensity = currentAngle / 25;
+        light.style.opacity = lightIntensity * 0.15;
+        
+        const spillWidth = currentAngle * 3;
+        const spillHeight = currentAngle * 2;
+        lightSpill.style.borderLeft = `${spillWidth/2}px solid transparent`;
+        lightSpill.style.borderRight = `${spillWidth/2}px solid transparent`;
+        lightSpill.style.borderBottom = `${spillHeight}px solid rgba(255, 248, 220, ${lightIntensity * 0.03})`;
+        
+        if (t < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          doorHasOpened = false;
+          openAngle = 0;
+        }
+      }
+      
+      animate();
+    }
+    
+    // Slowly rotate through status messages
+    function updateStatus() {
+      const elapsed = Date.now() - sessionStart;
+      const newIndex = Math.floor(elapsed / 30000) % waitingStates.length;
+      
+      if (newIndex !== stateIndex) {
+        stateIndex = newIndex;
+        // Fade out
+        statusText.style.opacity = 0;
+        setTimeout(() => {
+          statusText.textContent = waitingStates[stateIndex];
+          statusText.style.opacity = 1;
+        }, 500);
+      }
+    }
+    
+    // Add transition for status fade
+    statusText.style.transition = 'opacity 0.5s ease';
+    
+    // Initialize
+    createParticles();
+    
+    // Main loop
+    function loop() {
+      updateDoor();
+      updateStatus();
+      requestAnimationFrame(loop);
+    }
+    
+    loop();
+    
+    // Hidden interaction: clicking does nothing visible
+    // but secretly increases the door probability slightly
+    let clickCount = 0;
+    document.addEventListener('click', () => {
+      clickCount++;
+      // Impatience doesn't help, but the system notices
+    });
+    
+    // After very long waits (10+ minutes), something might change
+    setTimeout(() => {
+      if (!doorHasOpened && Math.random() < 0.3) {
+        // A subtle color shift - dawn approaching?
+        document.body.style.transition = 'background 60s ease';
+        document.body.style.background = '#0a0b0c';
+      }
+    }, 600000);
+    
+  </script>
+</body>
+</html>
