@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>room</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 60s linear;
+    }
+    
+    .room {
+      position: relative;
+      width: 90vmin;
+      height: 70vmin;
+      max-width: 600px;
+      max-height: 420px;
+      perspective: 800px;
+    }
+    
+    .floor {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 40%;
+      transform: rotateX(60deg);
+      transform-origin: bottom center;
+      transition: background 60s linear;
+    }
+    
+    .back-wall {
+      position: absolute;
+      top: 0;
+      left: 10%;
+      width: 80%;
+      height: 65%;
+      transition: background 60s linear;
+    }
+    
+    .left-wall {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 10%;
+      height: 65%;
+      transform: skewY(-30deg);
+      transform-origin: top left;
+      transition: background 60s linear;
+    }
+    
+    .right-wall {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 10%;
+      height: 65%;
+      transform: skewY(30deg);
+      transform-origin: top right;
+      transition: background 60s linear;
+    }
+    
+    .window {
+      position: absolute;
+      top: 15%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 30%;
+      height: 45%;
+      border: 3px solid;
+      transition: border-color 60s linear, background 60s linear;
+      overflow: hidden;
+    }
+    
+    .window-light {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 200%;
+      height: 300%;
+      transform: rotate(-25deg);
+      transform-origin: bottom left;
+      opacity: 0.15;
+      transition: background 60s linear, opacity 60s linear;
+    }
+    
+    .light-patch {
+      position: absolute;
+      bottom: 10%;
+      left: 35%;
+      width: 30%;
+      height: 25%;
+      transform: skewX(-15deg) rotateX(60deg);
+      transform-origin: bottom center;
+      opacity: 0;
+      transition: background 60s linear, opacity 60s linear;
+    }
+    
+    /* Subtle floating dust motes */
+    .dust {
+      position: absolute;
+      width: 2px;
+      height: 2px;
+      border-radius: 50%;
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    .corner-shadow {
+      position: absolute;
+      bottom: 0;
+      width: 15%;
+      height: 30%;
+      opacity: 0.1;
+      transition: opacity 60s linear;
+    }
+    
+    .corner-shadow.left {
+      left: 10%;
+      background: linear-gradient(to right, rgba(0,0,0,0.3), transparent);
+    }
+    
+    .corner-shadow.right {
+      right: 10%;
+      background: linear-gradient(to left, rgba(0,0,0,0.3), transparent);
+    }
+  </style>
+</head>
+<body>
+  <div class="room">
+    <div class="back-wall">
+      <div class="window">
+        <div class="window-light"></div>
+      </div>
+    </div>
+    <div class="left-wall"></div>
+    <div class="right-wall"></div>
+    <div class="floor">
+      <div class="light-patch"></div>
+    </div>
+    <div class="corner-shadow left"></div>
+    <div class="corner-shadow right"></div>
+  </div>
+
+  <script>
+    // The room exists in real time.
+    // It changes with the hour, slowly.
+    // There's nothing to do here but be.
+    
+    const body = document.body;
+    const floor = document.querySelector('.floor');
+    const backWall = document.querySelector('.back-wall');
+    const leftWall = document.querySelector('.left-wall');
+    const rightWall = document.querySelector('.right-wall');
+    const windowEl = document.querySelector('.window');
+    const windowLight = document.querySelector('.window-light');
+    const lightPatch = document.querySelector('.light-patch');
+    const room = document.querySelector('.room');
+    
+    // Time-based palettes (hour -> colors)
+    function getTimeColors(hour, minute) {
+      const t = hour + minute / 60;
+      
+      // Night (0-5): deep blue-grays
+      // Dawn (5-7): soft pinks and oranges
+      // Morning (7-10): warm yellows
+      // Midday (10-14): bright, slightly cool
+      // Afternoon (14-17): golden
+      // Dusk (17-20): orange to purple
+      // Evening (20-24): blue to deep blue
+      
+      let bg, floorColor, wallColor, wallSide, windowBorder, lightColor, lightOpacity;
+      
+      if (t < 5) {
+        // Deep night
+        const n = t / 5;
+        bg = lerpColor('#0a0a12', '#0d0d18', n);
+        floorColor = lerpColor('#12121a', '#141420', n);
+        wallColor = lerpColor('#0f0f16', '#111118', n);
+        wallSide = lerpColor('#0c0c12', '#0e0e15', n);
+        windowBorder = '#1a1a25';
+        windowEl.style.background = lerpColor('#0a0a15', '#0c0c18', n);
+        lightColor = '#1a1a30';
+        lightOpacity = 0.02;
+      } else if (t < 7) {
+        // Dawn
+        const n = (t - 5) / 2;
+        bg = lerpColor('#0d0d18', '#2a1a20', n);
+        floorColor = lerpColor('#141420', '#3a2830', n);
+        wallColor = lerpColor('#111118', '#2d1d22', n);
+        wallSide = lerpColor('#0e0e15', '#251a1d', n);
+        windowBorder = lerpColor('#1a1a25', '#4a3035', n);
+        windowEl.style.background = lerpColor('#0c0c18', '#ff9966', n * 0.3);
+        lightColor = lerpColor('#1a1a30', '#ffaa77', n);
+        lightOpacity = 0.02 + n * 0.08;
+      } else if (t < 10) {
+        // Morning
+        const n = (t - 7) / 3;
+        bg = lerpColor('#2a1a20', '#f5f0e8', n);
+        floorColor = lerpColor('#3a2830', '#e8e0d5', n);
+        wallColor = lerpColor('#2d1d22', '#f0ebe3', n);
+        wallSide = lerpColor('#251a1d', '#e5dfd6', n);
+        windowBorder = lerpColor('#4a3035', '#c5b8a8', n);
+        windowEl.style.background = lerpColor('#ff9966', '#fffaf0', n * 0.3 + 0.3);
+        lightColor = lerpColor('#ffaa77', '#fff8e0', n);
+        lightOpacity = 0.1 + n * 0.1;
+      } else if (t < 14) {
+        // Midday
+        const n = (t - 10) / 4;
+        bg = '#f5f2ee';
+        floorColor = '#ebe6de';
+        wallColor = '#f2ede5';
+        wallSide = '#e8e3da';
+        windowBorder = '#c0b5a5';
+        windowEl.style.background = lerpColor('#e8f4ff', '#f0f8ff', n);
+        lightColor = '#fffbe8';
+        lightOpacity = 0.2 - n * 0.05;
+      } else if (t < 17) {
+        // Afternoon
+        const n = (t - 14) / 3;
+        bg = lerpColor('#f5f2ee', '#f8f0e0', n);
+        floorColor = lerpColor('#ebe6de', '#e8dcc8', n);
+        wallColor = lerpColor('#f2ede5', '#f5ebd8', n);
+        wallSide = lerpColor('#e8e3da', '#e0d5c0', n);
+        windowBorder = lerpColor('#c0b5a5', '#c8b090', n);
+        windowEl.style.background = lerpColor('#f0f8ff', '#fff5e0', n);
+        lightColor = lerpColor('#fffbe8', '#ffd080', n);
+        lightOpacity = 0.15 + n * 0.15;
+      } else if (t < 20) {
+        // Dusk
+        const n = (t - 17) / 3;
+        bg = lerpColor('#f8f0e0', '#1a1520', n);
+        floorColor = lerpColor('#e8dcc8', '#201825', n);
+        wallColor = lerpColor('#f5ebd8', '#1c1620', n);
+        wallSide = lerpColor('#e0d5c0', '#18131c', n);
+        windowBorder = lerpColor('#c8b090', '#352535', n);
+        windowEl.style.background = lerpColor('#fff5e0', '#4a2040', n * 0.5);
+        lightColor = lerpColor('#ffd080', '#3a2040', n);
+        lightOpacity = 0.3 - n * 0.25;
+      } else {
+        // Evening/Night
+        const n = (t - 20) / 4;
+        bg = lerpColor('#1a1520', '#0a0a12', n);
+        floorColor = lerpColor('#201825', '#12121a', n);
+        wallColor = lerpColor('#1c1620', '#0f0f16', n);
+        wallSide = lerpColor('#18131c', '#0c0c12', n);
+        windowBorder = lerpColor('#352535', '#1a1a25', n);
+        windowEl.style.background = lerpColor('#4a2040', '#0a0a15', n * 0.5 + 0.5);
+        lightColor = lerpColor('#3a2040', '#1a1a30', n);
+        lightOpacity = 0.05 - n * 0.03;
+      }
+      
+      return { bg, floorColor, wallColor, wallSide, windowBorder, lightColor, lightOpacity };
+    }
+    
+    function lerpColor(a, b, t) {
+      const ah = parseInt(a.replace('#', ''), 16);
+      const bh = parseInt(b.replace('#', ''), 16);
+      
+      const ar = (ah >> 16) & 0xff;
+      const ag = (ah >> 8) & 0xff;
+      const ab = ah & 0xff;
+      
+      const br = (bh >> 16) & 0xff;
+      const bg = (bh >> 8) & 0xff;
+      const bb = bh & 0xff;
+      
+      const rr = Math.round(ar + (br - ar) * t);
+      const rg = Math.round(ag + (bg - ag) * t);
+      const rb = Math.round(ab + (bb - ab) * t);
+      
+      return `rgb(${rr}, ${rg}, ${rb})`;
+    }
+    
+    function applyColors(colors) {
+      body.style.background = colors.bg;
+      floor.style.background = colors.floorColor;
+      backWall.style.background = colors.wallColor;
+      leftWall.style.background = colors.wallSide;
+      rightWall.style.background = colors.wallSide;
+      windowEl.style.borderColor = colors.windowBorder;
+      windowLight.style.background = `linear-gradient(to bottom, ${colors.lightColor}, transparent)`;
+      windowLight.style.opacity = colors.lightOpacity;
+      lightPatch.style.background = colors.lightColor;
+      lightPatch.style.opacity = colors.lightOpacity * 0.5;
+    }
+    
+    // Create a few dust motes
+    function createDust() {
+      for (let i = 0; i < 8; i++) {
+        const dust = document.createElement('div');
+        dust.className = 'dust';
+        room.appendChild(dust);
+        animateDust(dust);
+      }
+    }
+    
+    function animateDust(dust) {
+      const startX = 20 + Math.random() * 60;
+      const startY = 10 + Math.random() * 50;
+      const duration = 15000 + Math.random() * 25000;
+      
+      dust.style.left = startX + '%';
+      dust.style.top = startY + '%';
+      
+      const start = Date.now();
+      const driftX = (Math.random() - 0.5) * 10;
+      const driftY = Math.random() * -8;
+      
+      function update() {
+        const elapsed = Date.now() - start;
+        const t = (elapsed % duration) / duration;
+        
+        // Gentle sine wave motion
+        const x = startX + driftX * t + Math.sin(t * Math.PI * 4) * 2;
+        const y = startY + driftY * t + Math.sin(t * Math.PI * 2) * 1;
+        
+        dust.style.left = x + '%';
+        dust.style.top = y + '%';
+        
+        // Fade in and out
+        const fade = Math.sin(t * Math.PI);
+        
+        // Only visible during daytime
+        const hour = new Date().getHours();
+        const daylight = (hour >= 7 && hour <= 18) ? 1 : 0;
+        dust.style.opacity = fade * 0.15 * daylight;
+        dust.style.background = `rgba(255, 255, 255, ${fade * 0.3})`;
+        
+        if (elapsed >= duration) {
+          animateDust(dust); // restart
+        } else {
+          requestAnimationFrame(update);
+        }
+      }
+      
+      requestAnimationFrame(update);
+    }
+    
+    function update() {
+      const now = new Date();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      
+      const colors = getTimeColors(hour, minute);
+      applyColors(colors);
+    }
+    
+    // Initial
+    update();
+    createDust();
+    
+    // Update every minute
+    setInterval(update, 60000);
+    
+    // No interactions needed.
+    // Just be here.
+    
+  </script>
+</body>
+</html>
