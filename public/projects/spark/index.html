@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>spark</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050508;
+      cursor: crosshair;
+    }
+    
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.15);
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      pointer-events: none;
+      transition: opacity 2s ease;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="hint" id="hint">click to strike</div>
+
+  <script>
+    // The moment before.
+    // Potential, not yet kinetic.
+    // Something might catch.
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+    
+    let width, height;
+    let sparks = [];
+    let glows = [];
+    let trails = [];
+    let strikeCount = 0;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Spark particle — brief, bright, electric
+    class Spark {
+      constructor(x, y, angle, speed, generation = 0) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+        this.generation = generation;
+        
+        this.life = 1;
+        this.decay = 0.02 + Math.random() * 0.03;
+        this.size = (3 - generation) * (1 + Math.random());
+        
+        // Color: white-yellow-orange spectrum
+        this.hue = 45 + Math.random() * 20;
+        this.brightness = 90 + Math.random() * 10;
+        
+        // Gravity and friction
+        this.gravity = 0.15;
+        this.friction = 0.98;
+        
+        // Trail
+        this.trail = [];
+        this.maxTrail = 8;
+      }
+      
+      update() {
+        // Store trail
+        this.trail.push({ x: this.x, y: this.y, life: this.life });
+        if (this.trail.length > this.maxTrail) {
+          this.trail.shift();
+        }
+        
+        // Physics
+        this.vy += this.gravity;
+        this.vx *= this.friction;
+        this.vy *= this.friction;
+        
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // Decay
+        this.life -= this.decay;
+        
+        // Maybe spawn child sparks
+        if (this.generation < 2 && this.life > 0.3 && Math.random() < 0.02) {
+          const angle = Math.atan2(this.vy, this.vx) + (Math.random() - 0.5) * Math.PI;
+          const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy) * 0.6;
+          sparks.push(new Spark(this.x, this.y, angle, speed, this.generation + 1));
+        }
+        
+        return this.life > 0;
+      }
+      
+      draw(ctx) {
+        // Trail
+        for (let i = 0; i < this.trail.length; i++) {
+          const t = this.trail[i];
+          const alpha = (i / this.trail.length) * t.life * 0.4;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, this.size * 0.5 * (i / this.trail.length), 0, Math.PI * 2);
+          ctx.fillStyle = `hsla(${this.hue}, 100%, ${this.brightness}%, ${alpha})`;
+          ctx.fill();
+        }
+        
+        // Core
+        const alpha = this.life;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${this.hue}, 100%, ${this.brightness}%, ${alpha})`;
+        ctx.fill();
+        
+        // Bright center
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * this.life * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(60, 100%, 100%, ${alpha * 0.8})`;
+        ctx.fill();
+        
+        // Glow
+        const gradient = ctx.createRadialGradient(
+          this.x, this.y, 0,
+          this.x, this.y, this.size * 4
+        );
+        gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${alpha * 0.3})`);
+        gradient.addColorStop(1, 'transparent');
+        
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 4, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
+    }
+    
+    // Glow — residual warmth where sparks were dense
+    class Glow {
+      constructor(x, y, intensity) {
+        this.x = x;
+        this.y = y;
+        this.intensity = intensity;
+        this.size = 30 + Math.random() * 40;
+        this.decay = 0.005 + Math.random() * 0.005;
+      }
+      
+      update() {
+        this.intensity -= this.decay;
+        return this.intensity > 0;
+      }
+      
+      draw(ctx) {
+        const gradient = ctx.createRadialGradient(
+          this.x, this.y, 0,
+          this.x, this.y, this.size
+        );
+        gradient.addColorStop(0, `rgba(255, 150, 50, ${this.intensity * 0.1})`);
+        gradient.addColorStop(0.5, `rgba(255, 100, 30, ${this.intensity * 0.05})`);
+        gradient.addColorStop(1, 'transparent');
+        
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
+    }
+    
+    // Strike — create a burst of sparks
+    function strike(x, y) {
+      strikeCount++;
+      
+      // Hide hint after first strike
+      if (strikeCount === 1) {
+        hint.style.opacity = '0';
+      }
+      
+      // Number of sparks varies
+      const count = 15 + Math.floor(Math.random() * 25);
+      
+      // Initial burst
+      for (let i = 0; i < count; i++) {
+        // Spray pattern — mostly upward and outward
+        const baseAngle = -Math.PI / 2; // up
+        const spread = Math.PI * 0.8;
+        const angle = baseAngle + (Math.random() - 0.5) * spread;
+        const speed = 3 + Math.random() * 8;
+        
+        sparks.push(new Spark(x, y, angle, speed, 0));
+      }
+      
+      // Central flash
+      glows.push(new Glow(x, y, 0.8));
+      
+      // Sometimes sparks catch — create persistent glow
+      if (Math.random() < 0.3) {
+        setTimeout(() => {
+          if (Math.random() < 0.5) {
+            // A small ember lingers
+            glows.push(new Glow(
+              x + (Math.random() - 0.5) * 40,
+              y + Math.random() * 30,
+              0.4 + Math.random() * 0.3
+            ));
+          }
+        }, 500 + Math.random() * 500);
+      }
+    }
+    
+    // Central strike point visualization
+    function drawStrikePoint(ctx) {
+      const centerX = width / 2;
+      const centerY = height * 0.7;
+      
+      // Subtle indicator where strikes originate naturally
+      const time = Date.now() / 1000;
+      const pulse = Math.sin(time * 2) * 0.3 + 0.7;
+      
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(80, 70, 60, ${0.1 * pulse})`;
+      ctx.fill();
+    }
+    
+    // Ambient: occasional spontaneous micro-spark
+    function ambientSpark() {
+      if (Math.random() < 0.005) {
+        const x = width * 0.3 + Math.random() * width * 0.4;
+        const y = height * 0.5 + Math.random() * height * 0.3;
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+        const speed = 1 + Math.random() * 2;
+        
+        sparks.push(new Spark(x, y, angle, speed, 1));
+      }
+    }
+    
+    function animate() {
+      // Fade trails
+      ctx.fillStyle = 'rgba(5, 5, 8, 0.15)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw glows (behind sparks)
+      glows = glows.filter(g => g.update());
+      glows.forEach(g => g.draw(ctx));
+      
+      // Update and draw sparks
+      sparks = sparks.filter(s => s.update());
+      sparks.forEach(s => s.draw(ctx));
+      
+      // Ambient
+      ambientSpark();
+      
+      // Strike point
+      drawStrikePoint(ctx);
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Interaction
+    canvas.addEventListener('click', (e) => {
+      strike(e.clientX, e.clientY);
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      strike(touch.clientX, touch.clientY);
+    });
+    
+    // Drag to scatter sparks
+    let isDragging = false;
+    let lastDrag = 0;
+    
+    canvas.addEventListener('mousedown', () => { isDragging = true; });
+    canvas.addEventListener('mouseup', () => { isDragging = false; });
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const now = Date.now();
+        if (now - lastDrag > 50) {
+          lastDrag = now;
+          // Smaller strikes while dragging
+          const count = 3 + Math.floor(Math.random() * 5);
+          for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 2 + Math.random() * 4;
+            sparks.push(new Spark(e.clientX, e.clientY, angle, speed, 1));
+          }
+        }
+      }
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const now = Date.now();
+      if (now - lastDrag > 50) {
+        lastDrag = now;
+        const count = 3 + Math.floor(Math.random() * 5);
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 2 + Math.random() * 4;
+          sparks.push(new Spark(touch.clientX, touch.clientY, angle, speed, 1));
+        }
+      }
+    });
+    
+    animate();
+    
+    // Something might catch.
+    // Most sparks don't become fire.
+    // That doesn't make them less beautiful.
+    
+  </script>
+</body>
+</html>
