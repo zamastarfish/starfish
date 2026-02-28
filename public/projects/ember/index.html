@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ember</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0805;
+    }
+    
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    // A fire dying.
+    // Still warm. Still beautiful.
+    // But ending.
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let embers = [];
+    let ash = [];
+    let sessionStart = Date.now();
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Ember class
+    class Ember {
+      constructor(x, y, size) {
+        this.x = x;
+        this.y = y;
+        this.size = size || 2 + Math.random() * 4;
+        this.maxSize = this.size;
+        
+        // Life cycle
+        this.birth = Date.now();
+        this.lifespan = 8000 + Math.random() * 20000; // 8-28 seconds
+        
+        // Glow properties
+        this.baseHue = 15 + Math.random() * 25; // orange to red
+        this.intensity = 0.6 + Math.random() * 0.4;
+        this.pulseSpeed = 0.5 + Math.random() * 2;
+        this.pulseOffset = Math.random() * Math.PI * 2;
+        
+        // Drift
+        this.driftX = (Math.random() - 0.5) * 0.3;
+        this.driftY = -Math.random() * 0.2 - 0.05;
+        
+        // Occasional flicker
+        this.flickerChance = 0.002;
+        this.isFlickering = false;
+        this.flickerIntensity = 1;
+      }
+      
+      update(elapsed) {
+        const age = Date.now() - this.birth;
+        const life = age / this.lifespan;
+        
+        if (life >= 1) {
+          return false; // dead
+        }
+        
+        // Slow drift
+        this.x += this.driftX;
+        this.y += this.driftY;
+        
+        // Size decreases over life
+        this.size = this.maxSize * (1 - life * 0.7);
+        
+        // Intensity fades
+        this.intensity = (0.6 + Math.random() * 0.4) * (1 - life * 0.8);
+        
+        // Random flickers
+        if (Math.random() < this.flickerChance) {
+          this.isFlickering = true;
+          this.flickerIntensity = 1.5 + Math.random() * 1;
+          setTimeout(() => {
+            this.isFlickering = false;
+            this.flickerIntensity = 1;
+          }, 100 + Math.random() * 200);
+        }
+        
+        return true;
+      }
+      
+      draw(ctx, time) {
+        const age = Date.now() - this.birth;
+        const life = age / this.lifespan;
+        
+        // Pulse
+        const pulse = Math.sin(time * this.pulseSpeed + this.pulseOffset) * 0.3 + 0.7;
+        const glow = this.intensity * pulse * this.flickerIntensity;
+        
+        // Color shifts toward darker red as it dies
+        const hue = this.baseHue - life * 10;
+        const sat = 100 - life * 20;
+        const light = 50 * glow;
+        
+        // Core
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${hue}, ${sat}%, ${light}%, ${glow})`;
+        ctx.fill();
+        
+        // Inner glow
+        const innerGradient = ctx.createRadialGradient(
+          this.x, this.y, 0,
+          this.x, this.y, this.size * 3
+        );
+        innerGradient.addColorStop(0, `hsla(${hue + 10}, ${sat}%, ${light + 20}%, ${glow * 0.5})`);
+        innerGradient.addColorStop(0.5, `hsla(${hue}, ${sat}%, ${light}%, ${glow * 0.2})`);
+        innerGradient.addColorStop(1, 'transparent');
+        
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+        ctx.fillStyle = innerGradient;
+        ctx.fill();
+        
+        // Outer glow
+        const outerGradient = ctx.createRadialGradient(
+          this.x, this.y, 0,
+          this.x, this.y, this.size * 8
+        );
+        outerGradient.addColorStop(0, `hsla(${hue}, ${sat}%, ${light}%, ${glow * 0.15})`);
+        outerGradient.addColorStop(1, 'transparent');
+        
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 8, 0, Math.PI * 2);
+        ctx.fillStyle = outerGradient;
+        ctx.fill();
+      }
+    }
+    
+    // Ash particle
+    class Ash {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = 1 + Math.random() * 2;
+        this.opacity = 0.1 + Math.random() * 0.2;
+        this.settled = false;
+        this.vy = 0.2 + Math.random() * 0.5;
+        this.vx = (Math.random() - 0.5) * 0.3;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+      }
+      
+      update() {
+        if (!this.settled) {
+          this.y += this.vy;
+          this.x += this.vx;
+          this.rotation += this.rotationSpeed;
+          
+          // Settle near bottom
+          if (this.y > height * 0.85) {
+            this.settled = true;
+            this.y = height * 0.85 + Math.random() * height * 0.1;
+          }
+        }
+        
+        // Slowly fade
+        this.opacity *= 0.9999;
+        
+        return this.opacity > 0.01;
+      }
+      
+      draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.fillStyle = `rgba(40, 35, 30, ${this.opacity})`;
+        ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size * 0.6);
+        ctx.restore();
+      }
+    }
+    
+    // Initialize with some embers
+    function createInitialEmbers() {
+      const centerX = width / 2;
+      const centerY = height * 0.7;
+      const spread = Math.min(width, height) * 0.15;
+      
+      // Start with a modest cluster
+      const count = 15 + Math.floor(Math.random() * 10);
+      
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * spread;
+        const x = centerX + Math.cos(angle) * dist;
+        const y = centerY + Math.sin(angle) * dist * 0.5; // flattened
+        embers.push(new Ember(x, y));
+      }
+    }
+    
+    // Occasionally spawn new ember (less over time)
+    function maybeSpawnEmber(elapsed) {
+      // Spawn rate decreases over time
+      const minutesElapsed = elapsed / 60000;
+      const spawnChance = Math.max(0.001, 0.015 - minutesElapsed * 0.001);
+      
+      if (Math.random() < spawnChance && embers.length < 40) {
+        const centerX = width / 2;
+        const centerY = height * 0.7;
+        const spread = Math.min(width, height) * 0.12;
+        
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * spread;
+        const x = centerX + Math.cos(angle) * dist;
+        const y = centerY + Math.sin(angle) * dist * 0.4;
+        
+        embers.push(new Ember(x, y, 1 + Math.random() * 3));
+      }
+    }
+    
+    // Occasionally create ash from dying embers
+    function maybeCreateAsh() {
+      if (Math.random() < 0.02 && ash.length < 100) {
+        const centerX = width / 2;
+        const centerY = height * 0.7;
+        const spread = Math.min(width, height) * 0.1;
+        
+        const x = centerX + (Math.random() - 0.5) * spread * 2;
+        const y = centerY + (Math.random() - 0.5) * spread;
+        
+        ash.push(new Ash(x, y));
+      }
+    }
+    
+    // Draw the ember bed base
+    function drawEmberBed(time, elapsed) {
+      const centerX = width / 2;
+      const centerY = height * 0.72;
+      const bedWidth = Math.min(width * 0.35, 200);
+      const bedHeight = 20;
+      
+      // Intensity decreases over time
+      const minutesElapsed = elapsed / 60000;
+      const baseIntensity = Math.max(0.1, 1 - minutesElapsed * 0.05);
+      
+      // Subtle glow underneath
+      const pulse = Math.sin(time * 0.5) * 0.1 + 0.9;
+      const glowIntensity = baseIntensity * pulse;
+      
+      const gradient = ctx.createRadialGradient(
+        centerX, centerY, 0,
+        centerX, centerY, bedWidth
+      );
+      gradient.addColorStop(0, `rgba(80, 30, 10, ${glowIntensity * 0.3})`);
+      gradient.addColorStop(0.5, `rgba(40, 15, 5, ${glowIntensity * 0.15})`);
+      gradient.addColorStop(1, 'transparent');
+      
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, centerY - bedWidth, width, bedWidth * 2);
+    }
+    
+    // Ambient warmth on the whole scene
+    function drawAmbientWarmth(elapsed) {
+      const minutesElapsed = elapsed / 60000;
+      const warmth = Math.max(0.02, 0.08 - minutesElapsed * 0.005);
+      
+      const gradient = ctx.createRadialGradient(
+        width / 2, height * 0.7, 0,
+        width / 2, height * 0.7, Math.max(width, height) * 0.8
+      );
+      gradient.addColorStop(0, `rgba(255, 100, 50, ${warmth})`);
+      gradient.addColorStop(0.5, `rgba(100, 30, 10, ${warmth * 0.3})`);
+      gradient.addColorStop(1, 'transparent');
+      
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+    }
+    
+    function animate() {
+      const elapsed = Date.now() - sessionStart;
+      const time = elapsed / 1000;
+      
+      // Clear with dark background
+      ctx.fillStyle = '#0a0805';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Ambient warmth
+      drawAmbientWarmth(elapsed);
+      
+      // Ember bed
+      drawEmberBed(time, elapsed);
+      
+      // Update and draw ash
+      ash = ash.filter(a => a.update());
+      ash.forEach(a => a.draw(ctx));
+      
+      // Update and draw embers
+      embers = embers.filter(e => e.update(elapsed));
+      embers.forEach(e => e.draw(ctx, time));
+      
+      // Spawn new elements
+      maybeSpawnEmber(elapsed);
+      maybeCreateAsh();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Interaction: blowing on embers
+    let lastInteraction = 0;
+    canvas.addEventListener('click', (e) => {
+      const now = Date.now();
+      if (now - lastInteraction < 500) return;
+      lastInteraction = now;
+      
+      // Brief flare
+      embers.forEach(ember => {
+        const dx = e.clientX - ember.x;
+        const dy = e.clientY - ember.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < 150) {
+          ember.isFlickering = true;
+          ember.flickerIntensity = 1.5 + (1 - dist / 150);
+          
+          // Slight drift away from click
+          ember.driftX += (ember.x - e.clientX) * 0.002;
+          ember.driftY += (ember.y - e.clientY) * 0.001 - 0.1;
+          
+          setTimeout(() => {
+            ember.isFlickering = false;
+            ember.flickerIntensity = 1;
+          }, 200 + Math.random() * 300);
+        }
+      });
+      
+      // Stir up some ash
+      for (let i = 0; i < 3; i++) {
+        ash.push(new Ash(
+          e.clientX + (Math.random() - 0.5) * 50,
+          e.clientY + (Math.random() - 0.5) * 30
+        ));
+      }
+    });
+    
+    // Touch support
+    canvas.addEventListener('touchstart', (e) => {
+      const touch = e.touches[0];
+      canvas.dispatchEvent(new MouseEvent('click', {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      }));
+    });
+    
+    createInitialEmbers();
+    animate();
+    
+    // Over a very long time, the fire dies completely
+    // That's not a bug. That's the point.
+    
+  </script>
+</body>
+</html>
