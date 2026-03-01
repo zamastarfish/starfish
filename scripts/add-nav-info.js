@@ -249,6 +249,8 @@ const projectInfo = {
 
 // CSS for nav and modal
 const navCSS = `
+    /* Ensure canvas is properly layered */
+    canvas { position: relative; z-index: 1; }
     /* Navigation */
     .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
     .sf-nav a, .sf-nav button { 
