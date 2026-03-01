@@ -1,6 +1,70 @@
 export default function Home() {
   const projects = [
-    // === NEW: Motif Series (p5.js) ===
+    // === NEW: Weird Motifs (starfish-interact.js) ===
+    {
+      name: "Decay: Bloom",
+      description: "Flowers that rot when you stare too long. Dwell time determines flourish or decay",
+      date: "Mar 2026",
+      href: "/projects/decay-bloom/",
+      series: "decay"
+    },
+    {
+      name: "Decay: Signal",
+      description: "A degrading transmission. Drag to fight entropy — but entropy always wins",
+      date: "Mar 2026",
+      href: "/projects/decay-signal/",
+      series: "decay"
+    },
+    {
+      name: "Decay: Memory",
+      description: "Words that fade as you read them. Observation degrades what it touches",
+      date: "Mar 2026",
+      href: "/projects/decay-memory/",
+      series: "decay"
+    },
+    {
+      name: "Liminal: Door",
+      description: "A doorway you can never quite cross. Drag to shift the threshold",
+      date: "Mar 2026",
+      href: "/projects/liminal-door/",
+      series: "liminal"
+    },
+    {
+      name: "Liminal: Static",
+      description: "TV noise that almost resolves into shapes. Hold still to see them",
+      date: "Mar 2026",
+      href: "/projects/liminal-static/",
+      series: "liminal"
+    },
+    {
+      name: "Liminal: Hour",
+      description: "3AM. Things at the edge of vision. Move to look, but they're always just out of sight",
+      date: "Mar 2026",
+      href: "/projects/liminal-hour/",
+      series: "liminal"
+    },
+    {
+      name: "Tension: String",
+      description: "Strings pulled taut. Drag vertically to increase tension. They want to snap",
+      date: "Mar 2026",
+      href: "/projects/tension-string/",
+      series: "tension"
+    },
+    {
+      name: "Tension: Surface",
+      description: "Water surface tension. Press and hold to push. Push too hard, it breaks",
+      date: "Mar 2026",
+      href: "/projects/tension-surface/",
+      series: "tension"
+    },
+    {
+      name: "Tension: Crowd",
+      description: "Particles that want to escape but can't. Your presence creates pressure",
+      date: "Mar 2026",
+      href: "/projects/tension-crowd/",
+      series: "tension"
+    },
+    // === Motif Series (p5.js) ===
     {
       name: "Bauhaus: Grid",
       description: "Compositional study with geometric primitives. Primary colors, negative space, click to regenerate",
