@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>liminal — door</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    .back-btn { position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.15); text-decoration: none; font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1; }
+    .back-btn:hover { color: rgba(255,255,255,0.5); }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0c0c10; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  
+  <script type="module">
+    import { createInteraction } from '../../lib/starfish-interact.js';
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const input = createInteraction(canvas);
+    
+    let width, height;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Door state
+    let threshold = 0.5; // 0 = fully here, 1 = fully there
+    let targetThreshold = 0.5;
+    let doorOpenness = 0.3;
+    let flickerTime = 0;
+    
+    // Particles that drift between spaces
+    let particles = [];
+    
+    class LiminalParticle {
+      constructor() {
+        this.reset();
+      }
+      
+      reset() {
+        this.x = Math.random() * width;
+        this.y = Math.random() * height;
+        this.size = 1 + Math.random() * 2;
+        this.speed = 0.2 + Math.random() * 0.5;
+        this.drift = (Math.random() - 0.5) * 0.3;
+        this.space = Math.random(); // which space it belongs to (0-1)
+      }
+      
+      update() {
+        // Drift toward door
+        const doorX = width / 2;
+        const dx = doorX - this.x;
+        this.x += dx * 0.001 + this.drift;
+        this.y += (Math.random() - 0.5) * this.speed;
+        
+        // Wrap
+        if (this.y < 0) this.y = height;
+        if (this.y > height) this.y = 0;
+        if (this.x < 0 || this.x > width) this.reset();
+      }
+      
+      draw(ctx, threshold) {
+        // Visibility depends on which space we're viewing
+        const visibility = 1 - Math.abs(this.space - threshold);
+        if (visibility < 0.2) return;
+        
+        const alpha = visibility * 0.5;
+        ctx.fillStyle = `rgba(200, 200, 220, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    // Initialize particles
+    for (let i = 0; i < 100; i++) {
+      particles.push(new LiminalParticle());
+    }
+    
+    function drawDoor(ctx, openness, threshold) {
+      const cx = width / 2;
+      const cy = height / 2;
+      const doorWidth = Math.min(width * 0.3, 200);
+      const doorHeight = Math.min(height * 0.7, 400);
+      
+      // Door frame
+      ctx.strokeStyle = `rgba(60, 60, 70, ${0.5 + threshold * 0.3})`;
+      ctx.lineWidth = 8;
+      ctx.strokeRect(cx - doorWidth/2 - 10, cy - doorHeight/2 - 10, doorWidth + 20, doorHeight + 20);
+      
+      // The space beyond (shifts with threshold)
+      const beyondHue = 200 + threshold * 60;
+      const beyondLight = 5 + threshold * 10;
+      ctx.fillStyle = `hsl(${beyondHue}, 20%, ${beyondLight}%)`;
+      ctx.fillRect(cx - doorWidth/2, cy - doorHeight/2, doorWidth, doorHeight);
+      
+      // Light from beyond
+      const gradient = ctx.createRadialGradient(
+        cx, cy - doorHeight * 0.2, 0,
+        cx, cy, doorHeight * 0.8
+      );
+      gradient.addColorStop(0, `rgba(${150 + threshold * 50}, ${150 + threshold * 30}, ${200}, ${0.1 + openness * 0.2})`);
+      gradient.addColorStop(1, 'transparent');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(cx - doorWidth/2, cy - doorHeight/2, doorWidth, doorHeight);
+      
+      // Door panels (left and right, opening)
+      const panelOffset = openness * doorWidth * 0.4;
+      
+      // Left panel
+      ctx.fillStyle = `hsl(30, 10%, ${15 - threshold * 5}%)`;
+      ctx.beginPath();
+      ctx.moveTo(cx - doorWidth/2, cy - doorHeight/2);
+      ctx.lineTo(cx - doorWidth/2 + panelOffset, cy - doorHeight/2);
+      ctx.lineTo(cx - doorWidth/2 + panelOffset * 0.7, cy + doorHeight/2);
+      ctx.lineTo(cx - doorWidth/2, cy + doorHeight/2);
+      ctx.fill();
+      
+      // Right panel
+      ctx.beginPath();
+      ctx.moveTo(cx + doorWidth/2, cy - doorHeight/2);
+      ctx.lineTo(cx + doorWidth/2 - panelOffset, cy - doorHeight/2);
+      ctx.lineTo(cx + doorWidth/2 - panelOffset * 0.7, cy + doorHeight/2);
+      ctx.lineTo(cx + doorWidth/2, cy + doorHeight/2);
+      ctx.fill();
+      
+      // Threshold line (the liminal edge)
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 + Math.sin(flickerTime) * 0.05})`;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(cx - doorWidth/2, cy + doorHeight/2);
+      ctx.lineTo(cx + doorWidth/2, cy + doorHeight/2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    
+    function animate() {
+      flickerTime += 0.05;
+      
+      // Background shifts between spaces
+      const bgHue = 220 + threshold * 30;
+      ctx.fillStyle = `hsl(${bgHue}, 15%, ${6 + threshold * 4}%)`;
+      ctx.fillRect(0, 0, width, height);
+      
+      input.tick();
+      
+      // Dragging shifts threshold
+      if (input.isDragging) {
+        targetThreshold = input.x;
+        // Velocity affects door openness
+        doorOpenness = Math.min(0.9, doorOpenness + input.velocity * 0.01);
+      } else {
+        // Slowly drift back to middle (you can never fully cross)
+        targetThreshold += (0.5 - targetThreshold) * 0.01;
+        doorOpenness *= 0.98;
+        doorOpenness = Math.max(0.2, doorOpenness);
+      }
+      
+      // Smooth threshold
+      threshold += (targetThreshold - threshold) * 0.05;
+      threshold = Math.max(0.1, Math.min(0.9, threshold)); // Can never fully reach either side
+      
+      // Update and draw particles
+      particles.forEach(p => {
+        p.update();
+        p.draw(ctx, threshold);
+      });
+      
+      // Draw door
+      drawDoor(ctx, doorOpenness, threshold);
+      
+      // Vignette
+      const vignette = ctx.createRadialGradient(
+        width/2, height/2, height * 0.3,
+        width/2, height/2, height * 0.8
+      );
+      vignette.addColorStop(0, 'transparent');
+      vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Flicker
+      if (Math.random() < 0.02) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.02})`;
+        ctx.fillRect(0, 0, width, height);
+      }
+      
+      requestAnimationFrame(animate);
+    }
+    
+    animate();
+  </script>
+</body>
+</html>

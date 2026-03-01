@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>decay — bloom</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    .back-btn { position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.15); text-decoration: none; font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1; }
+    .back-btn:hover { color: rgba(255,255,255,0.5); }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0808; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  
+  <script type="module">
+    import { createInteraction } from '../../lib/starfish-interact.js';
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const input = createInteraction(canvas);
+    
+    let width, height;
+    let flowers = [];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    class Flower {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.petals = 5 + Math.floor(Math.random() * 4);
+        this.size = 0;
+        this.maxSize = 30 + Math.random() * 40;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.01;
+        
+        // Life cycle: 0 = seed, 1 = full bloom, 2 = decayed
+        this.life = 0;
+        this.state = 'growing'; // growing, blooming, decaying, dead
+        this.decay = 0; // 0-1, how decayed
+        
+        // Colors
+        this.hue = Math.random() * 60 + 320; // pinks and reds
+        this.saturation = 60 + Math.random() * 30;
+        
+        // Stem
+        this.stemHeight = 50 + Math.random() * 80;
+        this.stemCurve = (Math.random() - 0.5) * 30;
+      }
+      
+      update(nearCursor, dwellTime) {
+        this.rotation += this.rotationSpeed;
+        
+        // Proximity to cursor affects growth/decay
+        if (nearCursor) {
+          // Long dwell = decay (neglect breeds rot)
+          // Short/active = growth (attention nurtures)
+          if (dwellTime > 2000) {
+            // Stagnant attention causes decay
+            this.decay += 0.002;
+            if (this.state === 'blooming') this.state = 'decaying';
+          } else if (this.state === 'growing' || this.state === 'blooming') {
+            // Active attention nurtures
+            this.life = Math.min(1, this.life + 0.01);
+            this.size = this.life * this.maxSize;
+            if (this.life > 0.8) this.state = 'blooming';
+          }
+        } else {
+          // Slow natural growth when unobserved
+          if (this.state === 'growing') {
+            this.life = Math.min(0.5, this.life + 0.001);
+            this.size = this.life * this.maxSize;
+          }
+          // Natural slow decay
+          this.decay += 0.0002;
+        }
+        
+        // Decay progression
+        if (this.decay > 1) {
+          this.state = 'dead';
+        }
+        
+        return this.state !== 'dead';
+      }
+      
+      draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        // Draw stem
+        const stemDecay = Math.min(1, this.decay * 1.5);
+        ctx.strokeStyle = `hsl(90, ${40 - stemDecay * 30}%, ${30 - stemDecay * 20}%)`;
+        ctx.lineWidth = 2 - stemDecay;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(this.stemCurve * (1 - stemDecay * 0.5), this.stemHeight * 0.5, 0, this.stemHeight);
+        ctx.stroke();
+        
+        // Draw flower head
+        ctx.translate(0, this.stemHeight);
+        ctx.rotate(this.rotation);
+        
+        const decayedSat = this.saturation * (1 - this.decay * 0.7);
+        const decayedLight = 50 - this.decay * 30;
+        
+        // Petals
+        for (let i = 0; i < this.petals; i++) {
+          const angle = (Math.PI * 2 / this.petals) * i;
+          const petalDecay = Math.random() * this.decay * 0.3;
+          
+          ctx.save();
+          ctx.rotate(angle);
+          
+          // Petal distortion from decay
+          const distort = this.decay * 10 * (Math.random() - 0.5);
+          
+          ctx.fillStyle = `hsla(${this.hue + this.decay * -30}, ${decayedSat}%, ${decayedLight}%, ${1 - petalDecay})`;
+          ctx.beginPath();
+          ctx.ellipse(
+            distort, 
+            -this.size * 0.6 * (1 - petalDecay * 0.5), 
+            this.size * 0.3 * (1 - this.decay * 0.2), 
+            this.size * 0.5 * (1 - petalDecay * 0.3), 
+            petalDecay * 0.5, 
+            0, 
+            Math.PI * 2
+          );
+          ctx.fill();
+          
+          ctx.restore();
+        }
+        
+        // Center
+        ctx.fillStyle = `hsl(45, ${60 - this.decay * 40}%, ${40 - this.decay * 20}%)`;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.size * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Decay spots
+        if (this.decay > 0.3) {
+          ctx.fillStyle = `rgba(30, 20, 15, ${this.decay * 0.5})`;
+          for (let i = 0; i < 5; i++) {
+            const spotAngle = Math.random() * Math.PI * 2;
+            const spotDist = Math.random() * this.size * 0.4;
+            const spotSize = Math.random() * this.size * 0.1 * this.decay;
+            ctx.beginPath();
+            ctx.arc(
+              Math.cos(spotAngle) * spotDist,
+              Math.sin(spotAngle) * spotDist,
+              spotSize, 0, Math.PI * 2
+            );
+            ctx.fill();
+          }
+        }
+        
+        ctx.restore();
+      }
+    }
+    
+    // Spawn flowers
+    input.on('tap', ({ rawX, rawY }) => {
+      if (flowers.length < 30) {
+        flowers.push(new Flower(rawX, rawY - 50));
+      }
+    });
+    
+    // Initial flowers
+    for (let i = 0; i < 8; i++) {
+      const f = new Flower(
+        width * 0.2 + Math.random() * width * 0.6,
+        height * 0.3 + Math.random() * height * 0.4
+      );
+      f.life = 0.3 + Math.random() * 0.4;
+      f.size = f.life * f.maxSize;
+      f.state = 'blooming';
+      flowers.push(f);
+    }
+    
+    function animate() {
+      // Fade to dark
+      ctx.fillStyle = 'rgba(10, 8, 8, 0.05)';
+      ctx.fillRect(0, 0, width, height);
+      
+      input.tick();
+      
+      // Update and draw flowers
+      flowers = flowers.filter(flower => {
+        const dx = input.rawX - flower.x;
+        const dy = input.rawY - (flower.y + flower.stemHeight);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const nearCursor = dist < 100;
+        
+        const alive = flower.update(nearCursor, input.dwell);
+        flower.draw(ctx);
+        return alive;
+      });
+      
+      // Spawn new flowers occasionally
+      if (Math.random() < 0.005 && flowers.length < 25) {
+        flowers.push(new Flower(
+          Math.random() * width,
+          height * 0.3 + Math.random() * height * 0.4
+        ));
+      }
+      
+      requestAnimationFrame(animate);
+    }
+    
+    animate();
+  </script>
+</body>
+</html>

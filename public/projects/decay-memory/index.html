@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>decay — memory</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    .back-btn { position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.15); text-decoration: none; font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1; }
+    .back-btn:hover { color: rgba(255,255,255,0.5); }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0a; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  
+  <script type="module">
+    import { createInteraction } from '../../lib/starfish-interact.js';
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const input = createInteraction(canvas);
+    
+    let width, height;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Fragments of memory
+    const phrases = [
+      "the way light fell through the window",
+      "I can almost remember",
+      "your voice saying something important",
+      "the color of that room",
+      "we were laughing about",
+      "it felt like summer",
+      "the smell of rain on concrete",
+      "I think you said",
+      "that song was playing",
+      "before everything changed",
+      "the exact words escape me",
+      "it was Tuesday or maybe",
+      "I keep trying to hold onto",
+      "faces blur at the edges",
+      "was it you or someone else",
+      "the feeling remains but",
+      "details slip like water",
+      "I remember remembering",
+    ];
+    
+    let memories = [];
+    
+    class Memory {
+      constructor(text, x, y) {
+        this.text = text;
+        this.chars = text.split('').map((char, i) => ({
+          char,
+          x: x + i * 14,
+          y: y,
+          opacity: 1,
+          decay: 0,
+          offsetX: 0,
+          offsetY: 0,
+          intact: true
+        }));
+        this.baseX = x;
+        this.baseY = y;
+      }
+      
+      update(cursorX, cursorY) {
+        let allGone = true;
+        
+        this.chars.forEach((c, i) => {
+          if (!c.intact) return;
+          
+          // Distance from cursor
+          const dx = cursorX - c.x;
+          const dy = cursorY - c.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          // Observation causes decay
+          if (dist < 80) {
+            const intensity = 1 - dist / 80;
+            c.decay += intensity * 0.02;
+            
+            // Characters drift
+            c.offsetX += (Math.random() - 0.5) * intensity * 0.5;
+            c.offsetY += (Math.random() - 0.5) * intensity * 0.3;
+          }
+          
+          // Natural slow decay
+          c.decay += 0.0005;
+          
+          // Opacity follows decay
+          c.opacity = Math.max(0, 1 - c.decay);
+          
+          // Character corruption
+          if (c.decay > 0.5 && Math.random() < 0.01) {
+            c.char = String.fromCharCode(c.char.charCodeAt(0) + Math.floor(Math.random() * 5) - 2);
+          }
+          
+          // Character death
+          if (c.decay > 1) {
+            c.intact = false;
+          } else {
+            allGone = false;
+          }
+        });
+        
+        return !allGone;
+      }
+      
+      draw(ctx) {
+        ctx.font = '16px Georgia, serif';
+        
+        this.chars.forEach(c => {
+          if (!c.intact) return;
+          
+          // Color shifts as it decays
+          const hue = 40 - c.decay * 40;
+          const sat = 10 + c.decay * 20;
+          const light = 70 - c.decay * 30;
+          
+          ctx.fillStyle = `hsla(${hue}, ${sat}%, ${light}%, ${c.opacity})`;
+          ctx.fillText(c.char, c.x + c.offsetX, c.y + c.offsetY);
+          
+          // Ghost echo
+          if (c.decay > 0.3) {
+            ctx.fillStyle = `hsla(${hue}, ${sat}%, ${light}%, ${c.opacity * 0.2})`;
+            ctx.fillText(c.char, c.x + c.offsetX + 2, c.y + c.offsetY + 2);
+          }
+        });
+      }
+    }
+    
+    function spawnMemory() {
+      const text = phrases[Math.floor(Math.random() * phrases.length)];
+      const x = 50 + Math.random() * (width - 300);
+      const y = 80 + Math.random() * (height - 150);
+      memories.push(new Memory(text, x, y));
+    }
+    
+    // Initial memories
+    for (let i = 0; i < 6; i++) {
+      spawnMemory();
+    }
+    
+    // Track cursor position over time for trailing effect
+    let cursorHistory = [];
+    
+    function animate() {
+      // Subtle fade
+      ctx.fillStyle = 'rgba(10, 10, 10, 0.03)';
+      ctx.fillRect(0, 0, width, height);
+      
+      input.tick();
+      
+      // Update cursor history
+      cursorHistory.push({ x: input.rawX, y: input.rawY });
+      if (cursorHistory.length > 30) cursorHistory.shift();
+      
+      // Update and draw memories
+      memories = memories.filter(m => {
+        // Use cursor history for broader decay field
+        cursorHistory.forEach(pos => {
+          m.update(pos.x, pos.y);
+        });
+        m.draw(ctx);
+        return m.chars.some(c => c.intact);
+      });
+      
+      // Spawn new memories
+      if (Math.random() < 0.008 && memories.length < 10) {
+        spawnMemory();
+      }
+      
+      // Cursor glow (the observer)
+      const gradient = ctx.createRadialGradient(
+        input.rawX, input.rawY, 0,
+        input.rawX, input.rawY, 60
+      );
+      gradient.addColorStop(0, 'rgba(255, 220, 180, 0.03)');
+      gradient.addColorStop(1, 'transparent');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(input.rawX, input.rawY, 60, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Instruction (also fades)
+      ctx.fillStyle = 'rgba(100, 100, 100, 0.2)';
+      ctx.font = '11px monospace';
+      ctx.fillText('observation degrades what it touches', 20, height - 20);
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Tap spawns new memory
+    input.on('tap', () => {
+      if (memories.length < 12) {
+        spawnMemory();
+      }
+    });
+    
+    animate();
+  </script>
+</body>
+</html>

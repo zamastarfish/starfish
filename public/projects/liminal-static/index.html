@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>liminal — static</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    .back-btn { position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.15); text-decoration: none; font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1; }
+    .back-btn:hover { color: rgba(255,255,255,0.5); }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #111; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  
+  <script type="module">
+    import { createInteraction } from '../../lib/starfish-interact.js';
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const input = createInteraction(canvas);
+    
+    let width, height;
+    let imageData;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      imageData = ctx.createImageData(width, height);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Hidden shapes that almost appear
+    const shapes = [
+      { type: 'face', x: 0.3, y: 0.4, size: 0.15 },
+      { type: 'figure', x: 0.7, y: 0.5, size: 0.2 },
+      { type: 'text', x: 0.5, y: 0.7, size: 0.1 },
+    ];
+    
+    // Check if point is inside a shape
+    function getShapeInfluence(px, py, clarity) {
+      let influence = 0;
+      
+      shapes.forEach(shape => {
+        const sx = shape.x * width;
+        const sy = shape.y * height;
+        const size = shape.size * Math.min(width, height);
+        
+        const dx = px - sx;
+        const dy = py - sy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < size) {
+          let shapeValue = 0;
+          
+          if (shape.type === 'face') {
+            // Circular face shape
+            const normalDist = dist / size;
+            shapeValue = normalDist < 0.8 ? 0.7 : 0;
+            // Eyes
+            const eyeY = sy - size * 0.2;
+            const leftEyeX = sx - size * 0.25;
+            const rightEyeX = sx + size * 0.25;
+            const eyeSize = size * 0.1;
+            if (Math.hypot(px - leftEyeX, py - eyeY) < eyeSize ||
+                Math.hypot(px - rightEyeX, py - eyeY) < eyeSize) {
+              shapeValue = 0.2;
+            }
+          } else if (shape.type === 'figure') {
+            // Standing figure
+            const relX = (px - sx) / size;
+            const relY = (py - sy) / size;
+            // Head
+            if (Math.hypot(relX, relY + 0.6) < 0.15) shapeValue = 0.6;
+            // Body
+            if (Math.abs(relX) < 0.15 && relY > -0.4 && relY < 0.5) shapeValue = 0.5;
+          } else if (shape.type === 'text') {
+            // Horizontal band
+            const relY = (py - sy) / size;
+            if (Math.abs(relY) < 0.3) shapeValue = 0.4;
+          }
+          
+          influence = Math.max(influence, shapeValue * clarity);
+        }
+      });
+      
+      return influence;
+    }
+    
+    let time = 0;
+    let smoothClarity = 0;
+    
+    function animate() {
+      time += 1;
+      input.tick();
+      
+      // Stillness brings clarity, movement disrupts
+      const targetClarity = Math.max(0, 0.8 - input.velocity * 0.1);
+      smoothClarity += (targetClarity - smoothClarity) * 0.05;
+      
+      // Dwell increases clarity further
+      const dwellBonus = Math.min(0.3, input.dwell / 5000);
+      const clarity = Math.min(0.9, smoothClarity + dwellBonus);
+      
+      const data = imageData.data;
+      
+      // Generate static with embedded shapes
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          
+          // Base static
+          let noise = Math.random();
+          
+          // Shape influence
+          const shapeInfluence = getShapeInfluence(x, y, clarity);
+          
+          // Blend noise toward shape
+          if (shapeInfluence > 0) {
+            // Shape areas are darker
+            noise = noise * (1 - shapeInfluence * 0.7) + (1 - shapeInfluence) * shapeInfluence;
+          }
+          
+          // Scanline effect
+          const scanline = (y % 3 === 0) ? 0.95 : 1;
+          
+          // Occasional horizontal tear
+          const tear = (Math.random() < 0.001) ? (Math.random() - 0.5) * 50 : 0;
+          
+          const value = Math.floor(noise * 255 * scanline);
+          
+          data[i] = value;     // R
+          data[i + 1] = value; // G
+          data[i + 2] = value + Math.floor(tear); // B (slight color shift on tears)
+          data[i + 3] = 255;   // A
+        }
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+      
+      // CRT curve vignette
+      const gradient = ctx.createRadialGradient(
+        width/2, height/2, 0,
+        width/2, height/2, Math.max(width, height) * 0.7
+      );
+      gradient.addColorStop(0, 'transparent');
+      gradient.addColorStop(0.8, 'rgba(0, 0, 0, 0.3)');
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.8)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Occasional full-screen glitch
+      if (Math.random() < 0.005) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.3})`;
+        ctx.fillRect(0, 0, width, height);
+      }
+      
+      // Horizontal roll
+      if (Math.random() < 0.01) {
+        const rollY = Math.random() * height;
+        const rollHeight = 2 + Math.random() * 5;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(0, rollY, width, rollHeight);
+      }
+      
+      // Status
+      ctx.fillStyle = `rgba(150, 150, 150, 0.3)`;
+      ctx.font = '10px monospace';
+      ctx.fillText(`SIGNAL CLARITY: ${(clarity * 100).toFixed(0)}%`, 20, height - 20);
+      ctx.fillText('hold still to resolve', 20, height - 35);
+      
+      requestAnimationFrame(animate);
+    }
+    
+    animate();
+  </script>
+</body>
+</html>

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>liminal — hour</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    .back-btn { position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.05); text-decoration: none; font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1; }
+    .back-btn:hover { color: rgba(255,255,255,0.3); }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #080810; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  
+  <script type="module">
+    import { createInteraction } from '../../lib/starfish-interact.js';
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const input = createInteraction(canvas);
+    
+    let width, height;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Things at the edge
+    class EdgeThing {
+      constructor() {
+        this.reset();
+      }
+      
+      reset() {
+        // Position relative to current gaze
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 0.3 + Math.random() * 0.4; // Always in peripheral vision
+        this.relativeAngle = angle;
+        this.relativeDist = dist;
+        
+        this.type = Math.random() < 0.6 ? 'shadow' : (Math.random() < 0.5 ? 'figure' : 'shape');
+        this.size = 20 + Math.random() * 60;
+        this.opacity = 0;
+        this.targetOpacity = 0.05 + Math.random() * 0.1;
+        this.fadeSpeed = 0.01 + Math.random() * 0.02;
+        this.lifespan = 3000 + Math.random() * 5000;
+        this.born = Date.now();
+        this.drift = (Math.random() - 0.5) * 0.01;
+      }
+      
+      getPosition(gazeX, gazeY) {
+        const dist = this.relativeDist * Math.min(width, height);
+        return {
+          x: gazeX + Math.cos(this.relativeAngle) * dist,
+          y: gazeY + Math.sin(this.relativeAngle) * dist
+        };
+      }
+      
+      update(gazeX, gazeY, gazeVelocity) {
+        const age = Date.now() - this.born;
+        
+        // Stay in peripheral vision (move with gaze)
+        this.relativeAngle += this.drift;
+        
+        // Fade based on lifecycle
+        const lifeFraction = age / this.lifespan;
+        if (lifeFraction < 0.2) {
+          this.opacity += this.fadeSpeed;
+        } else if (lifeFraction > 0.7) {
+          this.opacity -= this.fadeSpeed;
+        }
+        this.opacity = Math.max(0, Math.min(this.targetOpacity, this.opacity));
+        
+        // Quick movement makes them more visible (glimpsed)
+        if (gazeVelocity > 5) {
+          this.opacity = Math.min(this.targetOpacity * 1.5, this.opacity + 0.02);
+        }
+        
+        return age < this.lifespan;
+      }
+      
+      draw(ctx, gazeX, gazeY) {
+        if (this.opacity < 0.01) return;
+        
+        const pos = this.getPosition(gazeX, gazeY);
+        
+        // Clip to screen
+        if (pos.x < -50 || pos.x > width + 50 || pos.y < -50 || pos.y > height + 50) return;
+        
+        ctx.save();
+        ctx.translate(pos.x, pos.y);
+        ctx.globalAlpha = this.opacity;
+        
+        if (this.type === 'shadow') {
+          // Amorphous shadow
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          for (let i = 0; i < 8; i++) {
+            const angle = (Math.PI * 2 / 8) * i;
+            const r = this.size * (0.7 + Math.sin(Date.now() * 0.001 + i) * 0.3);
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.quadraticCurveTo(
+              Math.cos(angle - 0.3) * r * 1.2,
+              Math.sin(angle - 0.3) * r * 1.2,
+              x, y
+            );
+          }
+          ctx.closePath();
+          ctx.fill();
+          
+        } else if (this.type === 'figure') {
+          // Vaguely humanoid
+          ctx.fillStyle = '#0a0a15';
+          // Head
+          ctx.beginPath();
+          ctx.ellipse(0, -this.size * 0.7, this.size * 0.15, this.size * 0.2, 0, 0, Math.PI * 2);
+          ctx.fill();
+          // Body
+          ctx.fillRect(-this.size * 0.1, -this.size * 0.5, this.size * 0.2, this.size);
+          
+        } else {
+          // Geometric shape
+          ctx.strokeStyle = 'rgba(30, 30, 50, 0.5)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          const sides = 3 + Math.floor(Math.random() * 3);
+          for (let i = 0; i <= sides; i++) {
+            const angle = (Math.PI * 2 / sides) * i - Math.PI / 2;
+            const x = Math.cos(angle) * this.size * 0.5;
+            const y = Math.sin(angle) * this.size * 0.5;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+        
+        ctx.restore();
+      }
+    }
+    
+    let things = [];
+    let gazeX = width / 2;
+    let gazeY = height / 2;
+    
+    // Spawn initial things
+    for (let i = 0; i < 5; i++) {
+      things.push(new EdgeThing());
+    }
+    
+    function animate() {
+      // Very dark background
+      ctx.fillStyle = 'rgba(8, 8, 16, 0.1)';
+      ctx.fillRect(0, 0, width, height);
+      
+      input.tick();
+      
+      // Gaze follows cursor with lag
+      gazeX += (input.rawX - gazeX) * 0.1;
+      gazeY += (input.rawY - gazeY) * 0.1;
+      
+      // Update and draw things
+      things = things.filter(thing => {
+        const alive = thing.update(gazeX, gazeY, input.velocity);
+        thing.draw(ctx, gazeX, gazeY);
+        return alive;
+      });
+      
+      // Spawn new things
+      if (Math.random() < 0.02 && things.length < 8) {
+        things.push(new EdgeThing());
+      }
+      
+      // Ambient darkness particles (dust in moonlight)
+      if (Math.random() < 0.3) {
+        ctx.fillStyle = `rgba(50, 50, 70, ${Math.random() * 0.02})`;
+        ctx.beginPath();
+        ctx.arc(Math.random() * width, Math.random() * height, Math.random() * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Faint glow where looking
+      const glowGradient = ctx.createRadialGradient(gazeX, gazeY, 0, gazeX, gazeY, 150);
+      glowGradient.addColorStop(0, 'rgba(20, 20, 40, 0.03)');
+      glowGradient.addColorStop(1, 'transparent');
+      ctx.fillStyle = glowGradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Time display (always 3:XX AM)
+      const minutes = Math.floor((Date.now() / 1000) % 60);
+      ctx.fillStyle = 'rgba(50, 50, 70, 0.15)';
+      ctx.font = '12px monospace';
+      ctx.fillText(`3:${minutes.toString().padStart(2, '0')} AM`, width - 70, 30);
+      
+      // Heavy vignette
+      const vignette = ctx.createRadialGradient(
+        width/2, height/2, height * 0.2,
+        width/2, height/2, height * 0.8
+      );
+      vignette.addColorStop(0, 'transparent');
+      vignette.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, width, height);
+      
+      requestAnimationFrame(animate);
+    }
+    
+    animate();
+  </script>
+</body>
+</html>

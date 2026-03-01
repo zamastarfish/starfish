@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>tension — crowd</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    .back-btn { position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.15); text-decoration: none; font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1; }
+    .back-btn:hover { color: rgba(255,255,255,0.5); }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0a; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  
+  <script type="module">
+    import { createInteraction } from '../../lib/starfish-interact.js';
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const input = createInteraction(canvas);
+    
+    let width, height;
+    let particles = [];
+    let boundary;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      boundary = Math.min(width, height) * 0.35;
+      initParticles();
+    }
+    
+    function initParticles() {
+      particles = [];
+      const count = 150;
+      const cx = width / 2;
+      const cy = height / 2;
+      
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * boundary * 0.8;
+        particles.push({
+          x: cx + Math.cos(angle) * dist,
+          y: cy + Math.sin(angle) * dist,
+          vx: 0,
+          vy: 0,
+          size: 3 + Math.random() * 4,
+          repulsion: 0.5 + Math.random() * 0.5, // how much they want to escape
+          color: `hsl(${200 + Math.random() * 40}, 60%, 60%)`
+        });
+      }
+    }
+    
+    resize();
+    window.addEventListener('resize', resize);
+    
+    let systemPressure = 0;
+    let boundaryStrain = 0;
+    
+    function animate() {
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, width, height);
+      
+      input.tick();
+      
+      const cx = width / 2;
+      const cy = height / 2;
+      
+      // Cursor proximity increases pressure
+      const cursorDist = Math.sqrt(
+        Math.pow(input.rawX - cx, 2) + 
+        Math.pow(input.rawY - cy, 2)
+      );
+      
+      const cursorInside = cursorDist < boundary;
+      const cursorPressure = cursorInside ? (1 - cursorDist / boundary) * 2 : 0;
+      
+      systemPressure = systemPressure * 0.95 + cursorPressure * 0.05;
+      
+      // Effective boundary shrinks with cursor presence
+      const effectiveBoundary = boundary * (1 - systemPressure * 0.3);
+      
+      // Update particles
+      particles.forEach(p => {
+        // Repulsion from center (they want to escape)
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist > 0) {
+          // Push outward
+          const pushForce = p.repulsion * (0.3 + systemPressure * 0.5);
+          p.vx += (dx / dist) * pushForce;
+          p.vy += (dy / dist) * pushForce;
+        }
+        
+        // Repulsion from cursor
+        if (cursorInside) {
+          const cdx = p.x - input.rawX;
+          const cdy = p.y - input.rawY;
+          const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+          if (cdist < 80 && cdist > 0) {
+            const repel = (1 - cdist / 80) * 2;
+            p.vx += (cdx / cdist) * repel;
+            p.vy += (cdy / cdist) * repel;
+          }
+        }
+        
+        // Repulsion from other particles
+        particles.forEach(other => {
+          if (other === p) return;
+          const odx = p.x - other.x;
+          const ody = p.y - other.y;
+          const odist = Math.sqrt(odx * odx + ody * ody);
+          if (odist < 20 && odist > 0) {
+            const repel = (1 - odist / 20) * 0.3;
+            p.vx += (odx / odist) * repel;
+            p.vy += (ody / odist) * repel;
+          }
+        });
+        
+        // Contain within boundary (they can't escape)
+        if (dist > effectiveBoundary) {
+          // Push back toward center
+          const contain = (dist - effectiveBoundary) * 0.1;
+          p.vx -= (dx / dist) * contain;
+          p.vy -= (dy / dist) * contain;
+          
+          // Track strain
+          boundaryStrain = Math.max(boundaryStrain, dist - effectiveBoundary);
+        }
+        
+        // Apply velocity
+        p.vx *= 0.92;
+        p.vy *= 0.92;
+        p.x += p.vx;
+        p.y += p.vy;
+      });
+      
+      boundaryStrain *= 0.98;
+      
+      // Draw boundary (the container)
+      const strainColor = Math.min(255, boundaryStrain * 5);
+      ctx.strokeStyle = `rgba(${100 + strainColor}, ${150 - strainColor * 0.5}, ${200 - strainColor * 0.5}, ${0.2 + systemPressure * 0.3})`;
+      ctx.lineWidth = 2 + systemPressure * 3;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.arc(cx, cy, effectiveBoundary, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      
+      // Draw stress lines from boundary
+      if (systemPressure > 0.3) {
+        ctx.strokeStyle = `rgba(255, 100, 100, ${systemPressure * 0.3})`;
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 12; i++) {
+          const angle = (Math.PI * 2 / 12) * i + Date.now() * 0.0001;
+          const inner = effectiveBoundary;
+          const outer = effectiveBoundary + systemPressure * 30;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+          ctx.lineTo(cx + Math.cos(angle) * outer, cy + Math.sin(angle) * outer);
+          ctx.stroke();
+        }
+      }
+      
+      // Draw particles
+      particles.forEach(p => {
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const edgeProximity = dist / effectiveBoundary;
+        
+        // Color shifts when near edge (more stressed)
+        const stress = Math.max(0, edgeProximity - 0.7) * 3;
+        
+        ctx.fillStyle = stress > 0.3 
+          ? `rgba(255, ${150 - stress * 100}, ${150 - stress * 100}, ${0.7 + stress * 0.3})`
+          : p.color;
+        
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * (1 + stress * 0.3), 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Velocity trail when moving fast
+        const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        if (speed > 1) {
+          ctx.strokeStyle = `rgba(255, 255, 255, ${speed * 0.05})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x - p.vx * 3, p.y - p.vy * 3);
+          ctx.stroke();
+        }
+      });
+      
+      // Pressure indicator
+      ctx.fillStyle = `rgba(${150 + systemPressure * 100}, ${200 - systemPressure * 100}, 255, 0.5)`;
+      ctx.font = '12px monospace';
+      ctx.fillText(`PRESSURE: ${Math.floor(systemPressure * 100)}%`, 20, 40);
+      
+      if (systemPressure > 0.7) {
+        ctx.fillStyle = `rgba(255, 150, 150, ${0.5 + Math.sin(Date.now() * 0.01) * 0.3})`;
+        ctx.fillText('CRITICAL', 20, 60);
+      }
+      
+      // Instructions
+      ctx.fillStyle = 'rgba(100, 100, 100, 0.3)';
+      ctx.font = '11px monospace';
+      ctx.fillText('enter the boundary', 20, height - 20);
+      
+      requestAnimationFrame(animate);
+    }
+    
+    animate();
+  </script>
+</body>
+</html>

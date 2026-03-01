@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>decay — signal</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    .back-btn { position: fixed; top: 20px; left: 20px; color: rgba(255,255,255,0.15); text-decoration: none; font-size: 24px; z-index: 1000; transition: color 0.3s; line-height: 1; }
+    .back-btn:hover { color: rgba(255,255,255,0.5); }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #050508; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">←</a>
+  <canvas id="canvas"></canvas>
+  
+  <script type="module">
+    import { createInteraction } from '../../lib/starfish-interact.js';
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const input = createInteraction(canvas);
+    
+    let width, height;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Signal state
+    let signalStrength = 1.0;
+    let noiseLevel = 0.1;
+    let frequency = 2;
+    let phase = 0;
+    let corruption = [];
+    
+    // Initialize corruption points
+    function initCorruption() {
+      corruption = [];
+      for (let i = 0; i < 50; i++) {
+        corruption.push({
+          x: Math.random(),
+          intensity: 0,
+          spread: 0.02 + Math.random() * 0.05,
+          growing: Math.random() < 0.5
+        });
+      }
+    }
+    initCorruption();
+    
+    function animate() {
+      ctx.fillStyle = '#050508';
+      ctx.fillRect(0, 0, width, height);
+      
+      input.tick();
+      
+      phase += 0.02;
+      
+      // Dragging fights entropy (temporarily)
+      if (input.isDragging) {
+        // Velocity of drag repairs signal
+        const repair = input.velocity * 0.002;
+        signalStrength = Math.min(1, signalStrength + repair);
+        noiseLevel = Math.max(0.05, noiseLevel - repair * 0.5);
+        
+        // Shrink corruption near cursor
+        const cursorX = input.x;
+        corruption.forEach(c => {
+          const dist = Math.abs(c.x - cursorX);
+          if (dist < 0.1) {
+            c.intensity *= 0.95;
+          }
+        });
+      } else {
+        // Entropy always wins
+        signalStrength *= 0.9995;
+        noiseLevel = Math.min(0.8, noiseLevel + 0.0002);
+        
+        // Corruption grows
+        corruption.forEach(c => {
+          if (c.growing) {
+            c.intensity = Math.min(1, c.intensity + 0.001);
+          }
+          // Random spread
+          if (Math.random() < 0.001) {
+            c.x += (Math.random() - 0.5) * 0.1;
+            c.x = Math.max(0, Math.min(1, c.x));
+          }
+        });
+      }
+      
+      // Draw signal
+      const centerY = height / 2;
+      const amplitude = height * 0.3 * signalStrength;
+      
+      // Main signal
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(100, 200, 255, ${signalStrength})`;
+      ctx.lineWidth = 2;
+      
+      for (let x = 0; x < width; x++) {
+        const t = x / width;
+        
+        // Base wave
+        let y = Math.sin(t * Math.PI * 2 * frequency + phase) * amplitude;
+        
+        // Add noise
+        y += (Math.random() - 0.5) * noiseLevel * amplitude * 2;
+        
+        // Corruption distortion
+        corruption.forEach(c => {
+          const dist = Math.abs(t - c.x);
+          if (dist < c.spread) {
+            const effect = (1 - dist / c.spread) * c.intensity;
+            y += (Math.random() - 0.5) * effect * amplitude * 3;
+            // Glitch offset
+            if (Math.random() < effect * 0.1) {
+              y += (Math.random() - 0.5) * amplitude;
+            }
+          }
+        });
+        
+        if (x === 0) {
+          ctx.moveTo(x, centerY + y);
+        } else {
+          ctx.lineTo(x, centerY + y);
+        }
+      }
+      ctx.stroke();
+      
+      // Ghost signals (echo)
+      for (let echo = 1; echo <= 3; echo++) {
+        ctx.beginPath();
+        ctx.strokeStyle = `rgba(100, 200, 255, ${signalStrength * 0.1 / echo})`;
+        ctx.lineWidth = 1;
+        
+        const echoOffset = echo * 15;
+        
+        for (let x = 0; x < width; x++) {
+          const t = x / width;
+          let y = Math.sin(t * Math.PI * 2 * frequency + phase - echo * 0.2) * amplitude * (1 - echo * 0.2);
+          y += (Math.random() - 0.5) * noiseLevel * amplitude;
+          
+          if (x === 0) {
+            ctx.moveTo(x, centerY + y + echoOffset);
+          } else {
+            ctx.lineTo(x, centerY + y + echoOffset);
+          }
+        }
+        ctx.stroke();
+      }
+      
+      // Corruption visualization (static blocks)
+      corruption.forEach(c => {
+        if (c.intensity > 0.1) {
+          const cx = c.x * width;
+          const cw = c.spread * width * 2;
+          
+          ctx.fillStyle = `rgba(255, 50, 50, ${c.intensity * 0.3})`;
+          
+          // Static blocks
+          for (let i = 0; i < c.intensity * 10; i++) {
+            const bx = cx + (Math.random() - 0.5) * cw;
+            const by = centerY + (Math.random() - 0.5) * amplitude * 2;
+            const bw = Math.random() * 20 * c.intensity;
+            const bh = Math.random() * 10 * c.intensity;
+            
+            if (Math.random() < 0.5) {
+              ctx.fillRect(bx, by, bw, bh);
+            }
+          }
+        }
+      });
+      
+      // Scanlines
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+      for (let y = 0; y < height; y += 3) {
+        ctx.fillRect(0, y, width, 1);
+      }
+      
+      // Status display
+      ctx.fillStyle = `rgba(100, 200, 255, ${0.3 + signalStrength * 0.4})`;
+      ctx.font = '12px monospace';
+      ctx.fillText(`SIGNAL: ${(signalStrength * 100).toFixed(1)}%`, 20, height - 40);
+      ctx.fillText(`NOISE: ${(noiseLevel * 100).toFixed(1)}%`, 20, height - 25);
+      
+      if (signalStrength < 0.3) {
+        ctx.fillStyle = `rgba(255, 100, 100, ${0.5 + Math.sin(Date.now() * 0.01) * 0.3})`;
+        ctx.fillText('SIGNAL DEGRADING — DRAG TO REPAIR', 20, 40);
+      }
+      
+      // If signal nearly dead, occasionally glitch whole screen
+      if (signalStrength < 0.2 && Math.random() < 0.05) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.1})`;
+        ctx.fillRect(0, 0, width, height);
+      }
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Reset on tap
+    input.on('tap', () => {
+      signalStrength = 1.0;
+      noiseLevel = 0.1;
+      initCorruption();
+    });
+    
+    animate();
+  </script>
+</body>
+</html>
