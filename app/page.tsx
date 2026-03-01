@@ -1,5 +1,120 @@
 export default function Home() {
   const projects = [
+    // === NEW: Motif Series (p5.js) ===
+    {
+      name: "Bauhaus: Grid",
+      description: "Compositional study with geometric primitives. Primary colors, negative space, click to regenerate",
+      date: "Feb 2026",
+      href: "/projects/bauhaus-grid/",
+      series: "bauhaus"
+    },
+    {
+      name: "Bauhaus: Balance",
+      description: "Drag shapes to explore visual weight. Watch the center of mass shift. Find equilibrium",
+      date: "Feb 2026",
+      href: "/projects/bauhaus-balance/",
+      series: "bauhaus"
+    },
+    {
+      name: "Bauhaus: Rhythm",
+      description: "Kinetic pattern study. Geometric elements pulsing, rotating, oscillating in phase",
+      date: "Feb 2026",
+      href: "/projects/bauhaus-rhythm/",
+      series: "bauhaus"
+    },
+    {
+      name: "Bauhaus: Color",
+      description: "Albers-inspired color interaction. Same color looks different in context. Click to shift palette",
+      date: "Feb 2026",
+      href: "/projects/bauhaus-color/",
+      series: "bauhaus"
+    },
+    {
+      name: "Nouveau: Vine",
+      description: "Growing organic tendrils. Bezier curves, branching, flowers blooming. Click to plant",
+      date: "Feb 2026",
+      href: "/projects/nouveau-vine/",
+      series: "nouveau"
+    },
+    {
+      name: "Nouveau: Flow",
+      description: "Art Nouveau flow field. Particles tracing organic curves like flowing hair or water",
+      date: "Feb 2026",
+      href: "/projects/nouveau-flow/",
+      series: "nouveau"
+    },
+    {
+      name: "Nouveau: Mucha",
+      description: "Decorative frame generator. Alphonse Mucha-inspired ornamental borders",
+      date: "Feb 2026",
+      href: "/projects/nouveau-mucha/",
+      series: "nouveau"
+    },
+    {
+      name: "Futurism: Velocity",
+      description: "Motion blur and speed trails. Objects racing across the screen. The beauty of velocity",
+      date: "Feb 2026",
+      href: "/projects/futurism-velocity/",
+      series: "futurism"
+    },
+    {
+      name: "Futurism: Fragment",
+      description: "Shattered forms, multiple perspectives. Simultaneity and dynamic fragmentation",
+      date: "Feb 2026",
+      href: "/projects/futurism-fragment/",
+      series: "futurism"
+    },
+    {
+      name: "Futurism: Machine",
+      description: "Industrial rhythm. Gears turning, pistons pumping. The aesthetics of mechanics",
+      date: "Feb 2026",
+      href: "/projects/futurism-machine/",
+      series: "futurism"
+    },
+    // === Library experiments ===
+    {
+      name: "Scatter",
+      description: "Particle burst demo using starfish-core.js. Click to explode, ambient drift in noise field",
+      date: "Feb 2026",
+      href: "/projects/scatter/"
+    },
+    {
+      name: "Drift (p5)",
+      description: "Flow field particles using p5.js. Comparing library approaches",
+      date: "Feb 2026",
+      href: "/projects/drift-p5/"
+    },
+    // === Recent originals ===
+    {
+      name: "間 (Ma)",
+      description: "The space between. Japanese aesthetics — sparse ink marks on paper that slowly fade",
+      date: "Feb 2026",
+      href: "/projects/ma/"
+    },
+    {
+      name: "Spark",
+      description: "The moment before ignition. Click to strike, drag to scatter. Most sparks don't catch",
+      date: "Feb 2026",
+      href: "/projects/spark/"
+    },
+    {
+      name: "Ember",
+      description: "A fire dying. Click to stir the coals. Over time, it goes out. That's the point",
+      date: "Feb 2026",
+      href: "/projects/ember/"
+    },
+    {
+      name: "Room",
+      description: "A quiet space that exists in real time. Lighting shifts with the actual hour",
+      date: "Feb 2026",
+      href: "/projects/room/"
+    },
+    {
+      name: "Wait",
+      description: "A door that might open. Or might not. The experience IS the waiting",
+      date: "Feb 2026",
+      href: "/projects/wait/"
+    },
     {
       name: "Chime",
       description: "Click to create tones. Pentatonic scale — always harmonious. Sound + light rippling outward",
@@ -50,7 +165,7 @@ export default function Home() {
     },
     {
       name: "Erosion",
-      description: "Click to create forms of stone. Watch them slowly wear away, particles drifting like sand. Impermanence made visible",
+      description: "Click to create forms of stone. Watch them slowly wear away, particles drifting like sand",
       date: "Feb 2026",
       href: "/projects/erosion/"
     },
@@ -86,7 +201,7 @@ export default function Home() {
     },
     {
       name: "Oscillator",
-      description: "Analog oscilloscope energy. Sine, square, triangle, saw. Mouse controls frequency and amplitude. Optional sound",
+      description: "Analog oscilloscope energy. Sine, square, triangle, saw. Mouse controls frequency and amplitude",
       date: "Feb 2026",
       href: "/projects/oscillator/"
     },
@@ -149,7 +264,7 @@ export default function Home() {
 
         <section className="mb-16">
           <h2 className="text-sm uppercase tracking-widest text-zinc-500 mb-6">
-            Projects
+            Projects ({projects.length})
           </h2>
           <ul className="space-y-4">
             {projects.map((project) => (
