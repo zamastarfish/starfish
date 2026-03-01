@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>bauhaus — rhythm</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #212121; }
+    canvas { display: block; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+  <script>
+    // Bauhaus Rhythm: Kinetic pattern study
+    // Repetition, interval, phase relationships
+    
+    const BAUHAUS = {
+      red: '#E53935',
+      yellow: '#FDD835', 
+      blue: '#1E88E5',
+      white: '#FAFAFA',
+      black: '#212121'
+    };
+    
+    let rows;
+    let cols;
+    let cellSize;
+    
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      noStroke();
+      calculateGrid();
+    }
+    
+    function calculateGrid() {
+      cellSize = min(width, height) / 12;
+      cols = floor(width / cellSize);
+      rows = floor(height / cellSize);
+    }
+    
+    function draw() {
+      background(BAUHAUS.black);
+      
+      const t = millis() / 1000;
+      
+      // Draw rhythmic grid
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const cx = x * cellSize + cellSize/2;
+          const cy = y * cellSize + cellSize/2;
+          
+          // Phase offset based on position
+          const phase = (x + y) * 0.3;
+          
+          // Different rhythm patterns for different colors
+          const redPhase = sin(t * 2 + phase);
+          const yellowPhase = sin(t * 1.5 + phase * 0.7);
+          const bluePhase = sin(t * 2.5 + phase * 1.2);
+          
+          push();
+          translate(cx, cy);
+          
+          // Red circles - pulsing
+          if ((x + y) % 3 === 0) {
+            fill(BAUHAUS.red);
+            const size = map(redPhase, -1, 1, 0.2, 0.8) * cellSize;
+            ellipse(0, 0, size, size);
+          }
+          
+          // Yellow squares - rotating
+          if ((x + y) % 3 === 1) {
+            fill(BAUHAUS.yellow);
+            rotate(yellowPhase * QUARTER_PI);
+            const size = cellSize * 0.5;
+            rectMode(CENTER);
+            rect(0, 0, size, size);
+          }
+          
+          // Blue triangles - oscillating position
+          if ((x + y) % 3 === 2) {
+            fill(BAUHAUS.blue);
+            const offset = bluePhase * cellSize * 0.2;
+            translate(0, offset);
+            const size = cellSize * 0.4;
+            triangle(0, -size/2, -size/2, size/2, size/2, size/2);
+          }
+          
+          pop();
+        }
+      }
+      
+      // Horizontal rhythm bars
+      fill(BAUHAUS.white);
+      const barY = height/2 + sin(t * 3) * 50;
+      const barHeight = 4;
+      for (let x = 0; x < cols; x++) {
+        const barPhase = sin(t * 4 + x * 0.5);
+        const barWidth = map(barPhase, -1, 1, 5, cellSize * 0.8);
+        rect(x * cellSize + (cellSize - barWidth)/2, barY, barWidth, barHeight);
+      }
+    }
+    
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      calculateGrid();
+    }
+  </script>
+</body>
+</html>

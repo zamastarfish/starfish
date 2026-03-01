@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>nouveau — vine</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #f8f5f0; }
+    canvas { display: block; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+  <script>
+    // Art Nouveau Vine: Organic growth
+    // Flowing curves, nature-inspired
+    
+    const NOUVEAU = {
+      sage: '#7D8471',
+      darkSage: '#5C6354',
+      gold: '#C9A959',
+      terracotta: '#C17F59',
+      cream: '#F8F5F0',
+      ink: '#3D3D3D'
+    };
+    
+    let vines = [];
+    let flowers = [];
+    
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      noFill();
+      
+      // Start vines from bottom
+      for (let i = 0; i < 5; i++) {
+        vines.push(new Vine(random(width * 0.2, width * 0.8), height + 20));
+      }
+    }
+    
+    function draw() {
+      background(NOUVEAU.cream);
+      
+      // Update and draw vines
+      for (let vine of vines) {
+        vine.grow();
+        vine.draw();
+      }
+      
+      // Draw flowers
+      for (let flower of flowers) {
+        flower.draw();
+      }
+      
+      // Spawn new vines occasionally
+      if (random() < 0.002 && vines.length < 15) {
+        vines.push(new Vine(random(width * 0.1, width * 0.9), height + 20));
+      }
+      
+      // Remove old vines
+      vines = vines.filter(v => v.points.length < 500 && v.points[v.points.length - 1].y > -50);
+    }
+    
+    class Vine {
+      constructor(x, y) {
+        this.points = [{ x, y }];
+        this.angle = -HALF_PI + random(-0.3, 0.3);
+        this.speed = random(0.8, 1.5);
+        this.thickness = random(2, 5);
+        this.color = random() > 0.3 ? NOUVEAU.sage : NOUVEAU.darkSage;
+        this.noiseOffset = random(1000);
+        this.curveStrength = random(0.02, 0.05);
+        this.hasFlowered = false;
+      }
+      
+      grow() {
+        const last = this.points[this.points.length - 1];
+        
+        // Noise-based direction change
+        const n = noise(last.x * 0.01, last.y * 0.01, this.noiseOffset);
+        this.angle += map(n, 0, 1, -this.curveStrength, this.curveStrength);
+        
+        // Gentle upward bias
+        this.angle = lerp(this.angle, -HALF_PI, 0.01);
+        
+        // New point
+        const newX = last.x + cos(this.angle) * this.speed;
+        const newY = last.y + sin(this.angle) * this.speed;
+        
+        this.points.push({ x: newX, y: newY });
+        
+        // Maybe spawn branch
+        if (this.points.length > 30 && random() < 0.008) {
+          const branchVine = new Vine(last.x, last.y);
+          branchVine.angle = this.angle + random(-0.8, 0.8);
+          branchVine.thickness = this.thickness * 0.6;
+          branchVine.speed = this.speed * 0.8;
+          vines.push(branchVine);
+        }
+        
+        // Maybe spawn flower
+        if (!this.hasFlowered && this.points.length > 50 && random() < 0.01) {
+          flowers.push(new Flower(last.x, last.y, this.thickness * 3));
+          this.hasFlowered = true;
+        }
+      }
+      
+      draw() {
+        stroke(this.color);
+        strokeWeight(this.thickness);
+        noFill();
+        
+        beginShape();
+        curveVertex(this.points[0].x, this.points[0].y);
+        for (let p of this.points) {
+          curveVertex(p.x, p.y);
+        }
+        const last = this.points[this.points.length - 1];
+        curveVertex(last.x, last.y);
+        endShape();
+        
+        // Tendril tips
+        if (this.points.length > 10) {
+          const tip = this.points[this.points.length - 1];
+          const prev = this.points[this.points.length - 10];
+          
+          strokeWeight(1);
+          stroke(this.color);
+          noFill();
+          
+          // Unfurling tendril
+          const curl = sin(frameCount * 0.05 + this.noiseOffset) * 0.3;
+          const tipAngle = atan2(tip.y - prev.y, tip.x - prev.x);
+          
+          beginShape();
+          curveVertex(tip.x, tip.y);
+          curveVertex(tip.x, tip.y);
+          curveVertex(tip.x + cos(tipAngle + curl) * 15, tip.y + sin(tipAngle + curl) * 15);
+          curveVertex(tip.x + cos(tipAngle + curl * 2) * 25, tip.y + sin(tipAngle + curl * 2) * 20);
+          endShape();
+        }
+      }
+    }
+    
+    class Flower {
+      constructor(x, y, size) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.color = random() > 0.5 ? NOUVEAU.gold : NOUVEAU.terracotta;
+        this.petals = floor(random(5, 8));
+        this.rotation = random(TWO_PI);
+        this.bloom = 0;
+      }
+      
+      draw() {
+        // Animate bloom
+        this.bloom = min(1, this.bloom + 0.02);
+        
+        push();
+        translate(this.x, this.y);
+        rotate(this.rotation);
+        
+        // Petals
+        noStroke();
+        fill(this.color);
+        
+        for (let i = 0; i < this.petals; i++) {
+          push();
+          rotate(TWO_PI / this.petals * i);
+          
+          // Petal shape using bezier
+          beginShape();
+          vertex(0, 0);
+          bezierVertex(
+            this.size * 0.3 * this.bloom, -this.size * 0.2 * this.bloom,
+            this.size * 0.8 * this.bloom, -this.size * 0.3 * this.bloom,
+            this.size * this.bloom, 0
+          );
+          bezierVertex(
+            this.size * 0.8 * this.bloom, this.size * 0.3 * this.bloom,
+            this.size * 0.3 * this.bloom, this.size * 0.2 * this.bloom,
+            0, 0
+          );
+          endShape(CLOSE);
+          pop();
+        }
+        
+        // Center
+        fill(NOUVEAU.ink);
+        ellipse(0, 0, this.size * 0.3 * this.bloom);
+        
+        pop();
+      }
+    }
+    
+    function mousePressed() {
+      vines.push(new Vine(mouseX, height + 20));
+    }
+    
+    function touchStarted() {
+      vines.push(new Vine(mouseX, height + 20));
+      return false;
+    }
+    
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+  </script>
+</body>
+</html>

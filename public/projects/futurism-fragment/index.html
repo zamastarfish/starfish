@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>futurism — fragment</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; }
+    canvas { display: block; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+  <script>
+    // Futurism Fragment: Shattered forms
+    // Multiple perspectives, simultaneity
+    
+    const FUTURISM = {
+      red: '#E63946',
+      blue: '#457B9D',
+      yellow: '#F4A261',
+      light: '#F1FAEE',
+      dark: '#1D3557'
+    };
+    
+    let shapes = [];
+    let time = 0;
+    
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      generateComposition();
+    }
+    
+    function generateComposition() {
+      shapes = [];
+      
+      const cx = width / 2;
+      const cy = height / 2;
+      const baseSize = min(width, height) * 0.3;
+      
+      // Create fragmented form (like Boccioni's sculptures)
+      const fragments = floor(random(15, 30));
+      
+      for (let i = 0; i < fragments; i++) {
+        const angle = random(TWO_PI);
+        const dist = random(baseSize * 0.1, baseSize * 0.8);
+        
+        shapes.push({
+          x: cx + cos(angle) * dist,
+          y: cy + sin(angle) * dist,
+          w: random(30, 120),
+          h: random(20, 80),
+          rotation: random(TWO_PI),
+          rotSpeed: random(-0.02, 0.02),
+          color: random([FUTURISM.red, FUTURISM.blue, FUTURISM.yellow, FUTURISM.light]),
+          alpha: random(100, 200),
+          shear: random(-0.5, 0.5),
+          type: random(['rect', 'triangle', 'trapezoid']),
+          phase: random(TWO_PI),
+          oscillate: random() > 0.5
+        });
+      }
+      
+      // Add diagonal force lines
+      for (let i = 0; i < 20; i++) {
+        shapes.push({
+          type: 'line',
+          x1: random(-width * 0.2, width * 0.5),
+          y1: random(height),
+          angle: random(-PI/4, PI/6),
+          length: random(100, 400),
+          color: FUTURISM.light,
+          alpha: random(20, 60),
+          weight: random(1, 4)
+        });
+      }
+    }
+    
+    function draw() {
+      background(26);
+      time += 0.02;
+      
+      // Draw force lines first
+      for (let shape of shapes) {
+        if (shape.type === 'line') {
+          stroke(red(color(shape.color)), green(color(shape.color)), blue(color(shape.color)), shape.alpha);
+          strokeWeight(shape.weight);
+          const x2 = shape.x1 + cos(shape.angle) * shape.length;
+          const y2 = shape.y1 + sin(shape.angle) * shape.length;
+          line(shape.x1, shape.y1, x2, y2);
+        }
+      }
+      
+      // Draw fragments with multiple exposure effect
+      for (let shape of shapes) {
+        if (shape.type === 'line') continue;
+        
+        // Draw ghost copies (simultaneity)
+        const copies = 3;
+        for (let c = 0; c < copies; c++) {
+          const offset = c * 8;
+          const ghostAlpha = shape.alpha * (1 - c * 0.3);
+          
+          push();
+          
+          // Oscillation
+          let ox = 0, oy = 0;
+          if (shape.oscillate) {
+            ox = sin(time + shape.phase) * 5;
+            oy = cos(time * 0.7 + shape.phase) * 3;
+          }
+          
+          translate(shape.x + offset + ox, shape.y + offset * 0.5 + oy);
+          rotate(shape.rotation + time * shape.rotSpeed);
+          shearX(shape.shear);
+          
+          fill(red(color(shape.color)), green(color(shape.color)), blue(color(shape.color)), ghostAlpha);
+          noStroke();
+          
+          if (shape.type === 'rect') {
+            rectMode(CENTER);
+            rect(0, 0, shape.w, shape.h);
+          } else if (shape.type === 'triangle') {
+            triangle(0, -shape.h/2, -shape.w/2, shape.h/2, shape.w/2, shape.h/2);
+          } else {
+            // Trapezoid
+            beginShape();
+            vertex(-shape.w/3, -shape.h/2);
+            vertex(shape.w/3, -shape.h/2);
+            vertex(shape.w/2, shape.h/2);
+            vertex(-shape.w/2, shape.h/2);
+            endShape(CLOSE);
+          }
+          
+          // Edge highlight
+          if (c === 0) {
+            stroke(255, ghostAlpha * 0.5);
+            strokeWeight(1);
+            noFill();
+            if (shape.type === 'rect') {
+              rectMode(CENTER);
+              rect(0, 0, shape.w, shape.h);
+            }
+          }
+          
+          pop();
+        }
+      }
+      
+      // Central energy burst
+      push();
+      translate(width/2, height/2);
+      
+      noFill();
+      for (let i = 0; i < 8; i++) {
+        const angle = TWO_PI / 8 * i + time * 0.5;
+        const len = 50 + sin(time * 2 + i) * 20;
+        
+        stroke(255, 100);
+        strokeWeight(2);
+        line(0, 0, cos(angle) * len, sin(angle) * len);
+      }
+      pop();
+    }
+    
+    function mousePressed() {
+      generateComposition();
+    }
+    
+    function touchStarted() {
+      generateComposition();
+      return false;
+    }
+    
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      generateComposition();
+    }
+  </script>
+</body>
+</html>

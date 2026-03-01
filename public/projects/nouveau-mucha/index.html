@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>nouveau — mucha</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #f8f5f0; }
+    canvas { display: block; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+  <script>
+    // Art Nouveau Mucha: Decorative frame generator
+    // Alphonse Mucha-inspired ornamental borders
+    
+    const NOUVEAU = {
+      gold: '#C9A959',
+      darkGold: '#8B7355',
+      sage: '#7D8471',
+      terracotta: '#C17F59',
+      cream: '#F8F5F0',
+      ink: '#3D3D3D',
+      rose: '#C88B8B'
+    };
+    
+    let t = 0;
+    
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+    }
+    
+    function draw() {
+      background(NOUVEAU.cream);
+      t += 0.005;
+      
+      const cx = width / 2;
+      const cy = height / 2;
+      const frameW = min(width * 0.85, height * 0.85);
+      const frameH = frameW;
+      
+      push();
+      translate(cx, cy);
+      
+      // Outer decorative ring
+      drawDecorativeRing(0, 0, frameW * 0.48, 20, NOUVEAU.darkGold);
+      
+      // Middle flowing band
+      drawFlowingBand(0, 0, frameW * 0.42, 15, NOUVEAU.gold);
+      
+      // Inner ring with motifs
+      drawMotifRing(0, 0, frameW * 0.35, NOUVEAU.sage);
+      
+      // Central medallion
+      drawMedallion(0, 0, frameW * 0.15, NOUVEAU.terracotta);
+      
+      // Corner flourishes
+      const cornerDist = frameW * 0.38;
+      for (let i = 0; i < 4; i++) {
+        push();
+        rotate(HALF_PI * i + QUARTER_PI);
+        drawFlourish(cornerDist, 0, frameW * 0.08);
+        pop();
+      }
+      
+      pop();
+      
+      // Instruction
+      fill(NOUVEAU.ink);
+      textAlign(CENTER);
+      textSize(11);
+      textFont('monospace');
+      text('click to regenerate', cx, height - 25);
+    }
+    
+    function drawDecorativeRing(x, y, radius, segments, col) {
+      push();
+      translate(x, y);
+      
+      noFill();
+      stroke(col);
+      strokeWeight(3);
+      
+      // Main ring
+      ellipse(0, 0, radius * 2, radius * 2);
+      
+      // Decorative bumps
+      for (let i = 0; i < segments; i++) {
+        const angle = TWO_PI / segments * i + t;
+        const px = cos(angle) * radius;
+        const py = sin(angle) * radius;
+        
+        push();
+        translate(px, py);
+        rotate(angle + HALF_PI);
+        
+        // Small decorative element
+        fill(col);
+        noStroke();
+        ellipse(0, -8, 6, 10);
+        ellipse(0, 8, 6, 10);
+        
+        stroke(col);
+        strokeWeight(1);
+        noFill();
+        arc(0, 0, 20, 20, -HALF_PI - 0.5, -HALF_PI + 0.5);
+        pop();
+      }
+      
+      pop();
+    }
+    
+    function drawFlowingBand(x, y, radius, waves, col) {
+      push();
+      translate(x, y);
+      
+      stroke(col);
+      strokeWeight(8);
+      noFill();
+      
+      beginShape();
+      for (let a = 0; a <= TWO_PI; a += 0.05) {
+        const wave = sin(a * waves + t * 2) * 8;
+        const r = radius + wave;
+        const px = cos(a) * r;
+        const py = sin(a) * r;
+        curveVertex(px, py);
+      }
+      endShape(CLOSE);
+      
+      // Inner line
+      strokeWeight(2);
+      beginShape();
+      for (let a = 0; a <= TWO_PI; a += 0.05) {
+        const wave = sin(a * waves + t * 2) * 8;
+        const r = radius + wave - 12;
+        const px = cos(a) * r;
+        const py = sin(a) * r;
+        curveVertex(px, py);
+      }
+      endShape(CLOSE);
+      
+      pop();
+    }
+    
+    function drawMotifRing(x, y, radius, col) {
+      push();
+      translate(x, y);
+      
+      const motifs = 12;
+      
+      for (let i = 0; i < motifs; i++) {
+        const angle = TWO_PI / motifs * i;
+        const px = cos(angle) * radius;
+        const py = sin(angle) * radius;
+        
+        push();
+        translate(px, py);
+        rotate(angle + HALF_PI);
+        
+        // Leaf/petal motif
+        fill(col);
+        noStroke();
+        
+        beginShape();
+        vertex(0, 0);
+        bezierVertex(-8, -15, -5, -30, 0, -35);
+        bezierVertex(5, -30, 8, -15, 0, 0);
+        endShape(CLOSE);
+        
+        // Small dots
+        ellipse(-4, -12, 3, 3);
+        ellipse(4, -12, 3, 3);
+        
+        pop();
+      }
+      
+      // Connecting arcs
+      stroke(col);
+      strokeWeight(1);
+      noFill();
+      
+      for (let i = 0; i < motifs; i++) {
+        const a1 = TWO_PI / motifs * i;
+        const a2 = TWO_PI / motifs * (i + 1);
+        const mid = (a1 + a2) / 2;
+        
+        const r1 = radius - 10;
+        const r2 = radius - 20;
+        
+        arc(0, 0, r1 * 2, r1 * 2, a1 + 0.1, a2 - 0.1);
+      }
+      
+      pop();
+    }
+    
+    function drawMedallion(x, y, radius, col) {
+      push();
+      translate(x, y);
+      
+      // Outer glow
+      noStroke();
+      for (let r = radius * 1.5; r > radius; r -= 5) {
+        fill(red(color(col)), green(color(col)), blue(color(col)), map(r, radius, radius * 1.5, 50, 0));
+        ellipse(0, 0, r * 2, r * 2);
+      }
+      
+      // Main medallion
+      fill(col);
+      stroke(NOUVEAU.darkGold);
+      strokeWeight(3);
+      ellipse(0, 0, radius * 2, radius * 2);
+      
+      // Inner design
+      stroke(NOUVEAU.cream);
+      strokeWeight(2);
+      noFill();
+      ellipse(0, 0, radius * 1.4, radius * 1.4);
+      
+      // Radiating lines
+      const rays = 8;
+      for (let i = 0; i < rays; i++) {
+        const angle = TWO_PI / rays * i + t;
+        line(
+          cos(angle) * radius * 0.3,
+          sin(angle) * radius * 0.3,
+          cos(angle) * radius * 0.65,
+          sin(angle) * radius * 0.65
+        );
+      }
+      
+      // Center dot
+      fill(NOUVEAU.cream);
+      noStroke();
+      ellipse(0, 0, radius * 0.3, radius * 0.3);
+      
+      pop();
+    }
+    
+    function drawFlourish(x, y, size) {
+      push();
+      translate(x, y);
+      
+      stroke(NOUVEAU.gold);
+      strokeWeight(2);
+      noFill();
+      
+      // Curling flourish
+      beginShape();
+      for (let t = 0; t < TWO_PI; t += 0.1) {
+        const r = size * (1 - t / TWO_PI) * 0.8;
+        const px = cos(t * 2) * r;
+        const py = sin(t * 2) * r;
+        curveVertex(px, py);
+      }
+      endShape();
+      
+      // Accent dots
+      fill(NOUVEAU.terracotta);
+      noStroke();
+      ellipse(size * 0.3, 0, 5, 5);
+      ellipse(-size * 0.3, 0, 5, 5);
+      
+      pop();
+    }
+    
+    function mousePressed() {
+      t = random(100);
+      noiseSeed(random(10000));
+    }
+    
+    function touchStarted() {
+      mousePressed();
+      return false;
+    }
+    
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+  </script>
+</body>
+</html>

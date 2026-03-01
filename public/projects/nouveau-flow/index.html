@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>nouveau — flow</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #2d2d28; }
+    canvas { display: block; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+  <script>
+    // Art Nouveau Flow: Organic field lines
+    // Like flowing hair or water
+    
+    const NOUVEAU = {
+      gold: '#C9A959',
+      copper: '#B87333',
+      sage: '#7D8471',
+      cream: '#F8F5F0',
+      dark: '#2D2D28'
+    };
+    
+    let particles = [];
+    let flowField;
+    let cols, rows;
+    let scale = 20;
+    let zoff = 0;
+    
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      
+      cols = floor(width / scale);
+      rows = floor(height / scale);
+      flowField = new Array(cols * rows);
+      
+      // Create particles
+      for (let i = 0; i < 800; i++) {
+        particles.push(new FlowParticle());
+      }
+      
+      background(NOUVEAU.dark);
+    }
+    
+    function draw() {
+      // Subtle fade
+      noStroke();
+      fill(45, 45, 40, 5);
+      rect(0, 0, width, height);
+      
+      // Update flow field
+      let yoff = 0;
+      for (let y = 0; y < rows; y++) {
+        let xoff = 0;
+        for (let x = 0; x < cols; x++) {
+          const index = x + y * cols;
+          const angle = noise(xoff, yoff, zoff) * TWO_PI * 2;
+          flowField[index] = p5.Vector.fromAngle(angle);
+          xoff += 0.05;
+        }
+        yoff += 0.05;
+      }
+      zoff += 0.002;
+      
+      // Update and draw particles
+      for (let particle of particles) {
+        particle.follow(flowField);
+        particle.update();
+        particle.edges();
+        particle.draw();
+      }
+    }
+    
+    class FlowParticle {
+      constructor() {
+        this.pos = createVector(random(width), random(height));
+        this.vel = createVector(0, 0);
+        this.acc = createVector(0, 0);
+        this.maxSpeed = random(1, 3);
+        this.prevPos = this.pos.copy();
+        
+        // Art Nouveau color palette
+        this.color = random([NOUVEAU.gold, NOUVEAU.copper, NOUVEAU.cream, NOUVEAU.sage]);
+        this.alpha = random(30, 80);
+        this.weight = random(0.5, 2);
+      }
+      
+      follow(field) {
+        const x = floor(this.pos.x / scale);
+        const y = floor(this.pos.y / scale);
+        const index = constrain(x, 0, cols - 1) + constrain(y, 0, rows - 1) * cols;
+        const force = field[index];
+        if (force) {
+          this.acc.add(force);
+        }
+      }
+      
+      update() {
+        this.vel.add(this.acc);
+        this.vel.limit(this.maxSpeed);
+        this.pos.add(this.vel);
+        this.acc.mult(0);
+      }
+      
+      edges() {
+        if (this.pos.x > width) {
+          this.pos.x = 0;
+          this.prevPos = this.pos.copy();
+        }
+        if (this.pos.x < 0) {
+          this.pos.x = width;
+          this.prevPos = this.pos.copy();
+        }
+        if (this.pos.y > height) {
+          this.pos.y = 0;
+          this.prevPos = this.pos.copy();
+        }
+        if (this.pos.y < 0) {
+          this.pos.y = height;
+          this.prevPos = this.pos.copy();
+        }
+      }
+      
+      draw() {
+        stroke(this.color + hex(floor(this.alpha), 2));
+        strokeWeight(this.weight);
+        line(this.prevPos.x, this.prevPos.y, this.pos.x, this.pos.y);
+        this.prevPos = this.pos.copy();
+      }
+    }
+    
+    function mousePressed() {
+      // Add burst of particles at mouse
+      for (let i = 0; i < 50; i++) {
+        const p = new FlowParticle();
+        p.pos = createVector(mouseX + random(-30, 30), mouseY + random(-30, 30));
+        p.prevPos = p.pos.copy();
+        particles.push(p);
+      }
+      
+      // Remove oldest particles to maintain count
+      while (particles.length > 1200) {
+        particles.shift();
+      }
+    }
+    
+    function touchStarted() {
+      mousePressed();
+      return false;
+    }
+    
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      cols = floor(width / scale);
+      rows = floor(height / scale);
+      flowField = new Array(cols * rows);
+      background(NOUVEAU.dark);
+    }
+  </script>
+</body>
+</html>

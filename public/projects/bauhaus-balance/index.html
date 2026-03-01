@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>bauhaus — balance</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #f5f5f0; }
+    canvas { display: block; cursor: grab; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+  <script>
+    // Bauhaus Balance: Visual weight study
+    // Drag elements to explore compositional balance
+    
+    const BAUHAUS = {
+      red: '#E53935',
+      yellow: '#FDD835', 
+      blue: '#1E88E5',
+      black: '#212121',
+      cream: '#F5F5F0'
+    };
+    
+    let elements = [];
+    let dragging = null;
+    let centerOfMass = { x: 0, y: 0 };
+    let balanceIndicator = 0;
+    
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      
+      // Create initial composition
+      const cx = width / 2;
+      const cy = height / 2;
+      const unit = min(width, height) / 10;
+      
+      elements = [
+        { x: cx - unit*2, y: cy - unit, size: unit * 1.5, color: BAUHAUS.red, type: 'circle', weight: 3 },
+        { x: cx + unit*1.5, y: cy, size: unit * 0.8, color: BAUHAUS.blue, type: 'square', weight: 2 },
+        { x: cx, y: cy + unit*1.2, size: unit, color: BAUHAUS.yellow, type: 'triangle', weight: 2.5 },
+        { x: cx + unit*2, y: cy - unit*1.5, size: unit * 0.6, color: BAUHAUS.black, type: 'circle', weight: 4 },
+      ];
+    }
+    
+    function draw() {
+      background(BAUHAUS.cream);
+      
+      // Calculate center of mass
+      let totalWeight = 0;
+      let weightedX = 0;
+      let weightedY = 0;
+      
+      for (let el of elements) {
+        const w = el.weight * el.size;
+        weightedX += el.x * w;
+        weightedY += el.y * w;
+        totalWeight += w;
+      }
+      
+      centerOfMass.x = weightedX / totalWeight;
+      centerOfMass.y = weightedY / totalWeight;
+      
+      // Balance indicator (distance from center)
+      const dx = centerOfMass.x - width/2;
+      const dy = centerOfMass.y - height/2;
+      balanceIndicator = sqrt(dx*dx + dy*dy) / (min(width, height) / 4);
+      
+      // Draw balance line (horizon)
+      stroke(200);
+      strokeWeight(1);
+      line(0, height/2, width, height/2);
+      line(width/2, 0, width/2, height);
+      
+      // Draw center crosshair
+      stroke(180);
+      strokeWeight(2);
+      const crossSize = 15;
+      line(width/2 - crossSize, height/2, width/2 + crossSize, height/2);
+      line(width/2, height/2 - crossSize, width/2, height/2 + crossSize);
+      
+      // Draw elements
+      noStroke();
+      for (let el of elements) {
+        fill(el.color);
+        
+        push();
+        translate(el.x, el.y);
+        
+        if (el === dragging) {
+          // Subtle lift effect
+          scale(1.05);
+        }
+        
+        switch(el.type) {
+          case 'circle':
+            ellipse(0, 0, el.size, el.size);
+            break;
+          case 'square':
+            rectMode(CENTER);
+            rect(0, 0, el.size, el.size);
+            break;
+          case 'triangle':
+            triangle(0, -el.size/2, -el.size/2, el.size/2, el.size/2, el.size/2);
+            break;
+        }
+        pop();
+      }
+      
+      // Draw center of mass
+      fill(lerpColor(color('#4CAF50'), color('#F44336'), constrain(balanceIndicator, 0, 1)));
+      noStroke();
+      ellipse(centerOfMass.x, centerOfMass.y, 12, 12);
+      
+      // Connection lines from center of mass to elements
+      stroke(0, 30);
+      strokeWeight(1);
+      for (let el of elements) {
+        line(centerOfMass.x, centerOfMass.y, el.x, el.y);
+      }
+      
+      // Balance feedback
+      fill(0, 100);
+      noStroke();
+      textAlign(CENTER);
+      textSize(12);
+      textFont('monospace');
+      text(balanceIndicator < 0.1 ? 'balanced' : 'drag to balance', width/2, height - 30);
+    }
+    
+    function mousePressed() {
+      for (let i = elements.length - 1; i >= 0; i--) {
+        const el = elements[i];
+        const d = dist(mouseX, mouseY, el.x, el.y);
+        if (d < el.size / 2) {
+          dragging = el;
+          cursor('grabbing');
+          return;
+        }
+      }
+    }
+    
+    function mouseDragged() {
+      if (dragging) {
+        dragging.x = mouseX;
+        dragging.y = mouseY;
+      }
+    }
+    
+    function mouseReleased() {
+      dragging = null;
+      cursor('grab');
+    }
+    
+    function touchStarted() {
+      mousePressed();
+      return false;
+    }
+    
+    function touchMoved() {
+      if (dragging) {
+        dragging.x = mouseX;
+        dragging.y = mouseY;
+      }
+      return false;
+    }
+    
+    function touchEnded() {
+      mouseReleased();
+      return false;
+    }
+    
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+  </script>
+</body>
+</html>

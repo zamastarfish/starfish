@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>futurism — machine</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0d0d0d; }
+    canvas { display: block; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+  <script>
+    // Futurism Machine: Industrial rhythm
+    // Celebrating the beauty of mechanics
+    
+    const FUTURISM = {
+      steel: '#8C8C8C',
+      brass: '#B5A642',
+      copper: '#B87333',
+      dark: '#1A1A1A',
+      highlight: '#E8E8E8',
+      accent: '#FF4136'
+    };
+    
+    let gears = [];
+    let pistons = [];
+    let time = 0;
+    
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      generateMachine();
+    }
+    
+    function generateMachine() {
+      gears = [];
+      pistons = [];
+      
+      const cx = width / 2;
+      const cy = height / 2;
+      const unit = min(width, height) / 8;
+      
+      // Main drive gear
+      gears.push({
+        x: cx,
+        y: cy,
+        radius: unit * 1.5,
+        teeth: 24,
+        speed: 1,
+        color: FUTURISM.steel,
+        rotation: 0
+      });
+      
+      // Connected gears
+      const mainGear = gears[0];
+      const positions = [
+        { angle: 0, radiusMult: 0.6, teeth: 16 },
+        { angle: PI * 0.7, radiusMult: 0.8, teeth: 18 },
+        { angle: PI * 1.4, radiusMult: 0.5, teeth: 12 },
+        { angle: PI * 0.35, radiusMult: 0.4, teeth: 10 }
+      ];
+      
+      for (let pos of positions) {
+        const newRadius = unit * pos.radiusMult;
+        const dist = mainGear.radius + newRadius;
+        const gx = cx + cos(pos.angle) * dist;
+        const gy = cy + sin(pos.angle) * dist;
+        
+        // Gear ratio determines speed (opposite direction)
+        const speedRatio = -(mainGear.teeth / pos.teeth);
+        
+        gears.push({
+          x: gx,
+          y: gy,
+          radius: newRadius,
+          teeth: pos.teeth,
+          speed: speedRatio,
+          color: random([FUTURISM.steel, FUTURISM.brass, FUTURISM.copper]),
+          rotation: 0
+        });
+      }
+      
+      // Pistons
+      for (let i = 0; i < 3; i++) {
+        pistons.push({
+          x: width * 0.15 + i * width * 0.35,
+          y: height * 0.75,
+          width: unit * 0.4,
+          height: unit * 1.2,
+          phase: i * TWO_PI / 3,
+          strokeLength: unit * 0.6
+        });
+      }
+    }
+    
+    function draw() {
+      background(13);
+      time += 0.02;
+      
+      // Draw connecting rods/beams
+      stroke(FUTURISM.steel);
+      strokeWeight(8);
+      for (let i = 1; i < gears.length; i++) {
+        line(gears[0].x, gears[0].y, gears[i].x, gears[i].y);
+      }
+      
+      // Draw gears
+      for (let gear of gears) {
+        gear.rotation = time * gear.speed;
+        drawGear(gear);
+      }
+      
+      // Draw pistons
+      for (let piston of pistons) {
+        drawPiston(piston);
+      }
+      
+      // Steam/exhaust particles
+      drawSteam();
+      
+      // Frame/housing
+      drawFrame();
+    }
+    
+    function drawGear(gear) {
+      push();
+      translate(gear.x, gear.y);
+      rotate(gear.rotation);
+      
+      // Gear body
+      fill(gear.color);
+      stroke(40);
+      strokeWeight(2);
+      
+      // Teeth
+      beginShape();
+      for (let i = 0; i < gear.teeth; i++) {
+        const angle = TWO_PI / gear.teeth * i;
+        const nextAngle = TWO_PI / gear.teeth * (i + 0.5);
+        
+        // Tooth tip
+        const tipR = gear.radius;
+        const baseR = gear.radius * 0.85;
+        
+        vertex(cos(angle - 0.05) * baseR, sin(angle - 0.05) * baseR);
+        vertex(cos(angle) * tipR, sin(angle) * tipR);
+        vertex(cos(angle + 0.05) * baseR, sin(angle + 0.05) * baseR);
+        vertex(cos(nextAngle) * baseR, sin(nextAngle) * baseR);
+      }
+      endShape(CLOSE);
+      
+      // Inner ring
+      fill(FUTURISM.dark);
+      ellipse(0, 0, gear.radius * 1.2, gear.radius * 1.2);
+      
+      // Spokes
+      fill(gear.color);
+      for (let i = 0; i < 6; i++) {
+        const angle = TWO_PI / 6 * i;
+        push();
+        rotate(angle);
+        rect(-gear.radius * 0.06, 0, gear.radius * 0.12, gear.radius * 0.5);
+        pop();
+      }
+      
+      // Center hub
+      fill(FUTURISM.dark);
+      stroke(gear.color);
+      strokeWeight(3);
+      ellipse(0, 0, gear.radius * 0.3, gear.radius * 0.3);
+      
+      // Center bolt
+      fill(FUTURISM.highlight);
+      noStroke();
+      ellipse(0, 0, gear.radius * 0.1, gear.radius * 0.1);
+      
+      pop();
+    }
+    
+    function drawPiston(piston) {
+      const offset = sin(time * 3 + piston.phase) * piston.strokeLength;
+      
+      push();
+      translate(piston.x, piston.y);
+      
+      // Cylinder housing
+      fill(FUTURISM.dark);
+      stroke(FUTURISM.steel);
+      strokeWeight(3);
+      rectMode(CENTER);
+      rect(0, 0, piston.width * 1.3, piston.height);
+      
+      // Piston head
+      fill(FUTURISM.copper);
+      rect(0, offset, piston.width, piston.height * 0.25);
+      
+      // Connecting rod
+      stroke(FUTURISM.steel);
+      strokeWeight(6);
+      line(0, offset - piston.height * 0.15, 0, -piston.height * 0.8);
+      
+      // Top cap
+      fill(FUTURISM.brass);
+      noStroke();
+      ellipse(0, -piston.height * 0.5, piston.width * 1.1, piston.width * 0.3);
+      
+      // Heat glow when compressed
+      if (offset > piston.strokeLength * 0.5) {
+        const glowIntensity = map(offset, piston.strokeLength * 0.5, piston.strokeLength, 0, 100);
+        fill(255, 100, 50, glowIntensity);
+        noStroke();
+        rect(0, piston.height * 0.35, piston.width * 0.8, piston.height * 0.15);
+      }
+      
+      pop();
+    }
+    
+    function drawSteam() {
+      noStroke();
+      
+      for (let i = 0; i < 20; i++) {
+        const x = noise(i, time * 0.5) * width;
+        const y = height * 0.3 - noise(i + 100, time * 0.3) * height * 0.25;
+        const size = noise(i + 200, time * 0.2) * 30 + 5;
+        const alpha = noise(i + 300, time * 0.4) * 30;
+        
+        fill(200, 200, 210, alpha);
+        ellipse(x, y, size, size * 0.6);
+      }
+    }
+    
+    function drawFrame() {
+      // Industrial frame
+      noFill();
+      stroke(FUTURISM.steel);
+      strokeWeight(4);
+      
+      // Corner brackets
+      const m = 30;
+      const l = 60;
+      
+      // Top-left
+      line(m, m, m + l, m);
+      line(m, m, m, m + l);
+      
+      // Top-right
+      line(width - m, m, width - m - l, m);
+      line(width - m, m, width - m, m + l);
+      
+      // Bottom-left
+      line(m, height - m, m + l, height - m);
+      line(m, height - m, m, height - m - l);
+      
+      // Bottom-right
+      line(width - m, height - m, width - m - l, height - m);
+      line(width - m, height - m, width - m, height - m - l);
+      
+      // Rivets
+      fill(FUTURISM.highlight);
+      noStroke();
+      ellipse(m + 10, m + 10, 8, 8);
+      ellipse(width - m - 10, m + 10, 8, 8);
+      ellipse(m + 10, height - m - 10, 8, 8);
+      ellipse(width - m - 10, height - m - 10, 8, 8);
+    }
+    
+    function mousePressed() {
+      generateMachine();
+    }
+    
+    function touchStarted() {
+      generateMachine();
+      return false;
+    }
+    
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      generateMachine();
+    }
+  </script>
+</body>
+</html>
