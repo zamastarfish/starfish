@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sisyphus — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #1a1814; 
+      overflow: hidden;
+    }
+    canvas { display: block; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.3);
+      text-decoration: none;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+    }
+    #back:hover { color: rgba(255,255,255,0.7); }
+    #count {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      color: rgba(255,255,255,0.2);
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" id="back">← back</a>
+  <div id="count"></div>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const countEl = document.getElementById('count');
+    
+    let width, height;
+    
+    // Hill geometry
+    let hillStart, hillEnd, hillTop;
+    
+    // Boulder state
+    let boulder = {
+      x: 0,
+      y: 0,
+      radius: 30,
+      progress: 0,      // 0 = bottom, 1 = top
+      velocity: 0,
+      rotation: 0,
+      state: 'rolling', // 'rolling', 'falling', 'resting'
+      restTimer: 0
+    };
+    
+    // Interaction
+    let isPushing = false;
+    let pushX = 0, pushY = 0;
+    let attempts = 0;
+    
+    // Sisyphus figure
+    let sisyphus = {
+      x: 0,
+      y: 0,
+      pushing: false
+    };
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      
+      // Recalculate hill
+      hillStart = { x: width * 0.1, y: height * 0.85 };
+      hillEnd = { x: width * 0.85, y: height * 0.85 };
+      hillTop = { x: width * 0.75, y: height * 0.25 };
+      
+      boulder.radius = Math.min(width, height) * 0.04;
+    }
+    
+    function getHillY(x) {
+      // Quadratic curve from start through top to end
+      // But we only care about the uphill part (start to top)
+      const t = (x - hillStart.x) / (hillTop.x - hillStart.x);
+      if (t < 0) return hillStart.y;
+      if (t > 1) return hillTop.y;
+      
+      // Parabolic path
+      const y = hillStart.y + (hillTop.y - hillStart.y) * (1 - Math.pow(1 - t, 2));
+      return y;
+    }
+    
+    function getHillAngle(x) {
+      const dx = 1;
+      const y1 = getHillY(x);
+      const y2 = getHillY(x + dx);
+      return Math.atan2(y1 - y2, dx);
+    }
+    
+    function updateBoulder(dt) {
+      const gravity = 200;
+      const friction = 0.98;
+      const pushForce = 150;
+      const naturalRoll = -15; // Slight tendency to roll back
+      
+      if (boulder.state === 'resting') {
+        boulder.restTimer -= dt;
+        if (boulder.restTimer <= 0) {
+          boulder.state = 'rolling';
+          attempts++;
+          countEl.textContent = attempts > 0 ? `attempt ${attempts}` : '';
+        }
+        return;
+      }
+      
+      // Calculate position on hill
+      const hillX = hillStart.x + boulder.progress * (hillTop.x - hillStart.x);
+      const hillY = getHillY(hillX);
+      const angle = getHillAngle(hillX);
+      
+      // Gravity component along slope (pulls backward/down)
+      const gravityForce = Math.sin(angle) * gravity;
+      
+      // Apply forces
+      let force = gravityForce + naturalRoll;
+      
+      // Player pushing
+      if (isPushing) {
+        const dx = pushX - boulder.x;
+        const dy = pushY - boulder.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // Only push if close enough and pushing from behind/below
+        if (dist < boulder.radius * 4 && dx > 0) {
+          force += pushForce * (1 - dist / (boulder.radius * 4));
+          sisyphus.pushing = true;
+        } else {
+          sisyphus.pushing = false;
+        }
+      } else {
+        sisyphus.pushing = false;
+      }
+      
+      boulder.velocity += force * dt;
+      boulder.velocity *= friction;
+      
+      // Update progress
+      const moveSpeed = boulder.velocity * dt / (hillTop.x - hillStart.x);
+      boulder.progress += moveSpeed;
+      
+      // Update rotation based on movement
+      const circumference = 2 * Math.PI * boulder.radius;
+      boulder.rotation += (boulder.velocity * dt) / boulder.radius;
+      
+      // Bounds
+      if (boulder.progress <= 0) {
+        boulder.progress = 0;
+        boulder.velocity = Math.max(0, boulder.velocity);
+        
+        // Rest at bottom before trying again
+        if (boulder.state === 'falling' || Math.abs(boulder.velocity) < 5) {
+          boulder.state = 'resting';
+          boulder.restTimer = 1.5; // seconds before rolling again
+          boulder.velocity = 0;
+        }
+      }
+      
+      // Near the top - dramatic moment
+      if (boulder.progress >= 0.98) {
+        // Almost made it... but no
+        // A tiny push back
+        boulder.velocity = -50;
+        boulder.state = 'falling';
+      }
+      
+      // Track if falling
+      if (boulder.velocity < -10) {
+        boulder.state = 'falling';
+      } else if (boulder.velocity > 0) {
+        boulder.state = 'rolling';
+      }
+      
+      // Update boulder position
+      boulder.x = hillX;
+      boulder.y = hillY - boulder.radius;
+      
+      // Update Sisyphus position (behind boulder)
+      const sisOffset = boulder.radius * 1.5;
+      sisyphus.x = boulder.x - Math.cos(angle) * sisOffset;
+      sisyphus.y = getHillY(sisyphus.x);
+    }
+    
+    function drawHill() {
+      ctx.strokeStyle = '#3d3632';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      
+      ctx.beginPath();
+      ctx.moveTo(0, height);
+      ctx.lineTo(hillStart.x, hillStart.y);
+      
+      // Draw hill curve
+      for (let x = hillStart.x; x <= hillTop.x; x += 5) {
+        ctx.lineTo(x, getHillY(x));
+      }
+      
+      // Continue down the other side (implied)
+      ctx.lineTo(width, height * 0.5);
+      ctx.stroke();
+      
+      // Fill below
+      ctx.fillStyle = '#252220';
+      ctx.beginPath();
+      ctx.moveTo(0, height);
+      ctx.lineTo(hillStart.x, hillStart.y);
+      for (let x = hillStart.x; x <= hillTop.x; x += 5) {
+        ctx.lineTo(x, getHillY(x));
+      }
+      ctx.lineTo(width, height * 0.5);
+      ctx.lineTo(width, height);
+      ctx.closePath();
+      ctx.fill();
+    }
+    
+    function drawBoulder() {
+      ctx.save();
+      ctx.translate(boulder.x, boulder.y);
+      ctx.rotate(boulder.rotation);
+      
+      // Boulder shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(5, boulder.radius * 0.8, boulder.radius * 1.1, boulder.radius * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Boulder
+      const gradient = ctx.createRadialGradient(
+        -boulder.radius * 0.3, -boulder.radius * 0.3, 0,
+        0, 0, boulder.radius
+      );
+      gradient.addColorStop(0, '#6b6156');
+      gradient.addColorStop(0.5, '#4a4540');
+      gradient.addColorStop(1, '#2d2a27');
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(0, 0, boulder.radius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Texture marks
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2;
+        const r = boulder.radius * (0.3 + Math.random() * 0.4);
+        ctx.beginPath();
+        ctx.arc(
+          Math.cos(angle) * r * 0.5,
+          Math.sin(angle) * r * 0.5,
+          r * 0.3,
+          0, Math.PI * 2
+        );
+        ctx.stroke();
+      }
+      
+      ctx.restore();
+    }
+    
+    function drawSisyphus() {
+      const x = sisyphus.x;
+      const y = sisyphus.y;
+      const scale = boulder.radius * 0.04;
+      const angle = getHillAngle(x);
+      
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-angle * 0.5);
+      
+      // Simple stick figure, leaning into the push
+      const lean = sisyphus.pushing ? 0.4 : 0.2;
+      
+      ctx.strokeStyle = '#8a8075';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      
+      // Body
+      ctx.beginPath();
+      ctx.moveTo(0, -scale * 30);
+      ctx.lineTo(scale * 5 * lean, -scale * 15);
+      ctx.stroke();
+      
+      // Legs
+      ctx.beginPath();
+      ctx.moveTo(scale * 5 * lean, -scale * 15);
+      ctx.lineTo(-scale * 5, 0);
+      ctx.moveTo(scale * 5 * lean, -scale * 15);
+      ctx.lineTo(scale * 8, -scale * 5);
+      ctx.stroke();
+      
+      // Arms (reaching toward boulder)
+      ctx.beginPath();
+      ctx.moveTo(0, -scale * 25);
+      ctx.lineTo(scale * 15, -scale * 20);
+      ctx.moveTo(0, -scale * 25);
+      ctx.lineTo(scale * 12, -scale * 28);
+      ctx.stroke();
+      
+      // Head
+      ctx.fillStyle = '#8a8075';
+      ctx.beginPath();
+      ctx.arc(0, -scale * 35, scale * 5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    function draw() {
+      // Clear
+      ctx.fillStyle = '#1a1814';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Stars
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      for (let i = 0; i < 50; i++) {
+        const x = (i * 137.5) % width;
+        const y = (i * 73.3) % (height * 0.4);
+        ctx.beginPath();
+        ctx.arc(x, y, 1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      drawHill();
+      drawBoulder();
+      drawSisyphus();
+      
+      // Instruction hint (fades after first push)
+      if (attempts === 0 && !isPushing) {
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.font = '14px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('click and drag to help push', width / 2, height - 40);
+      }
+    }
+    
+    let lastTime = Date.now();
+    
+    function animate() {
+      const now = Date.now();
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+      
+      updateBoulder(dt);
+      draw();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Events
+    window.addEventListener('resize', resize);
+    
+    function startPush(x, y) {
+      isPushing = true;
+      pushX = x;
+      pushY = y;
+    }
+    
+    function movePush(x, y) {
+      pushX = x;
+      pushY = y;
+    }
+    
+    function endPush() {
+      isPushing = false;
+    }
+    
+    canvas.addEventListener('mousedown', (e) => startPush(e.clientX, e.clientY));
+    canvas.addEventListener('mousemove', (e) => { if (isPushing) movePush(e.clientX, e.clientY); });
+    canvas.addEventListener('mouseup', endPush);
+    canvas.addEventListener('mouseleave', endPush);
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      startPush(e.touches[0].clientX, e.touches[0].clientY);
+    });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      movePush(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    canvas.addEventListener('touchend', endPush);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>

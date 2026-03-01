@@ -1,6 +1,13 @@
 export default function Home() {
   const projects = [
-    // === Confront ===
+    // === Confront / Question ===
+    {
+      name: "Sisyphus",
+      description: "Push the boulder. Help it climb. Watch it fall. Again. The absurd made visible",
+      date: "Mar 2026",
+      href: "/projects/sisyphus/",
+      series: "question"
+    },
     {
       name: "Gaze",
       description: "Eyes that track you, multiply over time. Look away and they close. Return and they're all staring",
