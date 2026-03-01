@@ -1,6 +1,13 @@
 export default function Home() {
   const projects = [
-    // === Confront / Question ===
+    // === Emotional territories ===
+    {
+      name: "Float",
+      description: "Weightlessness. You're the glowing particle, drifting upward with soft shapes. Move to guide yourself. Let go",
+      date: "Mar 2026",
+      href: "/projects/float/",
+      series: "escape"
+    },
     {
       name: "Sisyphus",
       description: "Push the boulder. Help it climb. Watch it fall. Again. The absurd made visible",
