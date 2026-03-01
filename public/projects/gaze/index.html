@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gaze — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0a; 
+      overflow: hidden;
+      cursor: none;
+    }
+    canvas { display: block; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.3);
+      text-decoration: none;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+    }
+    #back:hover { color: rgba(255,255,255,0.7); }
+  </style>
+</head>
+<body>
+  <a href="/" id="back">← back</a>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let mouse = { x: 0, y: 0, present: false };
+    let isVisible = true;
+    let eyes = [];
+    let lastSpawnTime = 0;
+    const SPAWN_INTERVAL = 2000; // new eye every 2 seconds
+    const MAX_EYES = 50;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    class Eye {
+      constructor(x, y, size) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.targetOpenness = 1;
+        this.openness = 0; // starts closed, opens slowly
+        this.lookX = 0;
+        this.lookY = 0;
+        this.blinkTimer = Math.random() * 5000 + 3000;
+        this.isBlinking = false;
+        this.birthTime = Date.now();
+        this.opacity = 0;
+      }
+      
+      update(dt, mouseX, mouseY, visible) {
+        // Fade in
+        this.opacity = Math.min(1, this.opacity + dt * 0.5);
+        
+        // Calculate look direction
+        const dx = mouseX - this.x;
+        const dy = mouseY - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const maxLook = this.size * 0.25;
+        
+        if (dist > 0) {
+          const targetLookX = (dx / dist) * maxLook;
+          const targetLookY = (dy / dist) * maxLook;
+          this.lookX += (targetLookX - this.lookX) * 3 * dt;
+          this.lookY += (targetLookY - this.lookY) * 3 * dt;
+        }
+        
+        // Openness based on visibility
+        this.targetOpenness = visible ? 1 : 0;
+        
+        // Blinking
+        if (visible && !this.isBlinking) {
+          this.blinkTimer -= dt * 1000;
+          if (this.blinkTimer <= 0) {
+            this.isBlinking = true;
+            this.blinkTimer = 150; // blink duration
+          }
+        }
+        
+        if (this.isBlinking) {
+          this.targetOpenness = 0;
+          this.blinkTimer -= dt * 1000;
+          if (this.blinkTimer <= 0) {
+            this.isBlinking = false;
+            this.blinkTimer = Math.random() * 5000 + 3000;
+          }
+        }
+        
+        // Smooth openness
+        const openSpeed = visible ? 2 : 4; // closes faster than opens
+        this.openness += (this.targetOpenness - this.openness) * openSpeed * dt;
+      }
+      
+      draw(ctx) {
+        const s = this.size;
+        const open = this.openness;
+        
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.globalAlpha = this.opacity;
+        
+        // Eye white (almond shape)
+        ctx.fillStyle = '#e8e4df';
+        ctx.beginPath();
+        const eyeHeight = s * 0.5 * open;
+        ctx.ellipse(0, 0, s, eyeHeight, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Clip to eye shape
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(0, 0, s, eyeHeight, 0, 0, Math.PI * 2);
+        ctx.clip();
+        
+        // Iris
+        const irisSize = s * 0.55;
+        const gradient = ctx.createRadialGradient(
+          this.lookX, this.lookY, 0,
+          this.lookX, this.lookY, irisSize
+        );
+        gradient.addColorStop(0, '#2a2520');
+        gradient.addColorStop(0.5, '#4a3f35');
+        gradient.addColorStop(0.8, '#3d3530');
+        gradient.addColorStop(1, '#251f1a');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(this.lookX, this.lookY, irisSize, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Pupil
+        const pupilSize = s * 0.25;
+        ctx.fillStyle = '#0a0808';
+        ctx.beginPath();
+        ctx.arc(this.lookX, this.lookY, pupilSize, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Pupil highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.beginPath();
+        ctx.arc(this.lookX - pupilSize * 0.3, this.lookY - pupilSize * 0.3, pupilSize * 0.25, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.restore();
+        
+        // Eyelids (top and bottom)
+        ctx.fillStyle = '#0a0a0a';
+        
+        // Top lid
+        ctx.beginPath();
+        ctx.moveTo(-s * 1.2, 0);
+        ctx.quadraticCurveTo(0, -s * (1.2 - open * 0.7), s * 1.2, 0);
+        ctx.lineTo(s * 1.2, -s * 1.2);
+        ctx.lineTo(-s * 1.2, -s * 1.2);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Bottom lid
+        ctx.beginPath();
+        ctx.moveTo(-s * 1.2, 0);
+        ctx.quadraticCurveTo(0, s * (1.2 - open * 0.7), s * 1.2, 0);
+        ctx.lineTo(s * 1.2, s * 1.2);
+        ctx.lineTo(-s * 1.2, s * 1.2);
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.restore();
+      }
+    }
+    
+    function spawnEye() {
+      if (eyes.length >= MAX_EYES) return;
+      
+      // Spawn in a random position, but not too close to existing eyes
+      let attempts = 0;
+      let x, y, size;
+      
+      while (attempts < 20) {
+        x = Math.random() * (width - 200) + 100;
+        y = Math.random() * (height - 200) + 100;
+        size = 20 + Math.random() * 40;
+        
+        let tooClose = false;
+        for (const eye of eyes) {
+          const dx = eye.x - x;
+          const dy = eye.y - y;
+          const minDist = eye.size + size + 30;
+          if (dx * dx + dy * dy < minDist * minDist) {
+            tooClose = true;
+            break;
+          }
+        }
+        
+        if (!tooClose) break;
+        attempts++;
+      }
+      
+      eyes.push(new Eye(x, y, size));
+    }
+    
+    function init() {
+      resize();
+      
+      // Start with a few eyes
+      for (let i = 0; i < 5; i++) {
+        spawnEye();
+      }
+      
+      lastSpawnTime = Date.now();
+    }
+    
+    let lastTime = Date.now();
+    
+    function animate() {
+      const now = Date.now();
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+      
+      // Clear
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Spawn new eyes over time (only when visible)
+      if (isVisible && now - lastSpawnTime > SPAWN_INTERVAL) {
+        spawnEye();
+        lastSpawnTime = now;
+      }
+      
+      // Determine look target
+      let lookX = mouse.present ? mouse.x : width / 2;
+      let lookY = mouse.present ? mouse.y : height / 2;
+      
+      // Update and draw eyes
+      for (const eye of eyes) {
+        eye.update(dt, lookX, lookY, isVisible);
+        eye.draw(ctx);
+      }
+      
+      // Draw faint cursor position indicator when mouse is present
+      if (mouse.present && isVisible) {
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx.beginPath();
+        ctx.arc(mouse.x, mouse.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Event listeners
+    window.addEventListener('resize', resize);
+    
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      mouse.present = true;
+    });
+    
+    window.addEventListener('mouseleave', () => {
+      mouse.present = false;
+    });
+    
+    window.addEventListener('mouseenter', () => {
+      mouse.present = true;
+    });
+    
+    // Touch support
+    window.addEventListener('touchstart', (e) => {
+      mouse.x = e.touches[0].clientX;
+      mouse.y = e.touches[0].clientY;
+      mouse.present = true;
+    });
+    
+    window.addEventListener('touchmove', (e) => {
+      mouse.x = e.touches[0].clientX;
+      mouse.y = e.touches[0].clientY;
+      e.preventDefault();
+    }, { passive: false });
+    
+    window.addEventListener('touchend', () => {
+      mouse.present = false;
+    });
+    
+    // Visibility API - the conceptual hook
+    document.addEventListener('visibilitychange', () => {
+      isVisible = !document.hidden;
+      if (isVisible) {
+        lastSpawnTime = Date.now(); // Reset spawn timer when returning
+      }
+    });
+    
+    // Also track window blur/focus
+    window.addEventListener('blur', () => {
+      isVisible = false;
+    });
+    
+    window.addEventListener('focus', () => {
+      isVisible = true;
+      lastSpawnTime = Date.now();
+    });
+    
+    init();
+    animate();
+  </script>
+</body>
+</html>

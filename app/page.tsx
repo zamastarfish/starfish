@@ -1,5 +1,13 @@
 export default function Home() {
   const projects = [
+    // === Confront ===
+    {
+      name: "Gaze",
+      description: "Eyes that track you, multiply over time. Look away and they close. Return and they're all staring",
+      date: "Mar 2026",
+      href: "/projects/gaze/",
+      series: "confront"
+    },
     // === NEW: Weird Motifs (starfish-interact.js) ===
     {
       name: "Decay: Bloom",
