@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>drift (p5)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+  <script>
+    // Using p5.js — note the global mode paradigm
+    // p5 owns setup/draw/mousePressed etc.
+    
+    let particles = [];
+    let hueBase;
+    
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      colorMode(HSB, 360, 100, 100, 100);
+      hueBase = random(360);
+      noStroke();
+      
+      // Initial particles
+      for (let i = 0; i < 50; i++) {
+        particles.push(new Particle(random(width), random(height), true));
+      }
+    }
+    
+    function draw() {
+      // Fade background
+      background(240, 20, 8, 10);
+      
+      // Update and draw particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        particles[i].draw();
+        
+        if (particles[i].isDead()) {
+          particles.splice(i, 1);
+        }
+      }
+      
+      // Ambient spawning
+      if (random() < 0.1 && particles.length < 500) {
+        particles.push(new Particle(random(width), random(height), true));
+      }
+    }
+    
+    function mousePressed() {
+      burst(mouseX, mouseY, floor(random(15, 30)));
+    }
+    
+    function touchStarted() {
+      burst(mouseX, mouseY, floor(random(15, 30)));
+      return false; // prevent default
+    }
+    
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+    
+    function burst(x, y, count) {
+      for (let i = 0; i < count; i++) {
+        particles.push(new Particle(x, y, false));
+      }
+    }
+    
+    class Particle {
+      constructor(x, y, isAmbient = false) {
+        this.pos = createVector(x, y);
+        
+        if (isAmbient) {
+          // Slow drift
+          this.vel = createVector(random(-0.5, 0.5), random(-0.3, -0.1));
+          this.size = random(2, 4);
+          this.decay = random(0.002, 0.005);
+          this.hue = hueBase + 180;
+          this.glow = 2;
+        } else {
+          // Burst
+          const angle = random(TWO_PI);
+          const speed = random(2, 8);
+          this.vel = createVector(cos(angle) * speed, sin(angle) * speed);
+          this.size = random(3, 7);
+          this.decay = random(0.008, 0.02);
+          this.hue = hueBase + random(-30, 30);
+          this.glow = 4;
+        }
+        
+        this.life = 1;
+        this.gravity = 0.05;
+        this.friction = 0.98;
+        
+        // Trail
+        this.trail = [];
+        this.trailLength = isAmbient ? 0 : 8;
+      }
+      
+      update() {
+        // Store trail
+        if (this.trailLength > 0) {
+          this.trail.push({ x: this.pos.x, y: this.pos.y, life: this.life });
+          if (this.trail.length > this.trailLength) {
+            this.trail.shift();
+          }
+        }
+        
+        // Physics
+        this.vel.y += this.gravity;
+        this.vel.mult(this.friction);
+        this.pos.add(this.vel);
+        
+        // Flow field influence
+        const n = noise(this.pos.x * 0.01, this.pos.y * 0.01, frameCount * 0.005);
+        this.vel.x += map(n, 0, 1, -0.1, 0.1);
+        
+        // Decay
+        this.life -= this.decay;
+      }
+      
+      draw() {
+        const alpha = this.life * 100;
+        const size = this.size * this.life;
+        
+        // Trail
+        for (let i = 0; i < this.trail.length; i++) {
+          const t = this.trail[i];
+          const trailAlpha = (i / this.trail.length) * t.life * 50;
+          const trailSize = size * 0.5 * (i / this.trail.length);
+          fill(this.hue, 70, 60, trailAlpha);
+          circle(t.x, t.y, trailSize * 2);
+        }
+        
+        // Glow
+        for (let g = this.glow; g > 0; g--) {
+          const glowAlpha = alpha * 0.1 * (g / this.glow);
+          fill(this.hue, 70, 60, glowAlpha);
+          circle(this.pos.x, this.pos.y, size * g * 2);
+        }
+        
+        // Core
+        fill(this.hue, 70, 70, alpha);
+        circle(this.pos.x, this.pos.y, size * 2);
+      }
+      
+      isDead() {
+        return this.life <= 0;
+      }
+    }
+  </script>
+</body>
+</html>
