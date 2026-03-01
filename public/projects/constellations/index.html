@@ -11,13 +11,6 @@
       min-height: 100vh;
       overflow: hidden;
     }
-    .back-btn { 
-      position: fixed; top: 20px; left: 20px; 
-      color: rgba(255,255,255,0.3); text-decoration: none; 
-      font-size: 24px; z-index: 1000; transition: color 0.2s; line-height: 1;
-    } 
-    .back-btn:hover { color: rgba(255,255,255,0.6); }
-    
     canvas { 
       display: block;
       width: 100vw;
@@ -277,11 +270,64 @@
       visibility: visible;
       transform: translateX(-50%) translateY(0);
     }
+  
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s; font-family: system-ui, sans-serif;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.3);
+    }
+    /* Modal */
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #111; border: 1px solid #333; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #fff; }
+
   </style>
 </head>
 <body>
-  <a href="/" class="back-btn">←</a>
-  <div class="controls">
+
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Constellations</h2>
+      <h3>Concept</h3>
+      <p>Draw your own myths. Connect stars, tell stories about randomness.</p>
+      <h3>Interaction</h3>
+      <p>Click and drag between stars to draw lines. Create your own constellations.</p>
+    </div>
+  </div>
+
+<div class="controls">
     <button class="btn primary" id="imagineBtn" disabled>Imagine</button>
     <button class="btn" id="undoBtn" disabled>Undo</button>
     <button class="btn" id="clearBtn">Clear</button>
