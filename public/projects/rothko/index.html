@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rothko — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #1a1a1a; 
+      overflow: hidden;
+    }
+    canvas { display: block; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.2);
+      text-decoration: none;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+    }
+    #back:hover { color: rgba(255,255,255,0.5); }
+  </style>
+</head>
+<body>
+  <a href="/" id="back">← back</a>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    
+    // Rothko-inspired palettes (background, top rect, bottom rect)
+    const palettes = [
+      // Classic Rothko moods
+      { bg: '#2a1f1f', top: '#8b2500', bottom: '#1a0505', name: 'ember' },
+      { bg: '#1a1a2e', top: '#3d5a80', bottom: '#0d1b2a', name: 'depths' },
+      { bg: '#2d2a1f', top: '#c9a227', bottom: '#3d2914', name: 'ochre' },
+      { bg: '#1f2a1f', top: '#2d5a27', bottom: '#0a1a0a', name: 'forest' },
+      { bg: '#2a1f2a', top: '#6b3074', bottom: '#1a0a1a', name: 'violet' },
+      { bg: '#1a1a1a', top: '#4a4a4a', bottom: '#1a1a1a', name: 'grey' },
+      { bg: '#2a2520', top: '#d4a574', bottom: '#2a1f14', name: 'sand' },
+      { bg: '#1f1a2a', top: '#2a4a6b', bottom: '#6b2a4a', name: 'dusk' },
+    ];
+    
+    let currentPalette = 0;
+    let targetPalette = 0;
+    let transition = 1;
+    
+    // Rectangle state
+    let rects = {
+      top: { y: 0.15, height: 0.35, breath: 0 },
+      bottom: { y: 0.55, height: 0.32, breath: 0 }
+    };
+    
+    let time = 0;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    function hexToRgb(hex) {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 0, g: 0, b: 0 };
+    }
+    
+    function lerpColor(c1, c2, t) {
+      const rgb1 = hexToRgb(c1);
+      const rgb2 = hexToRgb(c2);
+      return {
+        r: Math.round(rgb1.r + (rgb2.r - rgb1.r) * t),
+        g: Math.round(rgb1.g + (rgb2.g - rgb1.g) * t),
+        b: Math.round(rgb1.b + (rgb2.b - rgb1.b) * t)
+      };
+    }
+    
+    function rgbToString(rgb, alpha = 1) {
+      return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+    }
+    
+    function getCurrentColor(key) {
+      const from = palettes[currentPalette][key];
+      const to = palettes[targetPalette][key];
+      return lerpColor(from, to, transition);
+    }
+    
+    function drawRect(yRatio, heightRatio, color, breath) {
+      const margin = Math.min(width, height) * 0.1;
+      const rectWidth = width - margin * 2;
+      const rectHeight = height * heightRatio;
+      const x = margin;
+      const y = height * yRatio;
+      
+      // Breathing effect on size
+      const breathScale = 1 + Math.sin(breath) * 0.008;
+      const adjustedWidth = rectWidth * breathScale;
+      const adjustedHeight = rectHeight * breathScale;
+      const adjustedX = x - (adjustedWidth - rectWidth) / 2;
+      const adjustedY = y - (adjustedHeight - rectHeight) / 2;
+      
+      // Multiple layered rectangles for soft edges (Rothko's technique)
+      const layers = 8;
+      
+      for (let i = layers; i >= 0; i--) {
+        const expand = i * 8;
+        const alpha = i === 0 ? 1 : 0.15 - (i * 0.015);
+        
+        ctx.fillStyle = rgbToString(color, Math.max(0, alpha));
+        
+        // Soft rounded rectangle
+        const cornerRadius = 5 + i * 3;
+        const lx = adjustedX - expand;
+        const ly = adjustedY - expand;
+        const lw = adjustedWidth + expand * 2;
+        const lh = adjustedHeight + expand * 2;
+        
+        ctx.beginPath();
+        ctx.roundRect(lx, ly, lw, lh, cornerRadius);
+        ctx.fill();
+      }
+      
+      // Inner texture variation (very subtle)
+      ctx.save();
+      ctx.globalAlpha = 0.03;
+      ctx.globalCompositeOperation = 'overlay';
+      
+      for (let i = 0; i < 20; i++) {
+        const tx = adjustedX + Math.random() * adjustedWidth;
+        const ty = adjustedY + Math.random() * adjustedHeight;
+        const tr = 20 + Math.random() * 60;
+        
+        const gradient = ctx.createRadialGradient(tx, ty, 0, tx, ty, tr);
+        gradient.addColorStop(0, 'rgba(255,255,255,0.5)');
+        gradient.addColorStop(1, 'rgba(255,255,255,0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(tx, ty, tr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+    
+    function draw() {
+      // Background
+      const bgColor = getCurrentColor('bg');
+      ctx.fillStyle = rgbToString(bgColor);
+      ctx.fillRect(0, 0, width, height);
+      
+      // Add subtle texture to background
+      ctx.save();
+      ctx.globalAlpha = 0.02;
+      for (let i = 0; i < 1000; i++) {
+        const x = Math.random() * width;
+        const y = Math.random() * height;
+        ctx.fillStyle = Math.random() > 0.5 ? '#fff' : '#000';
+        ctx.fillRect(x, y, 1, 1);
+      }
+      ctx.restore();
+      
+      // Update breathing
+      rects.top.breath = time * 0.3;
+      rects.bottom.breath = time * 0.25 + Math.PI;
+      
+      // Draw rectangles
+      const topColor = getCurrentColor('top');
+      const bottomColor = getCurrentColor('bottom');
+      
+      drawRect(rects.top.y, rects.top.height, topColor, rects.top.breath);
+      drawRect(rects.bottom.y, rects.bottom.height, bottomColor, rects.bottom.breath);
+      
+      // Very subtle vignette
+      const vignette = ctx.createRadialGradient(
+        width / 2, height / 2, height * 0.3,
+        width / 2, height / 2, height * 0.9
+      );
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.3)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, width, height);
+    }
+    
+    let lastTime = Date.now();
+    
+    function animate() {
+      const now = Date.now();
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+      
+      time += dt;
+      
+      // Palette transition
+      if (transition < 1) {
+        transition = Math.min(1, transition + dt * 0.3);
+        if (transition >= 1) {
+          currentPalette = targetPalette;
+        }
+      }
+      
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    function nextPalette() {
+      if (transition >= 1) {
+        currentPalette = targetPalette;
+        targetPalette = (targetPalette + 1) % palettes.length;
+        transition = 0;
+      }
+    }
+    
+    // Events
+    window.addEventListener('resize', resize);
+    canvas.addEventListener('click', nextPalette);
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      nextPalette();
+    });
+    
+    // Keyboard
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.code === 'ArrowRight') {
+        nextPalette();
+      }
+    });
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>

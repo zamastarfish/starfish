@@ -2,6 +2,13 @@ export default function Home() {
   const projects = [
     // === Emotional territories ===
     {
+      name: "Rothko",
+      description: "Color field meditation. Soft rectangles breathe slowly. The edges blur. Stare long enough. Click to shift palette",
+      date: "Mar 2026",
+      href: "/projects/rothko/",
+      series: "art-history"
+    },
+    {
       name: "Float",
       description: "Weightlessness. You're the glowing particle, drifting upward with soft shapes. Move to guide yourself. Let go",
       date: "Mar 2026",
