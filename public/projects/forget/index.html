@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>forget — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0c;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      cursor: default;
+    }
+    canvas { display: block; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(180, 180, 190, 0.4);
+      text-decoration: none;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+    }
+    #back:hover { color: rgba(180, 180, 190, 0.8); }
+    #hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(180, 180, 190, 0.3);
+      font-size: 12px;
+      font-style: italic;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 2s;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" id="back">← back</a>
+  <div id="hint">hover to hold — but you can't hold everything</div>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+
+    let W, H;
+    let mouse = { x: -1000, y: -1000 };
+    let memories = [];
+    let time = 0;
+
+    // Memory shapes — fragments of things
+    const shapes = [
+      'circle', 'square', 'line', 'arc', 'dot-cluster', 
+      'wave', 'cross', 'ring', 'triangle', 'spiral'
+    ];
+
+    // Muted, faded colors — like old photographs
+    const palettes = [
+      ['#8b7355', '#a0937d', '#c4b7a6'], // sepia
+      ['#6b7b8c', '#8899a6', '#a6b5c4'], // blue-grey
+      ['#7a6b5c', '#9a8b7a', '#b8a998'], // warm grey
+      ['#5c6b6a', '#7a8988', '#98a8a6'], // sage
+      ['#6b5c6b', '#8a7a8a', '#a898a8'], // lavender grey
+    ];
+
+    class Memory {
+      constructor() {
+        this.reset();
+      }
+
+      reset() {
+        this.x = Math.random() * W;
+        this.y = Math.random() * H;
+        this.shape = shapes[Math.floor(Math.random() * shapes.length)];
+        this.palette = palettes[Math.floor(Math.random() * palettes.length)];
+        this.color = this.palette[Math.floor(Math.random() * this.palette.length)];
+        this.size = 20 + Math.random() * 60;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.002;
+        
+        // Life and decay
+        this.maxLife = 300 + Math.random() * 400; // frames
+        this.life = this.maxLife;
+        this.fadeRate = 0.3 + Math.random() * 0.5;
+        this.held = false;
+        
+        // Drift
+        this.vx = (Math.random() - 0.5) * 0.3;
+        this.vy = (Math.random() - 0.5) * 0.3;
+        
+        // Unique characteristics
+        this.seed = Math.random() * 1000;
+        this.complexity = 2 + Math.floor(Math.random() * 5);
+      }
+
+      update() {
+        // Check if being held (hovered)
+        const dx = mouse.x - this.x;
+        const dy = mouse.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const holdRadius = this.size * 1.5;
+        
+        this.held = dist < holdRadius;
+        
+        // Decay — slower when held
+        if (this.held) {
+          this.life -= this.fadeRate * 0.1; // much slower decay
+        } else {
+          this.life -= this.fadeRate;
+        }
+        
+        // Gentle drift
+        this.x += this.vx;
+        this.y += this.vy;
+        this.rotation += this.rotationSpeed;
+        
+        // Wrap around edges gently
+        if (this.x < -this.size) this.x = W + this.size;
+        if (this.x > W + this.size) this.x = -this.size;
+        if (this.y < -this.size) this.y = H + this.size;
+        if (this.y > H + this.size) this.y = -this.size;
+        
+        // Reset when fully faded
+        if (this.life <= 0) {
+          this.reset();
+        }
+      }
+
+      draw() {
+        const alpha = Math.max(0, this.life / this.maxLife);
+        const fadeAlpha = alpha * alpha; // quadratic fade for softer disappearance
+        
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.globalAlpha = fadeAlpha * 0.6;
+        
+        // Slight glow when held
+        if (this.held && alpha > 0.1) {
+          ctx.shadowColor = this.color;
+          ctx.shadowBlur = 20;
+        }
+        
+        ctx.strokeStyle = this.color;
+        ctx.fillStyle = this.color;
+        ctx.lineWidth = 1 + alpha;
+        
+        this.drawShape();
+        
+        ctx.restore();
+      }
+
+      drawShape() {
+        const s = this.size;
+        
+        switch (this.shape) {
+          case 'circle':
+            ctx.beginPath();
+            ctx.arc(0, 0, s / 2, 0, Math.PI * 2);
+            ctx.stroke();
+            break;
+            
+          case 'square':
+            ctx.strokeRect(-s/2, -s/2, s, s);
+            break;
+            
+          case 'line':
+            ctx.beginPath();
+            ctx.moveTo(-s/2, 0);
+            ctx.lineTo(s/2, 0);
+            ctx.stroke();
+            break;
+            
+          case 'arc':
+            ctx.beginPath();
+            ctx.arc(0, 0, s/2, 0, Math.PI * (0.5 + this.seed % 1.5));
+            ctx.stroke();
+            break;
+            
+          case 'dot-cluster':
+            for (let i = 0; i < this.complexity; i++) {
+              const angle = (i / this.complexity) * Math.PI * 2 + this.seed;
+              const r = s * 0.3 * (0.5 + (this.seed * i) % 0.5);
+              ctx.beginPath();
+              ctx.arc(
+                Math.cos(angle) * r,
+                Math.sin(angle) * r,
+                2 + (i % 3),
+                0, Math.PI * 2
+              );
+              ctx.fill();
+            }
+            break;
+            
+          case 'wave':
+            ctx.beginPath();
+            for (let i = 0; i <= 20; i++) {
+              const x = -s/2 + (i/20) * s;
+              const y = Math.sin(i * 0.5 + this.seed) * s * 0.2;
+              if (i === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            break;
+            
+          case 'cross':
+            ctx.beginPath();
+            ctx.moveTo(-s/2, 0);
+            ctx.lineTo(s/2, 0);
+            ctx.moveTo(0, -s/2);
+            ctx.lineTo(0, s/2);
+            ctx.stroke();
+            break;
+            
+          case 'ring':
+            ctx.beginPath();
+            ctx.arc(0, 0, s/2, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, 0, s/3, 0, Math.PI * 2);
+            ctx.stroke();
+            break;
+            
+          case 'triangle':
+            ctx.beginPath();
+            for (let i = 0; i < 3; i++) {
+              const angle = (i / 3) * Math.PI * 2 - Math.PI / 2;
+              const x = Math.cos(angle) * s / 2;
+              const y = Math.sin(angle) * s / 2;
+              if (i === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            break;
+            
+          case 'spiral':
+            ctx.beginPath();
+            for (let i = 0; i < 50; i++) {
+              const angle = i * 0.2;
+              const r = (i / 50) * s / 2;
+              const x = Math.cos(angle) * r;
+              const y = Math.sin(angle) * r;
+              if (i === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            break;
+        }
+      }
+    }
+
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+
+    function init() {
+      resize();
+      
+      // Create initial memories
+      const count = Math.min(25, Math.floor((W * H) / 40000));
+      for (let i = 0; i < count; i++) {
+        const m = new Memory();
+        m.life = m.maxLife * Math.random(); // stagger initial states
+        memories.push(m);
+      }
+      
+      // Fade hint after a few seconds
+      setTimeout(() => {
+        hint.style.opacity = '0';
+      }, 5000);
+    }
+
+    function draw() {
+      // Soft fade background — creates trails
+      ctx.fillStyle = 'rgba(10, 10, 12, 0.08)';
+      ctx.fillRect(0, 0, W, H);
+      
+      // Update and draw memories
+      for (const m of memories) {
+        m.update();
+        m.draw();
+      }
+      
+      time++;
+      requestAnimationFrame(draw);
+    }
+
+    // Event listeners
+    window.addEventListener('resize', resize);
+    
+    canvas.addEventListener('mousemove', (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouse.x = touch.clientX;
+      mouse.y = touch.clientY;
+    }, { passive: false });
+    
+    canvas.addEventListener('mouseleave', () => {
+      mouse.x = -1000;
+      mouse.y = -1000;
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      mouse.x = -1000;
+      mouse.y = -1000;
+    });
+
+    init();
+    draw();
+  </script>
+</body>
+</html>
