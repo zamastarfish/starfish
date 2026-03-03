@@ -21,6 +21,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| pendulum | Wave of pendulums, emergent patterns, drag to scrub time | 1 session | Mar 3 |
 | constellations | Connect stars, draw your own myths. Pattern-finding | 1 session | Feb 26 |
 | candle | Flickering flame, mouse creates wind. Warm and meditative | 1 session | Feb 25 |
 | tide | Waves on shore, moon phases affect tide strength | 1 session | Feb 25 |
