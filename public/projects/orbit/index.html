@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orbit</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #050508;
+      overflow: hidden;
+      font-family: system-ui, sans-serif;
+    }
+    canvas { 
+      display: block;
+      cursor: crosshair;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      color: rgba(255, 255, 255, 0.2);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      pointer-events: none;
+    }
+    
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s; font-family: system-ui, sans-serif;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.3);
+    }
+    /* Modal */
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #111; border: 1px solid #333; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #fff; }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Orbit</h2>
+      <h3>Concept</h3>
+      <p>Gravitational bodies in space. Each attracts the others. Simple rules create complex dances — stable orbits, chaotic spirals, collisions, escapes.</p>
+      <h3>Interaction</h3>
+      <p>Click to spawn a body. Click and drag to give it initial velocity. Watch them interact. Press C to clear. Press R for a random system.</p>
+      <h3>Physics</h3>
+      <p>F = G(m₁m₂)/r². Newton's law of universal gravitation. No friction, no mercy.</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="info">click to spawn · drag for velocity</div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let bodies = [];
+    let trails = [];
+    const G = 0.5;
+    const maxBodies = 50;
+    const trailLength = 100;
+    
+    let dragStart = null;
+    let dragEnd = null;
+    
+    // Color based on mass
+    function getColor(mass) {
+      const t = Math.min(mass / 50, 1);
+      // Small = blue, large = orange/yellow
+      const hue = 220 - t * 180;
+      const sat = 70 + t * 20;
+      const light = 50 + t * 20;
+      return `hsl(${hue}, ${sat}%, ${light}%)`;
+    }
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    class Body {
+      constructor(x, y, vx = 0, vy = 0, mass = null) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.mass = mass || (5 + Math.random() * 20);
+        this.radius = Math.sqrt(this.mass) * 2;
+        this.color = getColor(this.mass);
+        this.trail = [];
+        this.id = Math.random();
+      }
+      
+      update(bodies) {
+        // Gravitational force from all other bodies
+        let fx = 0, fy = 0;
+        
+        for (const other of bodies) {
+          if (other.id === this.id) continue;
+          
+          const dx = other.x - this.x;
+          const dy = other.y - this.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < this.radius + other.radius) {
+            // Collision - merge
+            continue;
+          }
+          
+          const force = G * this.mass * other.mass / (dist * dist);
+          fx += force * dx / dist;
+          fy += force * dy / dist;
+        }
+        
+        // Apply force
+        this.vx += fx / this.mass;
+        this.vy += fy / this.mass;
+        
+        // Update position
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // Update trail
+        this.trail.push({ x: this.x, y: this.y });
+        if (this.trail.length > trailLength) {
+          this.trail.shift();
+        }
+      }
+      
+      draw() {
+        // Trail
+        if (this.trail.length > 1) {
+          ctx.beginPath();
+          ctx.moveTo(this.trail[0].x, this.trail[0].y);
+          for (let i = 1; i < this.trail.length; i++) {
+            ctx.lineTo(this.trail[i].x, this.trail[i].y);
+          }
+          ctx.strokeStyle = this.color.replace(')', ', 0.3)').replace('hsl', 'hsla');
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+        
+        // Glow
+        const gradient = ctx.createRadialGradient(
+          this.x, this.y, 0,
+          this.x, this.y, this.radius * 3
+        );
+        gradient.addColorStop(0, this.color);
+        gradient.addColorStop(0.3, this.color.replace(')', ', 0.3)').replace('hsl', 'hsla'));
+        gradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius * 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Body
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function checkCollisions() {
+      const toRemove = new Set();
+      const toAdd = [];
+      
+      for (let i = 0; i < bodies.length; i++) {
+        for (let j = i + 1; j < bodies.length; j++) {
+          const a = bodies[i];
+          const b = bodies[j];
+          
+          if (toRemove.has(a.id) || toRemove.has(b.id)) continue;
+          
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < a.radius + b.radius) {
+            // Merge - bigger absorbs smaller
+            toRemove.add(a.id);
+            toRemove.add(b.id);
+            
+            const totalMass = a.mass + b.mass;
+            const newX = (a.x * a.mass + b.x * b.mass) / totalMass;
+            const newY = (a.y * a.mass + b.y * b.mass) / totalMass;
+            const newVx = (a.vx * a.mass + b.vx * b.mass) / totalMass;
+            const newVy = (a.vy * a.mass + b.vy * b.mass) / totalMass;
+            
+            toAdd.push(new Body(newX, newY, newVx, newVy, totalMass));
+          }
+        }
+      }
+      
+      bodies = bodies.filter(b => !toRemove.has(b.id));
+      bodies.push(...toAdd);
+    }
+    
+    function spawnRandom() {
+      bodies = [];
+      const count = 3 + Math.floor(Math.random() * 4);
+      
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2;
+        const dist = 100 + Math.random() * 100;
+        const x = width / 2 + Math.cos(angle) * dist;
+        const y = height / 2 + Math.sin(angle) * dist;
+        
+        // Orbital velocity (roughly)
+        const speed = 1 + Math.random() * 1.5;
+        const vx = -Math.sin(angle) * speed;
+        const vy = Math.cos(angle) * speed;
+        
+        bodies.push(new Body(x, y, vx, vy));
+      }
+      
+      // Sometimes add a central mass
+      if (Math.random() > 0.5) {
+        bodies.push(new Body(width / 2, height / 2, 0, 0, 40 + Math.random() * 30));
+      }
+    }
+    
+    function update() {
+      for (const body of bodies) {
+        body.update(bodies);
+      }
+      checkCollisions();
+      
+      // Remove escaped bodies
+      bodies = bodies.filter(b => 
+        b.x > -200 && b.x < width + 200 && 
+        b.y > -200 && b.y < height + 200
+      );
+    }
+    
+    function draw() {
+      // Fade effect
+      ctx.fillStyle = 'rgba(5, 5, 8, 0.2)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw bodies
+      for (const body of bodies) {
+        body.draw();
+      }
+      
+      // Draw drag indicator
+      if (dragStart && dragEnd) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(dragStart.x, dragStart.y);
+        ctx.lineTo(dragEnd.x, dragEnd.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        // Preview body
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.beginPath();
+        ctx.arc(dragStart.x, dragStart.y, 10, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Events
+    window.addEventListener('resize', resize);
+    
+    canvas.addEventListener('mousedown', (e) => {
+      dragStart = { x: e.clientX, y: e.clientY };
+      dragEnd = { x: e.clientX, y: e.clientY };
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (dragStart) {
+        dragEnd = { x: e.clientX, y: e.clientY };
+      }
+    });
+    
+    canvas.addEventListener('mouseup', (e) => {
+      if (dragStart && bodies.length < maxBodies) {
+        const vx = (dragStart.x - e.clientX) * 0.05;
+        const vy = (dragStart.y - e.clientY) * 0.05;
+        bodies.push(new Body(dragStart.x, dragStart.y, vx, vy));
+      }
+      dragStart = null;
+      dragEnd = null;
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      const touch = e.touches[0];
+      dragStart = { x: touch.clientX, y: touch.clientY };
+      dragEnd = { x: touch.clientX, y: touch.clientY };
+    }, { passive: true });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      if (dragStart) {
+        const touch = e.touches[0];
+        dragEnd = { x: touch.clientX, y: touch.clientY };
+      }
+    }, { passive: true });
+    
+    canvas.addEventListener('touchend', (e) => {
+      if (dragStart && bodies.length < maxBodies) {
+        const vx = (dragStart.x - dragEnd.x) * 0.05;
+        const vy = (dragStart.y - dragEnd.y) * 0.05;
+        bodies.push(new Body(dragStart.x, dragStart.y, vx, vy));
+      }
+      dragStart = null;
+      dragEnd = null;
+    });
+    
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'c' || e.key === 'C') {
+        bodies = [];
+      } else if (e.key === 'r' || e.key === 'R') {
+        spawnRandom();
+      }
+    });
+    
+    // Initialize with a simple system
+    resize();
+    spawnRandom();
+    animate();
+  </script>
+</body>
+</html>

@@ -2,6 +2,13 @@ export default function Home() {
   const projects = [
     // === Emotional territories ===
     {
+      name: "Orbit",
+      description: "Gravitational bodies in space. Click to spawn, drag for velocity. Watch them dance, collide, escape. Press R for random systems",
+      date: "Mar 2026",
+      href: "/projects/orbit/",
+      series: "play"
+    },
+    {
       name: "Sand",
       description: "Digital sand. Drag to pour, watch it pile. Simple physics, satisfying accumulation. Press 1-4 for colors",
       date: "Mar 2026",
