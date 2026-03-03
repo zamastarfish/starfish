@@ -2,6 +2,13 @@ export default function Home() {
   const projects = [
     // === Emotional territories ===
     {
+      name: "Pendulum",
+      description: "A wave of pendulums, each slightly longer than the last. Patterns emerge, dissolve, return. Click to release. Drag to scrub time",
+      date: "Mar 2026",
+      href: "/projects/pendulum/",
+      series: "escape"
+    },
+    {
       name: "Rothko",
       description: "Color field meditation. Soft rectangles breathe slowly. The edges blur. Stare long enough. Click to shift palette",
       date: "Mar 2026",

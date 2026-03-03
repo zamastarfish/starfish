@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pendulum</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0f;
+      overflow: hidden;
+      font-family: system-ui, sans-serif;
+    }
+    canvas { 
+      display: block;
+      cursor: crosshair;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      color: rgba(255, 255, 255, 0.2);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      pointer-events: none;
+      text-transform: uppercase;
+    }
+    
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s; font-family: system-ui, sans-serif;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.3);
+    }
+    /* Modal */
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #111; border: 1px solid #333; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #fff; }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Pendulum</h2>
+      <h3>Concept</h3>
+      <p>A wave of pendulums, each slightly longer than the last. The periods differ just enough to create patterns that emerge, dissolve, and emerge again — order from simplicity.</p>
+      <h3>Interaction</h3>
+      <p>Click to release the pendulums in unison. Watch patterns form. Space to pause. Drag left/right to adjust time.</p>
+      <h3>Physics</h3>
+      <p>Each pendulum follows T = 2π√(L/g). The difference in lengths creates phase relationships that cycle through alignment every ~60 seconds.</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="info">click to release</div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    
+    let width, height;
+    let pendulums = [];
+    let time = 0;
+    let running = true;
+    let released = false;
+    let dragStart = null;
+    let timeOffset = 0;
+    
+    // Configuration
+    const COUNT = 24;
+    const CYCLE_TIME = 60; // seconds for full pattern cycle
+    const BASE_PERIOD = 1.5; // shortest pendulum period
+    
+    // Colors - deep blues fading to gold
+    function getColor(index, total) {
+      const t = index / (total - 1);
+      // Deep blue to warm gold
+      const r = Math.floor(40 + t * 180);
+      const g = Math.floor(60 + t * 140);
+      const b = Math.floor(140 - t * 80);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      initPendulums();
+    }
+    
+    function initPendulums() {
+      pendulums = [];
+      const spacing = width / (COUNT + 1);
+      const anchorY = height * 0.15;
+      const maxLength = height * 0.65;
+      const minLength = height * 0.35;
+      
+      for (let i = 0; i < COUNT; i++) {
+        const x = spacing * (i + 1);
+        // Length determines period: T = 2π√(L/g)
+        // We want periods that create a full cycle difference over CYCLE_TIME
+        // Shortest completes n oscillations, longest completes n-1
+        const oscillations = CYCLE_TIME / BASE_PERIOD;
+        const periodRatio = oscillations / (oscillations - 1);
+        const lengthRatio = periodRatio * periodRatio; // L ∝ T²
+        
+        const t = i / (COUNT - 1);
+        const length = minLength + (maxLength - minLength) * t;
+        const period = BASE_PERIOD * Math.sqrt(length / minLength);
+        
+        pendulums.push({
+          x,
+          anchorY,
+          length,
+          period,
+          angle: released ? 0 : Math.PI / 6, // Start angle
+          velocity: 0,
+          color: getColor(i, COUNT),
+          bobRadius: 8 + (1 - t) * 4
+        });
+      }
+    }
+    
+    function update(dt) {
+      if (!running) return;
+      
+      const timeScale = 1;
+      time += dt * timeScale;
+      
+      pendulums.forEach(p => {
+        if (released) {
+          // Simple harmonic motion
+          const omega = (2 * Math.PI) / p.period;
+          const amplitude = Math.PI / 6;
+          p.angle = amplitude * Math.cos(omega * (time + timeOffset));
+        }
+      });
+    }
+    
+    function draw() {
+      // Subtle trail effect
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw the anchor bar
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, pendulums[0]?.anchorY || 100);
+      ctx.lineTo(width, pendulums[0]?.anchorY || 100);
+      ctx.stroke();
+      
+      // Draw pendulums
+      pendulums.forEach((p, i) => {
+        const bobX = p.x + Math.sin(p.angle) * p.length;
+        const bobY = p.anchorY + Math.cos(p.angle) * p.length;
+        
+        // String
+        ctx.strokeStyle = `rgba(255, 255, 255, 0.15)`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.anchorY);
+        ctx.lineTo(bobX, bobY);
+        ctx.stroke();
+        
+        // Bob glow
+        const gradient = ctx.createRadialGradient(bobX, bobY, 0, bobX, bobY, p.bobRadius * 3);
+        gradient.addColorStop(0, p.color);
+        gradient.addColorStop(0.3, p.color.replace('rgb', 'rgba').replace(')', ', 0.3)'));
+        gradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(bobX, bobY, p.bobRadius * 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Bob
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(bobX, bobY, p.bobRadius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      // Draw wave connection when released
+      if (released && pendulums.length > 1) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        pendulums.forEach((p, i) => {
+          const bobX = p.x + Math.sin(p.angle) * p.length;
+          const bobY = p.anchorY + Math.cos(p.angle) * p.length;
+          if (i === 0) ctx.moveTo(bobX, bobY);
+          else ctx.lineTo(bobX, bobY);
+        });
+        ctx.stroke();
+      }
+    }
+    
+    let lastTime = performance.now();
+    function animate(currentTime) {
+      const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+      lastTime = currentTime;
+      
+      update(dt);
+      draw();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Event handlers
+    window.addEventListener('resize', resize);
+    
+    canvas.addEventListener('click', () => {
+      if (!released) {
+        released = true;
+        time = 0;
+        timeOffset = 0;
+        info.textContent = 'space to reset';
+        setTimeout(() => {
+          info.style.opacity = '0';
+        }, 3000);
+      }
+    });
+    
+    canvas.addEventListener('mousedown', (e) => {
+      if (released) {
+        dragStart = { x: e.clientX, time: timeOffset };
+      }
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (dragStart) {
+        const dx = e.clientX - dragStart.x;
+        timeOffset = dragStart.time + dx * 0.01;
+      }
+    });
+    
+    canvas.addEventListener('mouseup', () => {
+      dragStart = null;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      dragStart = null;
+    });
+    
+    // Touch support
+    canvas.addEventListener('touchstart', (e) => {
+      if (!released) {
+        released = true;
+        time = 0;
+        timeOffset = 0;
+        info.textContent = 'drag to scrub time';
+        setTimeout(() => {
+          info.style.opacity = '0';
+        }, 3000);
+      } else {
+        const touch = e.touches[0];
+        dragStart = { x: touch.clientX, time: timeOffset };
+      }
+    }, { passive: true });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      if (dragStart) {
+        const touch = e.touches[0];
+        const dx = touch.clientX - dragStart.x;
+        timeOffset = dragStart.time + dx * 0.01;
+      }
+    }, { passive: true });
+    
+    canvas.addEventListener('touchend', () => {
+      dragStart = null;
+    });
+    
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        released = false;
+        initPendulums();
+        info.textContent = 'click to release';
+        info.style.opacity = '1';
+      }
+    });
+    
+    // Initialize
+    resize();
+    animate(performance.now());
+  </script>
+</body>
+</html>
