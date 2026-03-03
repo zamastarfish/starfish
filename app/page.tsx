@@ -2,6 +2,13 @@ export default function Home() {
   const projects = [
     // === Emotional territories ===
     {
+      name: "Sand",
+      description: "Digital sand. Drag to pour, watch it pile. Simple physics, satisfying accumulation. Press 1-4 for colors",
+      date: "Mar 2026",
+      href: "/projects/sand/",
+      series: "play"
+    },
+    {
       name: "Pendulum",
       description: "A wave of pendulums, each slightly longer than the last. Patterns emerge, dissolve, return. Click to release. Drag to scrub time",
       date: "Mar 2026",
