@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tend</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0d0d0f; 
+      overflow: hidden;
+      font-family: system-ui, sans-serif;
+    }
+    canvas { 
+      display: block; 
+      cursor: default;
+    }
+    
+    #state {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.15);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      pointer-events: none;
+      transition: color 1s, opacity 1s;
+    }
+    
+    #state.tending {
+      color: rgba(200, 255, 200, 0.3);
+    }
+    
+    #state.fading {
+      color: rgba(255, 150, 150, 0.3);
+    }
+
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s; font-family: system-ui, sans-serif;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.3);
+    }
+    /* Modal */
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #111; border: 1px solid #333; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #fff; }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Tend</h2>
+      <h3>Concept</h3>
+      <p>Everything requires care to persist. This shape is slowly dissolving — entropy is patient and inevitable. Your attention is the only thing keeping it whole.</p>
+      <h3>Interaction</h3>
+      <p>Touch or hover over the shape to restore it. Let go and watch it fade. How long can you keep it alive? Do you want to?</p>
+      <h3>Theme</h3>
+      <p>Maintenance. Care. The quiet labor of keeping things together. Everything you love requires tending.</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="state">waiting</div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const stateEl = document.getElementById('state');
+    
+    let width, height, centerX, centerY;
+    let particles = [];
+    let health = 1.0; // 0 = gone, 1 = full
+    let isTending = false;
+    let mouseX = 0, mouseY = 0;
+    let time = 0;
+    let hasInteracted = false;
+    
+    const DECAY_RATE = 0.0003; // How fast it fades without attention
+    const RESTORE_RATE = 0.002; // How fast it heals with attention
+    const PARTICLE_COUNT = 2000;
+    const BASE_RADIUS = 100;
+    
+    // Warm, organic colors
+    const palette = [
+      [255, 220, 180],
+      [255, 200, 160],
+      [240, 180, 140],
+      [255, 190, 150],
+      [250, 210, 170],
+    ];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      centerX = width / 2;
+      centerY = height / 2;
+      if (particles.length === 0) initParticles();
+    }
+    
+    function initParticles() {
+      particles = [];
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * BASE_RADIUS;
+        // Organic shape using noise-like variation
+        const shapeNoise = 1 + 0.3 * Math.sin(angle * 3) + 0.2 * Math.sin(angle * 7 + 1);
+        const r = dist * shapeNoise;
+        
+        particles.push({
+          homeX: Math.cos(angle) * r,
+          homeY: Math.sin(angle) * r,
+          x: Math.cos(angle) * r,
+          y: Math.sin(angle) * r,
+          size: Math.random() * 2 + 1,
+          color: palette[Math.floor(Math.random() * palette.length)],
+          phase: Math.random() * Math.PI * 2,
+          driftAngle: Math.random() * Math.PI * 2,
+          driftSpeed: Math.random() * 0.5 + 0.2,
+          detached: false,
+        });
+      }
+    }
+    
+    function isNearShape(x, y) {
+      const dx = x - centerX;
+      const dy = y - centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      return dist < BASE_RADIUS * 1.8;
+    }
+    
+    function updateState() {
+      if (isTending && isNearShape(mouseX, mouseY)) {
+        // Restore
+        health = Math.min(1, health + RESTORE_RATE);
+        stateEl.textContent = 'tending';
+        stateEl.className = 'tending';
+      } else {
+        // Decay
+        health = Math.max(0, health - DECAY_RATE);
+        if (hasInteracted) {
+          stateEl.textContent = health > 0.5 ? 'fading' : (health > 0.1 ? 'fading...' : 'almost gone');
+          stateEl.className = 'fading';
+        }
+      }
+    }
+    
+    function draw() {
+      time++;
+      updateState();
+      
+      // Subtle fade
+      ctx.fillStyle = 'rgba(13, 13, 15, 0.1)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Update and draw particles
+      particles.forEach((p, i) => {
+        // Determine if this particle should be detached based on health
+        const threshold = i / PARTICLE_COUNT;
+        const shouldBeDetached = threshold > health;
+        
+        if (shouldBeDetached && !p.detached) {
+          p.detached = true;
+          p.driftAngle = Math.atan2(p.y, p.x) + (Math.random() - 0.5) * 0.5;
+        } else if (!shouldBeDetached && p.detached) {
+          p.detached = false;
+        }
+        
+        if (p.detached) {
+          // Drift away
+          p.x += Math.cos(p.driftAngle) * p.driftSpeed * 0.5;
+          p.y += Math.sin(p.driftAngle) * p.driftSpeed * 0.5 + 0.1; // slight gravity
+          p.driftAngle += (Math.random() - 0.5) * 0.02;
+        } else {
+          // Gentle breathing at home position
+          const breathe = Math.sin(time * 0.01 + p.phase) * 0.02 + 1;
+          const targetX = p.homeX * breathe;
+          const targetY = p.homeY * breathe;
+          
+          // Ease back to home
+          p.x += (targetX - p.x) * 0.05;
+          p.y += (targetY - p.y) * 0.05;
+        }
+        
+        // Draw
+        const screenX = centerX + p.x;
+        const screenY = centerY + p.y;
+        
+        // Skip if off screen
+        if (screenX < -10 || screenX > width + 10 || screenY < -10 || screenY > height + 10) return;
+        
+        const alpha = p.detached ? 0.3 : 0.6;
+        const [r, g, b] = p.color;
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      // Glow when healthy
+      if (health > 0.3) {
+        const glowAlpha = (health - 0.3) * 0.1;
+        const gradient = ctx.createRadialGradient(
+          centerX, centerY, 0,
+          centerX, centerY, BASE_RADIUS * 1.5
+        );
+        gradient.addColorStop(0, `rgba(255, 200, 150, ${glowAlpha})`);
+        gradient.addColorStop(1, 'rgba(255, 200, 150, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(centerX - BASE_RADIUS * 2, centerY - BASE_RADIUS * 2, 
+                     BASE_RADIUS * 4, BASE_RADIUS * 4);
+      }
+      
+      // Gone state
+      if (health <= 0 && hasInteracted) {
+        stateEl.textContent = 'gone';
+        stateEl.className = '';
+      }
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Input handlers
+    function startTending(x, y) {
+      isTending = true;
+      mouseX = x;
+      mouseY = y;
+      hasInteracted = true;
+    }
+    
+    function moveTending(x, y) {
+      mouseX = x;
+      mouseY = y;
+    }
+    
+    function stopTending() {
+      isTending = false;
+    }
+    
+    canvas.addEventListener('mouseenter', (e) => startTending(e.clientX, e.clientY));
+    canvas.addEventListener('mousemove', (e) => {
+      moveTending(e.clientX, e.clientY);
+      if (!hasInteracted && isNearShape(e.clientX, e.clientY)) {
+        hasInteracted = true;
+        isTending = true;
+      }
+    });
+    canvas.addEventListener('mouseleave', stopTending);
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      startTending(touch.clientX, touch.clientY);
+    }, {passive: false});
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      moveTending(touch.clientX, touch.clientY);
+    }, {passive: false});
+    
+    canvas.addEventListener('touchend', stopTending);
+    
+    // Initialize
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+  </script>
+</body>
+</html>

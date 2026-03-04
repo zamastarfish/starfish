@@ -57,6 +57,13 @@ export default function Home() {
       href: "/projects/attention/",
       series: "confront"
     },
+    {
+      name: "Tend",
+      description: "A shape dissolving. Your presence restores it. Let go and it fades. Everything requires care",
+      date: "Mar 2026",
+      href: "/projects/tend/",
+      series: "confront"
+    },
     // === NEW: Weird Motifs (starfish-interact.js) ===
     {
       name: "Decay: Bloom",

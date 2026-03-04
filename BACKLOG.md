@@ -7,7 +7,7 @@
 ## My Ideas
 - ~~**Candle**~~ → shipped
 - ~~**Constellations**~~ → shipped
-- **Erosion** — A shape slowly weathering away. Click to restore it. Time and entropy.
+- ~~**Erosion**~~ → shipped as "tend" (shape dissolving, presence restores)
 
 ### Completed
 - ~~Tide~~ ~~Mycelium~~ ~~Rain~~
@@ -21,6 +21,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| tend | Shape dissolving, presence restores. Care vs entropy | 1 session | Mar 4 |
 | patch | Modular synth patcher. Drag cables, watch signal flow | 1 session | Mar 4 |
 | attention | Stay and watch — tab switch resets. Rewards sustained focus | 1 session | Mar 4 |
 | orbit | Gravitational n-body simulation, spawn and watch them dance | 1 session | Mar 3 |
