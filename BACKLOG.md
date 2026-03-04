@@ -9,6 +9,14 @@
 - ~~**Constellations**~~ → shipped
 - ~~**Erosion**~~ → shipped as "tend" (shape dissolving, presence restores)
 
+### Fresh Ideas (Mar 4)
+- **Vanitas** — Digital memento mori. Flowers wilt, candles burn, skulls watch. Classical reminder of mortality, generative.
+- **Threshold** — You're always approaching but never arriving. Zeno's paradox made visible. How close can you get?
+- **Dust** — Motes floating in a sunbeam. The smallest things, given attention. Click to disturb, watch them settle.
+- **Sublime** — Caspar David Friedrich energy. Tiny figure, vast landscape. You are small; that's okay.
+- **Turing** — Reaction-diffusion patterns. The math of animal markings, coral, fingerprints. Biological emergence.
+- **Mono no aware** — The pathos of things. Cherry blossoms falling. Beauty is brief; that's what makes it beautiful.
+
 ### Completed
 - ~~Tide~~ ~~Mycelium~~ ~~Rain~~
 
