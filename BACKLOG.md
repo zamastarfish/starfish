@@ -21,6 +21,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| attention | Stay and watch — tab switch resets. Rewards sustained focus | 1 session | Mar 4 |
 | orbit | Gravitational n-body simulation, spawn and watch them dance | 1 session | Mar 3 |
 | sand | Falling sand simulation, drag to pour, color palettes | 1 session | Mar 3 |
 | pendulum | Wave of pendulums, emergent patterns, drag to scrub time | 1 session | Mar 3 |

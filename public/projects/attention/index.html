@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Attention</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0c; 
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+    }
+    canvas { 
+      display: block; 
+      cursor: default;
+    }
+    
+    #message {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 255, 255, 0);
+      font-size: clamp(16px, 4vw, 32px);
+      text-align: center;
+      max-width: 80%;
+      line-height: 1.6;
+      letter-spacing: 0.05em;
+      pointer-events: none;
+      transition: color 3s ease;
+      font-style: italic;
+    }
+    
+    #progress {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+    
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background: rgba(255, 255, 255, 0.4);
+      transition: width 0.1s linear;
+    }
+    
+    #hint {
+      position: fixed;
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.2);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+    
+    .lost {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 100, 100, 0.6);
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      opacity: 0;
+      transition: opacity 0.5s;
+      pointer-events: none;
+    }
+    .lost.show { opacity: 1; }
+
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s; font-family: system-ui, sans-serif;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.3);
+    }
+    /* Modal */
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #111; border: 1px solid #333; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #fff; }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Attention</h2>
+      <h3>Concept</h3>
+      <p>In a world of infinite distractions, attention is the scarcest resource. This piece rewards focus — and punishes distraction.</p>
+      <h3>Interaction</h3>
+      <p>Stay here. Watch. Let your attention remain. Something will emerge. But if you leave — check your phone, switch tabs, look away — it starts over.</p>
+      <h3>Duration</h3>
+      <p>60 seconds of sustained attention.</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="message"></div>
+  <div id="progress"><div id="progress-bar"></div></div>
+  <div id="hint">stay</div>
+  <div id="lost" class="lost">you looked away</div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const message = document.getElementById('message');
+    const progressBar = document.getElementById('progress-bar');
+    const hint = document.getElementById('hint');
+    const lost = document.getElementById('lost');
+    
+    let width, height;
+    let progress = 0;
+    let particles = [];
+    let revealed = false;
+    let lostCount = 0;
+    
+    const DURATION = 60000; // 60 seconds to reveal
+    const INCREMENT = 1000 / 60; // per frame at 60fps
+    
+    // The message that reveals
+    const phrases = [
+      "The present moment is the only one you ever have.",
+      "Attention is the rarest form of generosity.",
+      "Where attention goes, energy flows.",
+      "The ability to focus is a superpower.",
+      "What you pay attention to becomes your life.",
+      "Stillness is not the absence of motion, but the presence of awareness.",
+      "In a world of noise, silence is subversive.",
+      "You are what you give your attention to.",
+    ];
+    
+    let currentPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      initParticles();
+    }
+    
+    function initParticles() {
+      particles = [];
+      const count = Math.floor((width * height) / 8000);
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          size: Math.random() * 1.5 + 0.5,
+          speed: Math.random() * 0.2 + 0.05,
+          angle: Math.random() * Math.PI * 2,
+          pulse: Math.random() * Math.PI * 2,
+        });
+      }
+    }
+    
+    function resetProgress() {
+      if (progress > INCREMENT * 10 && !revealed) {
+        // They had made progress — show the loss
+        lost.classList.add('show');
+        lostCount++;
+        setTimeout(() => {
+          lost.classList.remove('show');
+        }, 2000);
+        
+        // Change the phrase after being caught
+        if (lostCount >= 3) {
+          currentPhrase = "Perhaps you're not ready yet.";
+        }
+      }
+      
+      progress = 0;
+      progressBar.style.width = '0%';
+      message.style.color = 'rgba(255, 255, 255, 0)';
+      revealed = false;
+    }
+    
+    function updateProgress() {
+      if (revealed) return;
+      
+      progress = Math.min(progress + INCREMENT, DURATION);
+      const pct = (progress / DURATION) * 100;
+      progressBar.style.width = pct + '%';
+      
+      // Start revealing the message
+      if (pct > 30) {
+        const alpha = ((pct - 30) / 70) * 0.9;
+        message.style.color = `rgba(255, 255, 255, ${alpha})`;
+        message.textContent = currentPhrase;
+      }
+      
+      // Fade hint
+      if (pct > 10) {
+        hint.style.opacity = Math.max(0, 1 - (pct - 10) / 20);
+      }
+      
+      if (progress >= DURATION) {
+        revealed = true;
+        hint.style.display = 'none';
+      }
+    }
+    
+    function draw() {
+      // Very subtle background - rewards staring
+      ctx.fillStyle = 'rgba(10, 10, 12, 0.15)';
+      ctx.fillRect(0, 0, width, height);
+      
+      const pct = progress / DURATION;
+      
+      // Particles emerge with progress
+      particles.forEach((p, i) => {
+        p.pulse += 0.02;
+        
+        // Gentle drift
+        p.x += Math.cos(p.angle) * p.speed;
+        p.y += Math.sin(p.angle) * p.speed;
+        
+        // Wrap
+        if (p.x < 0) p.x = width;
+        if (p.x > width) p.x = 0;
+        if (p.y < 0) p.y = height;
+        if (p.y > height) p.y = 0;
+        
+        // Only show particles proportional to progress
+        const particleThreshold = i / particles.length;
+        if (pct > particleThreshold * 0.8) {
+          const alpha = Math.min((pct - particleThreshold * 0.8) * 3, 0.4) * 
+                        (0.3 + Math.sin(p.pulse) * 0.2);
+          ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+      
+      // Center glow that builds
+      if (pct > 0.1) {
+        const glowAlpha = (pct - 0.1) * 0.15;
+        const gradient = ctx.createRadialGradient(
+          width / 2, height / 2, 0,
+          width / 2, height / 2, Math.min(width, height) / 2
+        );
+        gradient.addColorStop(0, `rgba(255, 255, 255, ${glowAlpha})`);
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      }
+    }
+    
+    function animate() {
+      if (document.visibilityState === 'visible') {
+        updateProgress();
+      }
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Visibility change detection
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        resetProgress();
+      }
+    });
+    
+    // Window blur (clicking outside)
+    window.addEventListener('blur', () => {
+      // Only reset if they actually leave, not just clicking modal
+      setTimeout(() => {
+        if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+          resetProgress();
+        }
+      }, 100);
+    });
+    
+    // Initialize
+    window.addEventListener('resize', resize);
+    resize();
+    animate();
+  </script>
+</body>
+</html>

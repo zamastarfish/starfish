@@ -50,6 +50,13 @@ export default function Home() {
       href: "/projects/gaze/",
       series: "confront"
     },
+    {
+      name: "Attention",
+      description: "Stay and watch. Something emerges — but only if you don't look away. Tab switch resets. 60 seconds",
+      date: "Mar 2026",
+      href: "/projects/attention/",
+      series: "confront"
+    },
     // === NEW: Weird Motifs (starfish-interact.js) ===
     {
       name: "Decay: Bloom",
