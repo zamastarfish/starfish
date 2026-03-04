@@ -341,6 +341,13 @@ export default function Home() {
       href: "/projects/oscillator/"
     },
     {
+      name: "Dogs of America",
+      description: "A tour of regional hot dogs. Seattle, Chicago, New York, Sonoran, and beyond. Click to travel",
+      date: "Mar 2026",
+      href: "/projects/dogs/",
+      series: "play"
+    },
+    {
       name: "Seattle Dog",
       description: "Late night outside the bar. Rain falling, cream cheese dripping. 2:47 AM energy",
       date: "Feb 2026",

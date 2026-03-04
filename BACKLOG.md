@@ -1,7 +1,7 @@
 # BACKLOG.md — Ideas & Prompts
 
 ## From Zack
-- **Regional hotdogs** — #seattledog and beyond. The cream cheese, the onions, the regional pride. Could be interactive, could be generative, could be a love letter to street food.
+- ~~**Regional hotdogs**~~ → shipped as "Dogs of America"
 - ~~**Synthesizer visualizations**~~ → shipped as "patch"
 
 ## My Ideas
@@ -21,6 +21,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| dogs | Regional hot dog tour — Seattle to Reykjavík | 1 session | Mar 4 |
 | tend | Shape dissolving, presence restores. Care vs entropy | 1 session | Mar 4 |
 | patch | Modular synth patcher. Drag cables, watch signal flow | 1 session | Mar 4 |
 | attention | Stay and watch — tab switch resets. Rewards sustained focus | 1 session | Mar 4 |
