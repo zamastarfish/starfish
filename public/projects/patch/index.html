@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Patch</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #1a1a1e; 
+      overflow: hidden;
+      font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+      user-select: none;
+    }
+    canvas { 
+      display: block; 
+    }
+    
+    #hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.3);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      pointer-events: none;
+      transition: opacity 2s;
+    }
+    #hint.hidden { opacity: 0; }
+
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s; font-family: system-ui, sans-serif;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.3);
+    }
+    /* Modal */
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #111; border: 1px solid #333; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #fff; }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Patch</h2>
+      <h3>Concept</h3>
+      <p>The visual language of modular synthesis. Drag cables between jacks to route signal. Watch the signal flow through the system.</p>
+      <h3>Interaction</h3>
+      <p>Drag from output jacks (right side) to input jacks (left side) to connect modules. Click cables to remove them. The master output plays sound.</p>
+      <h3>Modules</h3>
+      <p>OSC (oscillator), LFO (low frequency oscillator), VCA (amplifier), FILTER, MIX (mixer), OUT (speakers).</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="hint">drag output → input to patch</div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+    
+    let width, height;
+    let modules = [];
+    let cables = [];
+    let dragging = null; // {type: 'cable', from: jack, x, y} or {type: 'module', module, offsetX, offsetY}
+    let audioCtx = null;
+    let time = 0;
+    
+    const JACK_RADIUS = 8;
+    const MODULE_WIDTH = 120;
+    const MODULE_HEIGHT = 180;
+    
+    const COLORS = {
+      bg: '#1a1a1e',
+      module: '#252528',
+      moduleBorder: '#3a3a40',
+      text: '#888',
+      textBright: '#ccc',
+      jack: '#444',
+      jackHover: '#666',
+      jackOutput: '#f4a024',
+      jackInput: '#24a0f4',
+      cable: '#f4a024',
+      signal: '#ff6b6b',
+    };
+    
+    // Module definitions
+    const MODULE_TYPES = {
+      OSC: {
+        name: 'OSC',
+        inputs: ['FM'],
+        outputs: ['OUT'],
+        params: [{name: 'FREQ', min: 20, max: 2000, default: 220}],
+        color: '#f4a024',
+      },
+      LFO: {
+        name: 'LFO', 
+        inputs: [],
+        outputs: ['OUT'],
+        params: [{name: 'RATE', min: 0.1, max: 20, default: 2}],
+        color: '#a024f4',
+      },
+      VCA: {
+        name: 'VCA',
+        inputs: ['IN', 'CV'],
+        outputs: ['OUT'],
+        params: [{name: 'GAIN', min: 0, max: 1, default: 0.5}],
+        color: '#24f4a0',
+      },
+      FILTER: {
+        name: 'FILTER',
+        inputs: ['IN', 'CV'],
+        outputs: ['OUT'],
+        params: [{name: 'CUTOFF', min: 100, max: 8000, default: 1000}],
+        color: '#f424a0',
+      },
+      MIX: {
+        name: 'MIX',
+        inputs: ['A', 'B'],
+        outputs: ['OUT'],
+        params: [{name: 'MIX', min: 0, max: 1, default: 0.5}],
+        color: '#2494f4',
+      },
+      OUT: {
+        name: 'OUT',
+        inputs: ['L', 'R'],
+        outputs: [],
+        params: [{name: 'VOL', min: 0, max: 1, default: 0.3}],
+        color: '#f44024',
+      },
+    };
+    
+    class Module {
+      constructor(type, x, y) {
+        this.type = type;
+        this.def = MODULE_TYPES[type];
+        this.x = x;
+        this.y = y;
+        this.width = MODULE_WIDTH;
+        this.height = MODULE_HEIGHT;
+        this.params = this.def.params.map(p => ({...p, value: p.default}));
+        this.inputJacks = this.def.inputs.map((name, i) => ({
+          name, type: 'input', module: this, index: i
+        }));
+        this.outputJacks = this.def.outputs.map((name, i) => ({
+          name, type: 'output', module: this, index: i
+        }));
+        this.signalValue = 0; // Current signal level for visualization
+        this.audioNode = null;
+      }
+      
+      getJackPos(jack) {
+        const isInput = jack.type === 'input';
+        const jacks = isInput ? this.inputJacks : this.outputJacks;
+        const x = this.x + (isInput ? 20 : this.width - 20);
+        const yStart = this.y + 60;
+        const ySpacing = 30;
+        const y = yStart + jack.index * ySpacing;
+        return {x, y};
+      }
+      
+      draw() {
+        // Module body
+        ctx.fillStyle = COLORS.module;
+        ctx.strokeStyle = this.def.color + '44';
+        ctx.lineWidth = 2;
+        roundRect(this.x, this.y, this.width, this.height, 8, true, true);
+        
+        // Header
+        ctx.fillStyle = this.def.color;
+        ctx.font = 'bold 14px SF Mono, Monaco, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.def.name, this.x + this.width/2, this.y + 25);
+        
+        // Signal indicator
+        const signalAlpha = Math.min(Math.abs(this.signalValue), 1);
+        if (signalAlpha > 0.01) {
+          ctx.fillStyle = this.def.color + Math.floor(signalAlpha * 99).toString(16).padStart(2, '0');
+          roundRect(this.x + 4, this.y + 4, this.width - 8, this.height - 8, 6, true, false);
+        }
+        
+        // Input jacks
+        this.inputJacks.forEach(jack => {
+          const pos = this.getJackPos(jack);
+          drawJack(pos.x, pos.y, 'input', jack.name);
+        });
+        
+        // Output jacks
+        this.outputJacks.forEach(jack => {
+          const pos = this.getJackPos(jack);
+          drawJack(pos.x, pos.y, 'output', jack.name);
+        });
+        
+        // Parameters
+        this.params.forEach((param, i) => {
+          const py = this.y + this.height - 50 + i * 35;
+          ctx.fillStyle = COLORS.text;
+          ctx.font = '10px SF Mono, Monaco, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(param.name, this.x + this.width/2, py);
+          
+          // Knob
+          const knobX = this.x + this.width/2;
+          const knobY = py + 18;
+          const knobRadius = 12;
+          const normalized = (param.value - param.min) / (param.max - param.min);
+          const angle = -Math.PI * 0.75 + normalized * Math.PI * 1.5;
+          
+          ctx.beginPath();
+          ctx.arc(knobX, knobY, knobRadius, 0, Math.PI * 2);
+          ctx.fillStyle = '#333';
+          ctx.fill();
+          ctx.strokeStyle = this.def.color;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          
+          // Knob indicator
+          ctx.beginPath();
+          ctx.moveTo(knobX, knobY);
+          ctx.lineTo(knobX + Math.cos(angle) * knobRadius, knobY + Math.sin(angle) * knobRadius);
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        });
+      }
+      
+      containsPoint(x, y) {
+        return x >= this.x && x <= this.x + this.width &&
+               y >= this.y && y <= this.y + this.height;
+      }
+      
+      getJackAt(x, y) {
+        for (const jack of [...this.inputJacks, ...this.outputJacks]) {
+          const pos = this.getJackPos(jack);
+          const dist = Math.hypot(x - pos.x, y - pos.y);
+          if (dist < JACK_RADIUS + 5) return jack;
+        }
+        return null;
+      }
+      
+      getParamAt(x, y) {
+        for (let i = 0; i < this.params.length; i++) {
+          const py = this.y + this.height - 50 + i * 35 + 18;
+          const px = this.x + this.width/2;
+          const dist = Math.hypot(x - px, y - py);
+          if (dist < 15) return this.params[i];
+        }
+        return null;
+      }
+    }
+    
+    function drawJack(x, y, type, label) {
+      ctx.beginPath();
+      ctx.arc(x, y, JACK_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = type === 'output' ? COLORS.jackOutput : COLORS.jackInput;
+      ctx.fill();
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Inner hole
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#111';
+      ctx.fill();
+      
+      // Label
+      ctx.fillStyle = COLORS.text;
+      ctx.font = '9px SF Mono, Monaco, monospace';
+      ctx.textAlign = type === 'output' ? 'right' : 'left';
+      ctx.fillText(label, x + (type === 'output' ? -15 : 15), y + 3);
+    }
+    
+    function roundRect(x, y, w, h, r, fill, stroke) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+      if (fill) ctx.fill();
+      if (stroke) ctx.stroke();
+    }
+    
+    function drawCable(fromX, fromY, toX, toY, signal = 0) {
+      const midY = (fromY + toY) / 2 + 50;
+      const cp1 = {x: fromX, y: midY};
+      const cp2 = {x: toX, y: midY};
+      
+      // Cable shadow
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, toX, toY);
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+      
+      // Cable
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, toX, toY);
+      ctx.strokeStyle = COLORS.cable;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      // Signal flow animation
+      if (signal > 0.01) {
+        const pulsePos = (time * 0.002) % 1;
+        const px = bezierPoint(fromX, cp1.x, cp2.x, toX, pulsePos);
+        const py = bezierPoint(fromY, cp1.y, cp2.y, toY, pulsePos);
+        
+        ctx.beginPath();
+        ctx.arc(px, py, 4 + signal * 3, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 200, 100, ${signal * 0.8})`;
+        ctx.fill();
+      }
+    }
+    
+    function bezierPoint(p0, p1, p2, p3, t) {
+      const mt = 1 - t;
+      return mt*mt*mt*p0 + 3*mt*mt*t*p1 + 3*mt*t*t*p2 + t*t*t*p3;
+    }
+    
+    function initModules() {
+      const startX = 50;
+      const startY = 50;
+      const gap = 140;
+      
+      modules = [
+        new Module('LFO', startX, startY),
+        new Module('OSC', startX + gap, startY),
+        new Module('FILTER', startX + gap * 2, startY),
+        new Module('VCA', startX + gap * 3, startY),
+        new Module('OUT', startX + gap * 4, startY),
+      ];
+    }
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    function getModuleAt(x, y) {
+      for (let i = modules.length - 1; i >= 0; i--) {
+        if (modules[i].containsPoint(x, y)) return modules[i];
+      }
+      return null;
+    }
+    
+    function getJackAt(x, y) {
+      for (const mod of modules) {
+        const jack = mod.getJackAt(x, y);
+        if (jack) return jack;
+      }
+      return null;
+    }
+    
+    function getCableAt(x, y) {
+      for (const cable of cables) {
+        const fromPos = cable.from.module.getJackPos(cable.from);
+        const toPos = cable.to.module.getJackPos(cable.to);
+        // Simple proximity check to cable midpoint
+        const midX = (fromPos.x + toPos.x) / 2;
+        const midY = (fromPos.y + toPos.y) / 2 + 50;
+        if (Math.hypot(x - midX, y - midY) < 20) return cable;
+      }
+      return null;
+    }
+    
+    function removeCable(cable) {
+      const idx = cables.indexOf(cable);
+      if (idx > -1) cables.splice(idx, 1);
+      updateAudio();
+    }
+    
+    function addCable(from, to) {
+      // Only connect output -> input
+      if (from.type === 'input' && to.type === 'output') {
+        [from, to] = [to, from];
+      }
+      if (from.type !== 'output' || to.type !== 'input') return;
+      
+      // Remove existing cable to this input
+      cables = cables.filter(c => c.to !== to);
+      
+      cables.push({from, to, signal: 0});
+      hint.classList.add('hidden');
+      updateAudio();
+    }
+    
+    // Simplified audio (visual focus)
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    function updateAudio() {
+      // For now, just update signal visualization
+      // Full audio implementation would route Web Audio nodes
+    }
+    
+    function simulateSignal() {
+      // Simple signal simulation for visualization
+      modules.forEach(mod => {
+        if (mod.type === 'OSC' || mod.type === 'LFO') {
+          const freq = mod.type === 'LFO' ? mod.params[0].value : mod.params[0].value / 100;
+          mod.signalValue = Math.sin(time * 0.01 * freq);
+        }
+      });
+      
+      // Propagate through cables
+      cables.forEach(cable => {
+        cable.signal = Math.abs(cable.from.module.signalValue);
+        cable.to.module.signalValue = cable.from.module.signalValue * 0.9;
+      });
+    }
+    
+    function draw() {
+      time++;
+      ctx.fillStyle = COLORS.bg;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Grid
+      ctx.strokeStyle = '#252528';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < width; x += 20) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < height; y += 20) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      
+      simulateSignal();
+      
+      // Draw cables
+      cables.forEach(cable => {
+        const fromPos = cable.from.module.getJackPos(cable.from);
+        const toPos = cable.to.module.getJackPos(cable.to);
+        drawCable(fromPos.x, fromPos.y, toPos.x, toPos.y, cable.signal);
+      });
+      
+      // Draw dragging cable
+      if (dragging && dragging.type === 'cable') {
+        const fromPos = dragging.from.module.getJackPos(dragging.from);
+        drawCable(fromPos.x, fromPos.y, dragging.x, dragging.y, 0.5);
+      }
+      
+      // Draw modules
+      modules.forEach(mod => mod.draw());
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Event handlers
+    let dragParam = null;
+    let dragParamStartY = 0;
+    let dragParamStartValue = 0;
+    
+    canvas.addEventListener('mousedown', (e) => {
+      const x = e.clientX, y = e.clientY;
+      
+      // Check for jack
+      const jack = getJackAt(x, y);
+      if (jack && jack.type === 'output') {
+        dragging = {type: 'cable', from: jack, x, y};
+        return;
+      }
+      
+      // Check for cable (to remove)
+      const cable = getCableAt(x, y);
+      if (cable) {
+        removeCable(cable);
+        return;
+      }
+      
+      // Check for module param (knob)
+      const mod = getModuleAt(x, y);
+      if (mod) {
+        const param = mod.getParamAt(x, y);
+        if (param) {
+          dragParam = param;
+          dragParamStartY = y;
+          dragParamStartValue = param.value;
+          return;
+        }
+        
+        // Drag module
+        dragging = {
+          type: 'module',
+          module: mod,
+          offsetX: x - mod.x,
+          offsetY: y - mod.y
+        };
+      }
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      const x = e.clientX, y = e.clientY;
+      
+      if (dragging) {
+        if (dragging.type === 'cable') {
+          dragging.x = x;
+          dragging.y = y;
+        } else if (dragging.type === 'module') {
+          dragging.module.x = x - dragging.offsetX;
+          dragging.module.y = y - dragging.offsetY;
+        }
+      }
+      
+      if (dragParam) {
+        const dy = dragParamStartY - y;
+        const range = dragParam.max - dragParam.min;
+        dragParam.value = Math.max(dragParam.min, Math.min(dragParam.max, 
+          dragParamStartValue + dy * range / 200));
+      }
+    });
+    
+    canvas.addEventListener('mouseup', (e) => {
+      if (dragging && dragging.type === 'cable') {
+        const jack = getJackAt(e.clientX, e.clientY);
+        if (jack && jack.type === 'input') {
+          addCable(dragging.from, jack);
+        }
+      }
+      dragging = null;
+      dragParam = null;
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      canvas.dispatchEvent(new MouseEvent('mousedown', {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      }));
+    }, {passive: false});
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      canvas.dispatchEvent(new MouseEvent('mousemove', {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      }));
+    }, {passive: false});
+    
+    canvas.addEventListener('touchend', (e) => {
+      const touch = e.changedTouches[0];
+      canvas.dispatchEvent(new MouseEvent('mouseup', {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      }));
+    });
+    
+    canvas.addEventListener('click', () => {
+      initAudio();
+    });
+    
+    // Initialize
+    window.addEventListener('resize', resize);
+    resize();
+    initModules();
+    draw();
+  </script>
+</body>
+</html>

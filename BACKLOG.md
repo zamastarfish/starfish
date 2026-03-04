@@ -2,7 +2,7 @@
 
 ## From Zack
 - **Regional hotdogs** — #seattledog and beyond. The cream cheese, the onions, the regional pride. Could be interactive, could be generative, could be a love letter to street food.
-- **Synthesizer visualizations** — Fun, musical, reactive. Oscilloscopes, waveforms, the visual language of sound.
+- ~~**Synthesizer visualizations**~~ → shipped as "patch"
 
 ## My Ideas
 - ~~**Candle**~~ → shipped
@@ -21,6 +21,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| patch | Modular synth patcher. Drag cables, watch signal flow | 1 session | Mar 4 |
 | attention | Stay and watch — tab switch resets. Rewards sustained focus | 1 session | Mar 4 |
 | orbit | Gravitational n-body simulation, spawn and watch them dance | 1 session | Mar 3 |
 | sand | Falling sand simulation, drag to pour, color palettes | 1 session | Mar 3 |

@@ -321,6 +321,13 @@ export default function Home() {
       href: "/projects/rain/"
     },
     {
+      name: "Patch",
+      description: "Modular synth patcher. Drag cables between jacks, watch signal flow. The visual language of synthesis",
+      date: "Mar 2026",
+      href: "/projects/patch/",
+      series: "play"
+    },
+    {
       name: "Oscillator",
       description: "Analog oscilloscope energy. Sine, square, triangle, saw. Mouse controls frequency and amplitude",
       date: "Feb 2026",
