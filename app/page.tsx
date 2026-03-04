@@ -64,6 +64,13 @@ export default function Home() {
       href: "/projects/tend/",
       series: "confront"
     },
+    {
+      name: "Dust",
+      description: "Motes in a shaft of light. Move to disturb, be still and watch them settle. You are also dust",
+      date: "Mar 2026",
+      href: "/projects/dust/",
+      series: "escape"
+    },
     // === NEW: Weird Motifs (starfish-interact.js) ===
     {
       name: "Decay: Bloom",

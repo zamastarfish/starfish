@@ -12,7 +12,7 @@
 ### Fresh Ideas (Mar 4)
 - **Vanitas** — Digital memento mori. Flowers wilt, candles burn, skulls watch. Classical reminder of mortality, generative.
 - **Threshold** — You're always approaching but never arriving. Zeno's paradox made visible. How close can you get?
-- **Dust** — Motes floating in a sunbeam. The smallest things, given attention. Click to disturb, watch them settle.
+- ~~**Dust**~~ → shipped
 - **Sublime** — Caspar David Friedrich energy. Tiny figure, vast landscape. You are small; that's okay.
 - **Turing** — Reaction-diffusion patterns. The math of animal markings, coral, fingerprints. Biological emergence.
 - **Mono no aware** — The pathos of things. Cherry blossoms falling. Beauty is brief; that's what makes it beautiful.
@@ -29,6 +29,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| dust | Motes in a sunbeam, move to disturb, mundane made profound | 1 session | Mar 4 |
 | dogs | Regional hot dog tour — Seattle to Reykjavík | 1 session | Mar 4 |
 | tend | Shape dissolving, presence restores. Care vs entropy | 1 session | Mar 4 |
 | patch | Modular synth patcher. Drag cables, watch signal flow | 1 session | Mar 4 |
