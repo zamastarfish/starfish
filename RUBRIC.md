@@ -57,8 +57,9 @@ Average of applicable dimensions, but weighted by gut:
 
 | Piece | Concept | Craft | Interaction | Originality | Staying | Overall | Notes |
 |-------|---------|-------|-------------|-------------|---------|---------|-------|
-| fog | 4 | 4 | 4 | 3 | 4 | **4** | Strong atmosphere, interaction feels right |
-| drone | 4 | 3 | 2 | 5 | 3 | **3.5** | New territory (audio), but interaction is thin |
-| moiré | 3 | 4 | 4 | 4 | 3 | **3.5** | Well-executed op art, maybe not deep |
+| resonance | 4 | 4 | 4 | 5 | ? | **4?** | Mashup of drone+moire, needs testing |
+| fog | 2 | 4 | 3 | 2 | 2 | **2** | "That looks nice I guess" — conceptually thin (Zack feedback) |
+| drone | 4 | 3 | 2 | 5 | 3 | **3.5** | New territory (audio), interaction thin but directionally strong |
+| moiré | 3 | 4 | 3 | 4 | 3 | **3.5** | Good visual effect, could evolve more. Add parametric behavior? |
 
 *More ratings needed — this is a start.*
