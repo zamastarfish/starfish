@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>drone</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #0a0a0a;
+      touch-action: none;
+    }
+    canvas { display: block; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.3);
+      text-decoration: none;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+    }
+    #back:hover { color: rgba(255,255,255,0.7); }
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255,255,255,0.5);
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      background: none;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 12px 24px;
+      cursor: pointer;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #start:hover {
+      color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.4);
+    }
+    #start.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <a id="back" href="/">← back</a>
+  <button id="start">listen</button>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start');
+    
+    let width, height;
+    let audioCtx;
+    let masterGain;
+    let analyser;
+    let dataArray;
+    let isPlaying = false;
+    
+    // Drone voices
+    const voices = [];
+    const voiceCount = 6;
+    
+    // Visual elements
+    let phase = 0;
+    let intensity = 0;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    function initAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Master gain
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.15;
+      masterGain.connect(audioCtx.destination);
+      
+      // Analyser for visuals
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      masterGain.connect(analyser);
+      
+      // Create drone voices
+      // Base frequencies - slightly detuned for beating/dissonance
+      const baseFreqs = [55, 55.5, 82, 110, 109.5, 165];
+      
+      for (let i = 0; i < voiceCount; i++) {
+        const voice = createVoice(baseFreqs[i], i);
+        voices.push(voice);
+      }
+    }
+    
+    function createVoice(freq, index) {
+      // Each voice: oscillator -> filter -> gain -> master
+      const osc = audioCtx.createOscillator();
+      const filter = audioCtx.createBiquadFilter();
+      const gain = audioCtx.createGain();
+      const lfo = audioCtx.createOscillator();
+      const lfoGain = audioCtx.createGain();
+      
+      // Main oscillator
+      osc.type = index < 2 ? 'sawtooth' : (index < 4 ? 'triangle' : 'sine');
+      osc.frequency.value = freq;
+      
+      // Filter - low pass with slow modulation
+      filter.type = 'lowpass';
+      filter.frequency.value = 200 + index * 100;
+      filter.Q.value = 2;
+      
+      // LFO for filter modulation
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.05 + Math.random() * 0.1; // Very slow
+      lfoGain.gain.value = 100 + index * 50;
+      
+      lfo.connect(lfoGain);
+      lfoGain.connect(filter.frequency);
+      
+      // Gain - quiet, will modulate
+      gain.gain.value = 0;
+      
+      // Connect
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(masterGain);
+      
+      // Start
+      osc.start();
+      lfo.start();
+      
+      return {
+        osc,
+        filter,
+        gain,
+        lfo,
+        lfoGain,
+        targetGain: 0.3 + Math.random() * 0.4,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.001 + Math.random() * 0.002
+      };
+    }
+    
+    function updateAudio() {
+      if (!isPlaying) return;
+      
+      const time = audioCtx.currentTime;
+      
+      for (const voice of voices) {
+        // Slowly modulate gain for breathing effect
+        voice.phase += voice.speed;
+        const mod = Math.sin(voice.phase) * 0.5 + 0.5;
+        const targetGain = voice.targetGain * mod;
+        
+        // Smooth transition
+        voice.gain.gain.setTargetAtTime(targetGain, time, 2);
+      }
+      
+      // Occasionally shift a frequency slightly
+      if (Math.random() < 0.001) {
+        const voice = voices[Math.floor(Math.random() * voices.length)];
+        const shift = (Math.random() - 0.5) * 2;
+        voice.osc.frequency.setTargetAtTime(
+          voice.osc.frequency.value + shift,
+          time,
+          5
+        );
+      }
+    }
+    
+    function draw() {
+      // Get audio data
+      if (analyser) {
+        analyser.getByteFrequencyData(dataArray);
+        
+        // Calculate intensity from low frequencies
+        let sum = 0;
+        for (let i = 0; i < 10; i++) {
+          sum += dataArray[i];
+        }
+        intensity = sum / (10 * 255);
+      }
+      
+      // Dark background with subtle variation
+      const bgBrightness = 5 + intensity * 10;
+      ctx.fillStyle = `rgb(${bgBrightness}, ${bgBrightness}, ${bgBrightness + 2})`;
+      ctx.fillRect(0, 0, width, height);
+      
+      phase += 0.002;
+      
+      // Central void - a dark presence
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const baseRadius = Math.min(width, height) * 0.15;
+      const radius = baseRadius + Math.sin(phase) * 20 + intensity * 50;
+      
+      // Outer glow
+      const glowRadius = radius * 3;
+      const glow = ctx.createRadialGradient(
+        centerX, centerY, radius * 0.8,
+        centerX, centerY, glowRadius
+      );
+      glow.addColorStop(0, `rgba(20, 25, 35, ${0.8 + intensity * 0.2})`);
+      glow.addColorStop(0.3, `rgba(15, 18, 25, ${0.4 + intensity * 0.2})`);
+      glow.addColorStop(1, 'rgba(10, 10, 15, 0)');
+      
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // The void itself - darker than black
+      const void_gradient = ctx.createRadialGradient(
+        centerX, centerY, 0,
+        centerX, centerY, radius
+      );
+      void_gradient.addColorStop(0, '#000000');
+      void_gradient.addColorStop(0.7, '#020203');
+      void_gradient.addColorStop(1, `rgba(5, 5, 8, 0.9)`);
+      
+      ctx.fillStyle = void_gradient;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Subtle ring that pulses
+      if (isPlaying) {
+        ctx.strokeStyle = `rgba(60, 70, 90, ${0.1 + intensity * 0.3})`;
+        ctx.lineWidth = 1 + intensity * 3;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius + 10 + intensity * 30, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Occasional static/noise lines
+        if (Math.random() < intensity * 0.3) {
+          ctx.strokeStyle = `rgba(100, 110, 130, ${0.05 + Math.random() * 0.1})`;
+          ctx.lineWidth = 0.5;
+          const y = Math.random() * height;
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.stroke();
+        }
+      }
+      
+      // Frequency bars - very subtle, at edges
+      if (isPlaying && dataArray) {
+        const barCount = 32;
+        const barWidth = 2;
+        const maxHeight = 60;
+        
+        ctx.fillStyle = 'rgba(50, 60, 80, 0.3)';
+        
+        for (let i = 0; i < barCount; i++) {
+          const value = dataArray[i] / 255;
+          const barHeight = value * maxHeight;
+          
+          // Left edge
+          ctx.fillRect(10, height / 2 - barCount * 3 / 2 + i * 3, barHeight, 2);
+          
+          // Right edge
+          ctx.fillRect(width - 10 - barHeight, height / 2 - barCount * 3 / 2 + i * 3, barHeight, 2);
+        }
+      }
+      
+      // Vignette
+      const vignette = ctx.createRadialGradient(
+        centerX, centerY, 0,
+        centerX, centerY, Math.max(width, height) * 0.8
+      );
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.6)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, width, height);
+    }
+    
+    function animate() {
+      updateAudio();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    function start() {
+      if (isPlaying) return;
+      
+      initAudio();
+      isPlaying = true;
+      startBtn.classList.add('hidden');
+      
+      // Fade in
+      voices.forEach((voice, i) => {
+        setTimeout(() => {
+          voice.gain.gain.setTargetAtTime(voice.targetGain * 0.5, audioCtx.currentTime, 3);
+        }, i * 500);
+      });
+    }
+    
+    startBtn.addEventListener('click', start);
+    
+    // Also start on any click/touch after button
+    canvas.addEventListener('click', () => {
+      if (!isPlaying) start();
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>
