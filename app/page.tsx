@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === March 5, 2026 ===
     {
+      name: "Resonance",
+      description: "Drone + moiré mashup. Audio and visual interference patterns linked. Move to detune. Headphones recommended",
+      date: "Mar 5",
+      href: "/projects/resonance/"
+    },
+    {
       name: "Moiré",
       description: "Op art interference patterns. Move to shift the layers. Your eyes will lie to you",
       date: "Mar 5",
