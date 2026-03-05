@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>pendulum — arp</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #0a0a0f;
+      touch-action: none;
+    }
+    canvas { display: block; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.3);
+      text-decoration: none;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+    }
+    #back:hover { color: rgba(255,255,255,0.7); }
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255,255,255,0.5);
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      background: none;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 12px 24px;
+      cursor: pointer;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #start:hover {
+      color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.4);
+    }
+    #start.hidden { display: none; }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      color: rgba(255, 255, 255, 0.2);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      pointer-events: none;
+      text-transform: uppercase;
+      font-family: system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <a id="back" href="/">← back</a>
+  <button id="start">release</button>
+  <canvas id="canvas"></canvas>
+  <div id="info">patterns emerge, dissolve, return</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start');
+    
+    let width, height;
+    let pendulums = [];
+    let time = 0;
+    let isPlaying = false;
+    
+    // Configuration
+    const COUNT = 16; // Fewer for cleaner sound
+    const CYCLE_TIME = 60;
+    const BASE_PERIOD = 1.8; // Slightly slower
+    
+    // Two octave pentatonic scale - always harmonious
+    const SCALE = [
+      'C3', 'D3', 'E3', 'G3', 'A3',
+      'C4', 'D4', 'E4', 'G4', 'A4',
+      'C5', 'D5', 'E5', 'G5', 'A5', 'C6'
+    ];
+    
+    // Audio
+    let synth, reverb, delay;
+    
+    function initAudio() {
+      reverb = new Tone.Reverb({ decay: 6, wet: 0.5 }).toDestination();
+      delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.25, wet: 0.3 }).connect(reverb);
+      
+      // Soft, bell-like synth
+      synth = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: {
+          attack: 0.02,
+          decay: 0.4,
+          sustain: 0.2,
+          release: 1.5
+        }
+      }).connect(delay);
+      synth.volume.value = -12;
+    }
+    
+    function getColor(index, total) {
+      const t = index / (total - 1);
+      const r = Math.floor(40 + t * 180);
+      const g = Math.floor(60 + t * 140);
+      const b = Math.floor(140 - t * 80);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      initPendulums();
+    }
+    
+    function initPendulums() {
+      pendulums = [];
+      const spacing = width / (COUNT + 1);
+      const anchorY = height * 0.15;
+      const maxLength = height * 0.65;
+      const minLength = height * 0.35;
+      
+      for (let i = 0; i < COUNT; i++) {
+        const x = spacing * (i + 1);
+        const t = i / (COUNT - 1);
+        const length = minLength + (maxLength - minLength) * t;
+        const period = BASE_PERIOD * Math.sqrt(length / minLength);
+        
+        pendulums.push({
+          x,
+          anchorY,
+          length,
+          period,
+          angle: Math.PI / 6, // Start angle
+          prevAngle: Math.PI / 6,
+          color: getColor(i, COUNT),
+          bobRadius: 8 + (1 - t) * 4,
+          note: SCALE[i % SCALE.length],
+          triggered: false,
+          triggerTime: 0
+        });
+      }
+    }
+    
+    function update(dt) {
+      if (!isPlaying) return;
+      
+      time += dt;
+      
+      pendulums.forEach(p => {
+        p.prevAngle = p.angle;
+        
+        // Simple harmonic motion
+        const omega = (2 * Math.PI) / p.period;
+        const amplitude = Math.PI / 6;
+        p.angle = amplitude * Math.cos(omega * time);
+        
+        // Trigger note on center crossing (positive direction)
+        if (p.prevAngle < 0 && p.angle >= 0) {
+          triggerNote(p);
+        }
+      });
+    }
+    
+    function triggerNote(p) {
+      if (!synth) return;
+      
+      const velocity = 0.3 + Math.random() * 0.2;
+      synth.triggerAttackRelease(p.note, '8n', Tone.now(), velocity);
+      
+      p.triggered = true;
+      p.triggerTime = Date.now();
+    }
+    
+    function draw() {
+      // Trail effect
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.12)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Anchor bar
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, pendulums[0]?.anchorY || 100);
+      ctx.lineTo(width, pendulums[0]?.anchorY || 100);
+      ctx.stroke();
+      
+      const now = Date.now();
+      
+      // Draw pendulums
+      pendulums.forEach((p) => {
+        const bobX = p.x + Math.sin(p.angle) * p.length;
+        const bobY = p.anchorY + Math.cos(p.angle) * p.length;
+        
+        // String
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.anchorY);
+        ctx.lineTo(bobX, bobY);
+        ctx.stroke();
+        
+        // Trigger glow
+        const timeSinceTrigger = now - p.triggerTime;
+        const isTriggered = p.triggered && timeSinceTrigger < 300;
+        const glowIntensity = isTriggered ? (1 - timeSinceTrigger / 300) : 0;
+        
+        if (p.triggered && timeSinceTrigger > 300) {
+          p.triggered = false;
+        }
+        
+        // Bob glow
+        const glowRadius = p.bobRadius * (3 + glowIntensity * 3);
+        const gradient = ctx.createRadialGradient(bobX, bobY, 0, bobX, bobY, glowRadius);
+        
+        if (isTriggered) {
+          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+          gradient.addColorStop(0.2, p.color);
+        } else {
+          gradient.addColorStop(0, p.color);
+        }
+        gradient.addColorStop(0.3, p.color.replace('rgb', 'rgba').replace(')', ', 0.3)'));
+        gradient.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(bobX, bobY, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Bob
+        ctx.fillStyle = isTriggered ? '#fff' : p.color;
+        ctx.beginPath();
+        ctx.arc(bobX, bobY, p.bobRadius * (1 + glowIntensity * 0.3), 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      // Wave connection line
+      if (isPlaying && pendulums.length > 1) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        pendulums.forEach((p, i) => {
+          const bobX = p.x + Math.sin(p.angle) * p.length;
+          const bobY = p.anchorY + Math.cos(p.angle) * p.length;
+          if (i === 0) ctx.moveTo(bobX, bobY);
+          else ctx.lineTo(bobX, bobY);
+        });
+        ctx.stroke();
+      }
+    }
+    
+    let lastTime = performance.now();
+    function animate(currentTime) {
+      const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+      lastTime = currentTime;
+      
+      update(dt);
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    async function start() {
+      if (isPlaying) return;
+      
+      await Tone.start();
+      initAudio();
+      initPendulums();
+      
+      time = 0;
+      isPlaying = true;
+      startBtn.classList.add('hidden');
+    }
+    
+    startBtn.addEventListener('click', start);
+    canvas.addEventListener('click', () => { if (!isPlaying) start(); });
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); if (!isPlaying) start(); });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate(performance.now());
+  </script>
+</body>
+</html>

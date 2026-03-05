@@ -2,8 +2,14 @@ export default function Home() {
   const projects = [
     // === March 5, 2026 ===
     {
+      name: "Pendulum: Arp",
+      description: "Pendulum wave with arpeggios. Each bob plays a note when crossing center. Patterns emerge, dissolve, return",
+      date: "Mar 5",
+      href: "/projects/pendulum-arp/"
+    },
+    {
       name: "Bauhaus: Beat",
-      description: "Bauhaus grid remixed with percussion. Shapes trigger sounds. Circle=kick, square=hat, triangle=snare. Generative rhythm",
+      description: "Bauhaus grid remixed with percussion. Shapes trigger sounds. Eno-inspired independent loops",
       date: "Mar 5",
       href: "/projects/bauhaus-beat/"
     },
