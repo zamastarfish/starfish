@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === March 5, 2026 ===
     {
+      name: "Flocking: Pad",
+      description: "Starling murmuration with ambient pads. Cohesion = brightness, scatter = noise. Cursor is a hawk",
+      date: "Mar 5",
+      href: "/projects/flocking-pad/"
+    },
+    {
       name: "Orbit: Tone",
       description: "Gravitational bodies with sound. Collisions boom, close passes chime. Drag to spawn. R for random",
       date: "Mar 5",
