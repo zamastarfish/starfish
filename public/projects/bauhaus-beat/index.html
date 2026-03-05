@@ -60,7 +60,7 @@
     let width, height;
     let isPlaying = false;
     
-    // Bauhaus colors
+    // Bauhaus colors - exact match
     const COLORS = {
       red: '#E53935',
       yellow: '#FDD835',
@@ -68,27 +68,26 @@
       black: '#212121',
       cream: '#F5F5F0'
     };
-    const colorKeys = ['red', 'yellow', 'blue', 'black'];
+    const colorList = [COLORS.red, COLORS.yellow, COLORS.blue, COLORS.black];
     
-    // Elements - scattered across canvas
+    // Grid system - matches original
     let elements = [];
+    let cols, rows, cellSize;
     
     // Cycles (in 8th notes)
-    // Kick is the anchor - always steady 4/4
-    // Other elements float with polyrhythm
     const CYCLES = {
-      circle: 8,      // Kick: STEADY every 4 beats - the anchor
-      triangle: 6,    // Snare: every 3 beats (polyrhythm)
-      square: 5,      // Hat: every 2.5 beats (polyrhythm)
-      halfCircle: 7   // Blip: every 3.5 beats (polyrhythm)
+      circle: 8,      // Kick: steady 4/4 anchor
+      triangle: 6,    // Snare: polyrhythm
+      square: 10,     // Hat: slower cycle to reduce dominance
+      halfCircle: 7   // Blip: polyrhythm
     };
     
-    // Kick stays on grid, others get random offsets
+    // Only non-kicks get offsets
     const ALLOW_OFFSET = {
-      circle: false,    // Kicks locked to grid
-      triangle: true,   // Snares can float
-      square: true,     // Hats can float
-      halfCircle: true  // Blips can float
+      circle: false,
+      triangle: true,
+      square: true,
+      halfCircle: true
     };
     
     // Audio
@@ -99,12 +98,16 @@
     function resize() {
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
+      
+      // Grid sizing - matches original exactly
+      cellSize = Math.min(width, height) / 8;
+      cols = Math.ceil(width / cellSize);
+      rows = Math.ceil(height / cellSize);
     }
     
     function initAudio() {
       reverb = new Tone.Reverb({ decay: 2, wet: 0.25 }).toDestination();
       
-      // Kick - warmer
       kick = new Tone.MembraneSynth({
         pitchDecay: 0.08,
         octaves: 5,
@@ -113,14 +116,12 @@
       }).connect(reverb);
       kick.volume.value = -8;
       
-      // Snare - softer
       snare = new Tone.NoiseSynth({
         noise: { type: 'pink' },
         envelope: { attack: 0.005, decay: 0.12, sustain: 0, release: 0.1 }
       }).connect(reverb);
       snare.volume.value = -14;
       
-      // Hat - gentler
       hat = new Tone.MetalSynth({
         frequency: 300,
         envelope: { attack: 0.001, decay: 0.04, release: 0.01 },
@@ -129,9 +130,8 @@
         resonance: 3000,
         octaves: 1
       }).connect(reverb);
-      hat.volume.value = -20;
+      hat.volume.value = -22;
       
-      // Blip - melodic
       blip = new Tone.Synth({
         oscillator: { type: 'triangle' },
         envelope: { attack: 0.02, decay: 0.15, sustain: 0.1, release: 0.4 }
@@ -142,76 +142,61 @@
     function generateElements() {
       elements = [];
       
-      const cellSize = Math.min(width, height) / 8;
-      
-      // Ensure we always have kicks for the anchor pulse
-      // 2-3 kicks guaranteed, rest random
-      const guaranteed = [
-        { type: 'circle', count: 2 + Math.floor(Math.random() * 2) }
+      // Balanced type distribution
+      // Favor kicks and melodic blips, fewer hats
+      const typeWeights = [
+        'circle', 'circle', 'circle',           // 3x kick
+        'triangle', 'triangle',                  // 2x snare
+        'square',                                // 1x hat (reduced)
+        'halfCircle', 'halfCircle', 'halfCircle' // 3x blip
       ];
       
-      const types = ['circle', 'square', 'triangle', 'halfCircle'];
+      // Size options - matches original
+      const sizes = [0.5, 0.7, 0.9];
+      const rotations = [0, Math.PI/2, Math.PI, Math.PI * 1.5];
       
-      // Add guaranteed kicks first
-      for (const g of guaranteed) {
-        for (let i = 0; i < g.count; i++) {
-          const color = colorKeys[Math.floor(Math.random() * colorKeys.length)];
+      // Generate on grid - matches original exactly
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          // ~35% fill rate like original
+          if (Math.random() > 0.35) continue;
+          
+          const type = typeWeights[Math.floor(Math.random() * typeWeights.length)];
+          const color = colorList[Math.floor(Math.random() * colorList.length)];
+          
           elements.push({
-            x: Math.random() * width,
-            y: Math.random() * height,
-            type: g.type,
+            // Grid position - matches original
+            gridX: col,
+            gridY: row,
+            x: col * cellSize,
+            y: row * cellSize,
+            type,
             color,
-            size: (0.5 + Math.random() * 0.5) * cellSize,
-            rotation: [0, Math.PI/2, Math.PI, Math.PI * 1.5][Math.floor(Math.random() * 4)],
-            offset: 0, // Kicks on grid
+            size: sizes[Math.floor(Math.random() * sizes.length)] * cellSize,
+            rotation: rotations[Math.floor(Math.random() * rotations.length)],
+            offset: ALLOW_OFFSET[type] ? Math.floor(Math.random() * CYCLES[type]) : 0,
             triggered: false,
             triggerTime: 0
           });
         }
       }
-      
-      // Generate 12-20 more elements scattered across canvas
-      const count = 12 + Math.floor(Math.random() * 8);
-      
-      for (let i = 0; i < count; i++) {
-        const type = types[Math.floor(Math.random() * types.length)];
-        const color = colorKeys[Math.floor(Math.random() * colorKeys.length)];
-        
-        elements.push({
-          x: Math.random() * width,
-          y: Math.random() * height,
-          type,
-          color,
-          size: (0.4 + Math.random() * 0.6) * cellSize,
-          rotation: [0, Math.PI/2, Math.PI, Math.PI * 1.5][Math.floor(Math.random() * 4)],
-          // Kicks stay on grid, others get random offsets for floating feel
-          offset: ALLOW_OFFSET[type] ? Math.floor(Math.random() * CYCLES[type]) : 0,
-          triggered: false,
-          triggerTime: 0
-        });
-      }
     }
     
     function getPitch(color, rotation) {
-      // Base pitch from color
       const basePitches = {
-        red: 0,      // root
-        yellow: 4,   // major third
-        blue: 7,     // fifth
-        black: -5    // fourth below
+        [COLORS.red]: 0,
+        [COLORS.yellow]: 4,
+        [COLORS.blue]: 7,
+        [COLORS.black]: -5
       };
-      
-      // Rotation adds pitch offset
       const rotationOffset = Math.round(rotation / (Math.PI/2)) * 2;
-      
-      return basePitches[color] + rotationOffset;
+      return (basePitches[color] || 0) + rotationOffset;
     }
     
     function getNoteFromPitch(pitchOffset) {
       const notes = ['C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3', 'C4', 'D4', 'E4', 'F4', 'G4', 'A4'];
-      const baseIndex = 4; // G3
-      const index = Math.max(0, Math.min(notes.length - 1, baseIndex + pitchOffset));
-      return notes[index];
+      const baseIndex = 4;
+      return notes[Math.max(0, Math.min(notes.length - 1, baseIndex + pitchOffset))];
     }
     
     function step() {
@@ -221,16 +206,12 @@
         const cycle = CYCLES[el.type];
         const effectiveStep = (stepCount + el.offset) % cycle;
         
-        // Trigger on beat 0 of each element's cycle
         if (effectiveStep === 0) {
           el.triggered = true;
           el.triggerTime = Date.now();
           
-          const velocity = 0.4 + (el.size / (Math.min(width, height) / 8)) * 0.4;
+          const velocity = 0.4 + (el.size / cellSize) * 0.4;
           const pitchOffset = getPitch(el.color, el.rotation);
-          
-          // Pan based on x position
-          const pan = (el.x / width) * 2 - 1;
           
           switch(el.type) {
             case 'circle':
@@ -240,7 +221,7 @@
               snare.triggerAttackRelease('8n', time, velocity * 0.7);
               break;
             case 'square':
-              hat.triggerAttackRelease('16n', time, velocity * 0.5);
+              hat.triggerAttackRelease('16n', time, velocity * 0.4);
               break;
             case 'halfCircle':
               const note = getNoteFromPitch(pitchOffset);
@@ -257,50 +238,49 @@
       ctx.fillStyle = COLORS.cream;
       ctx.fillRect(0, 0, width, height);
       
-      // Subtle grid (like original)
-      const gridSize = Math.min(width, height) / 8;
-      ctx.strokeStyle = 'rgba(0,0,0,0.05)';
+      // Grid lines - matches original
+      ctx.strokeStyle = 'rgba(200, 200, 195, 1)';
       ctx.lineWidth = 1;
       
-      for (let x = 0; x <= width; x += gridSize) {
+      for (let x = 0; x <= width; x += cellSize) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
         ctx.stroke();
       }
-      for (let y = 0; y <= height; y += gridSize) {
+      for (let y = 0; y <= height; y += cellSize) {
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
       }
       
-      // Draw elements
       const now = Date.now();
       
+      // Draw elements - centered in cells like original
       for (const el of elements) {
         ctx.save();
-        ctx.translate(el.x, el.y);
+        
+        // Center in cell - matches original
+        ctx.translate(el.x + cellSize/2, el.y + cellSize/2);
         ctx.rotate(el.rotation);
         
         // Trigger animation
         const timeSinceTrigger = now - el.triggerTime;
-        const triggerScale = el.triggered && timeSinceTrigger < 150 
-          ? 1 + (1 - timeSinceTrigger / 150) * 0.2 
-          : 1;
+        const isTriggered = el.triggered && timeSinceTrigger < 150;
+        const scale = isTriggered ? 1 + (1 - timeSinceTrigger / 150) * 0.15 : 1;
         
         if (el.triggered && timeSinceTrigger > 150) {
           el.triggered = false;
         }
         
-        // Glow when triggered
-        if (el.triggered) {
-          ctx.shadowColor = COLORS[el.color];
-          ctx.shadowBlur = 30 * (1 - timeSinceTrigger / 150);
+        if (isTriggered) {
+          ctx.shadowColor = el.color;
+          ctx.shadowBlur = 25 * (1 - timeSinceTrigger / 150);
         }
         
-        ctx.fillStyle = COLORS[el.color];
-        const s = el.size * triggerScale;
+        ctx.fillStyle = el.color;
+        const s = el.size * scale;
         
         switch(el.type) {
           case 'circle':
@@ -339,8 +319,8 @@
     
     async function start() {
       if (isPlaying) {
-        // Click to regenerate when playing
         generateElements();
+        stepCount = 0;
         return;
       }
       
@@ -354,29 +334,19 @@
       Tone.Transport.bpm.value = 110;
       
       loop = new Tone.Loop((time) => {
-        Tone.Draw.schedule(() => {
-          step();
-        }, time);
+        Tone.Draw.schedule(() => step(), time);
       }, '8n').start(0);
       
       Tone.Transport.start();
     }
     
-    // Events
     startBtn.addEventListener('click', start);
-    
-    canvas.addEventListener('click', () => {
-      start(); // Start or regenerate
-    });
-    
-    canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      start();
-    });
+    canvas.addEventListener('click', () => start());
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); start(); });
     
     window.addEventListener('resize', () => {
       resize();
-      if (isPlaying) generateElements();
+      if (elements.length) generateElements();
     });
     
     resize();
