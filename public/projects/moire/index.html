@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>moiré</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #fafafa;
+      touch-action: none;
+    }
+    canvas { display: block; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(0,0,0,0.3);
+      text-decoration: none;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+      mix-blend-mode: difference;
+    }
+    #back:hover { color: rgba(0,0,0,0.7); }
+  </style>
+</head>
+<body>
+  <a id="back" href="/">← back</a>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let centerX, centerY;
+    let mouseX, mouseY;
+    let targetX, targetY;
+    let time = 0;
+    
+    // Pattern parameters
+    const lineWidth = 1.5;
+    const baseSpacing = 8;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      centerX = width / 2;
+      centerY = height / 2;
+      mouseX = targetX = centerX;
+      mouseY = targetY = centerY;
+    }
+    
+    function drawLinePattern(offsetX, offsetY, rotation, spacing, color) {
+      ctx.save();
+      ctx.translate(centerX + offsetX, centerY + offsetY);
+      ctx.rotate(rotation);
+      
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      
+      const diagonal = Math.sqrt(width * width + height * height);
+      const count = Math.ceil(diagonal / spacing) + 10;
+      
+      ctx.beginPath();
+      for (let i = -count; i <= count; i++) {
+        const x = i * spacing;
+        ctx.moveTo(x, -diagonal);
+        ctx.lineTo(x, diagonal);
+      }
+      ctx.stroke();
+      
+      ctx.restore();
+    }
+    
+    function drawCirclePattern(offsetX, offsetY, spacing, color) {
+      ctx.save();
+      ctx.translate(centerX + offsetX, centerY + offsetY);
+      
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      
+      const maxRadius = Math.sqrt(width * width + height * height);
+      const count = Math.ceil(maxRadius / spacing);
+      
+      for (let i = 1; i <= count; i++) {
+        ctx.beginPath();
+        ctx.arc(0, 0, i * spacing, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      
+      ctx.restore();
+    }
+    
+    function draw() {
+      time += 0.005;
+      
+      // Smooth mouse follow
+      mouseX += (targetX - mouseX) * 0.08;
+      mouseY += (targetY - mouseY) * 0.08;
+      
+      // Mouse offset from center, normalized
+      const dx = (mouseX - centerX) / (width / 2);
+      const dy = (mouseY - centerY) / (height / 2);
+      
+      // Clear
+      ctx.fillStyle = '#fafafa';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Pattern 1: Fixed vertical lines
+      drawLinePattern(0, 0, 0, baseSpacing, 'rgba(0, 0, 0, 0.7)');
+      
+      // Pattern 2: Lines that follow mouse (creates moiré)
+      const offset1X = dx * 30 + Math.sin(time) * 5;
+      const offset1Y = dy * 30 + Math.cos(time * 0.7) * 5;
+      const rotation1 = dx * 0.1 + Math.sin(time * 0.3) * 0.02;
+      const spacing1 = baseSpacing + Math.sin(time * 0.5) * 0.5;
+      drawLinePattern(offset1X, offset1Y, rotation1, spacing1, 'rgba(0, 0, 0, 0.7)');
+      
+      // Pattern 3: Circles from center
+      ctx.globalCompositeOperation = 'multiply';
+      drawCirclePattern(0, 0, baseSpacing * 1.5, 'rgba(0, 0, 0, 0.3)');
+      
+      // Pattern 4: Offset circles (creates radial moiré)
+      const offset2X = -dx * 20 + Math.cos(time * 0.8) * 3;
+      const offset2Y = -dy * 20 + Math.sin(time * 0.6) * 3;
+      drawCirclePattern(offset2X, offset2Y, baseSpacing * 1.5 + Math.sin(time * 0.4) * 0.3, 'rgba(0, 0, 0, 0.3)');
+      
+      ctx.globalCompositeOperation = 'source-over';
+      
+      // Subtle pulsing center point
+      const pulseSize = 3 + Math.sin(time * 2) * 1;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, pulseSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    function animate() {
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Mouse events
+    canvas.addEventListener('mousemove', (e) => {
+      targetX = e.clientX;
+      targetY = e.clientY;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      targetX = centerX;
+      targetY = centerY;
+    });
+    
+    // Touch events
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      targetX = touch.clientX;
+      targetY = touch.clientY;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      targetX = touch.clientX;
+      targetY = touch.clientY;
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      targetX = centerX;
+      targetY = centerY;
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>
