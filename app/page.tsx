@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === March 5, 2026 ===
     {
+      name: "Bauhaus: Beat",
+      description: "Bauhaus grid remixed with percussion. Shapes trigger sounds. Circle=kick, square=hat, triangle=snare. Generative rhythm",
+      date: "Mar 5",
+      href: "/projects/bauhaus-beat/"
+    },
+    {
       name: "Resonance",
       description: "Drone + moiré mashup. Audio and visual interference patterns linked. Move to detune. Headphones recommended",
       date: "Mar 5",

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>bauhaus — beat</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden; 
+      background: #f5f5f0;
+      touch-action: none;
+    }
+    canvas { display: block; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(0,0,0,0.3);
+      text-decoration: none;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+    }
+    #back:hover { color: rgba(0,0,0,0.7); }
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(0,0,0,0.5);
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      background: none;
+      border: 1px solid rgba(0,0,0,0.2);
+      padding: 12px 24px;
+      cursor: pointer;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #start:hover {
+      color: rgba(0,0,0,0.8);
+      border-color: rgba(0,0,0,0.4);
+    }
+    #start.hidden { display: none; }
+    #controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 15px;
+      z-index: 100;
+    }
+    #controls.hidden { display: none; }
+    #controls button {
+      background: rgba(0,0,0,0.1);
+      border: 1px solid rgba(0,0,0,0.2);
+      color: rgba(0,0,0,0.5);
+      padding: 8px 16px;
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    #controls button:hover {
+      background: rgba(0,0,0,0.2);
+      color: rgba(0,0,0,0.8);
+    }
+    #controls button.active {
+      background: rgba(0,0,0,0.6);
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <a id="back" href="/">← back</a>
+  <button id="start">play</button>
+  <div id="controls" class="hidden">
+    <button id="regenerate">new pattern</button>
+    <button id="tempo-down">slower</button>
+    <button id="tempo-up">faster</button>
+  </div>
+  <canvas id="canvas"></canvas>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start');
+    const controls = document.getElementById('controls');
+    
+    let width, height;
+    let isPlaying = false;
+    let currentStep = 0;
+    let bpm = 120;
+    
+    // Bauhaus colors
+    const COLORS = {
+      red: '#E53935',
+      yellow: '#FDD835',
+      blue: '#1E88E5',
+      black: '#212121',
+      cream: '#F5F5F0'
+    };
+    
+    // Grid
+    let grid = [];
+    let cols = 8;
+    let rows = 8;
+    let cellSize;
+    
+    // Audio
+    let kick, snare, hat, blip;
+    let reverb, delay;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      cellSize = Math.min(width, height) / Math.max(cols, rows) * 0.9;
+    }
+    
+    function initAudio() {
+      // Effects
+      reverb = new Tone.Reverb({ decay: 1.5, wet: 0.2 }).toDestination();
+      delay = new Tone.FeedbackDelay({ delayTime: '8n', feedback: 0.2, wet: 0.15 }).connect(reverb);
+      
+      // Kick - circle
+      kick = new Tone.MembraneSynth({
+        pitchDecay: 0.05,
+        octaves: 6,
+        oscillator: { type: 'sine' },
+        envelope: {
+          attack: 0.001,
+          decay: 0.3,
+          sustain: 0.01,
+          release: 0.5
+        }
+      }).connect(reverb);
+      kick.volume.value = -6;
+      
+      // Snare - triangle
+      snare = new Tone.NoiseSynth({
+        noise: { type: 'white' },
+        envelope: {
+          attack: 0.001,
+          decay: 0.15,
+          sustain: 0,
+          release: 0.1
+        }
+      }).connect(reverb);
+      snare.volume.value = -12;
+      
+      // Hi-hat - square
+      hat = new Tone.MetalSynth({
+        frequency: 250,
+        envelope: {
+          attack: 0.001,
+          decay: 0.05,
+          release: 0.01
+        },
+        harmonicity: 5.1,
+        modulationIndex: 32,
+        resonance: 4000,
+        octaves: 1.5
+      }).connect(delay);
+      hat.volume.value = -18;
+      
+      // Blip - halfCircle (tonal element)
+      blip = new Tone.Synth({
+        oscillator: { type: 'sine' },
+        envelope: {
+          attack: 0.01,
+          decay: 0.1,
+          sustain: 0.1,
+          release: 0.3
+        }
+      }).connect(delay);
+      blip.volume.value = -10;
+    }
+    
+    function generateGrid() {
+      grid = [];
+      
+      // 8x8 step sequencer grid
+      for (let step = 0; step < cols; step++) {
+        const column = [];
+        
+        for (let row = 0; row < rows; row++) {
+          // Sparse - most cells empty
+          if (Math.random() > 0.3) {
+            column.push(null);
+            continue;
+          }
+          
+          // Bias certain rows to certain sounds for musicality
+          let type;
+          if (row === 0 || row === 4) {
+            type = Math.random() > 0.5 ? 'circle' : null; // Kick on 1 and 5
+          } else if (row === 2 || row === 6) {
+            type = Math.random() > 0.6 ? 'triangle' : null; // Snare on 3 and 7
+          } else if (row % 2 === 1) {
+            type = Math.random() > 0.5 ? 'square' : null; // Hats on off-beats
+          } else {
+            type = Math.random() > 0.7 ? 'halfCircle' : null; // Occasional blips
+          }
+          
+          if (!type) {
+            column.push(null);
+            continue;
+          }
+          
+          column.push({
+            type,
+            color: [COLORS.red, COLORS.yellow, COLORS.blue, COLORS.black][Math.floor(Math.random() * 4)],
+            size: (0.5 + Math.random() * 0.4) * cellSize,
+            rotation: [0, Math.PI/2, Math.PI, Math.PI * 1.5][Math.floor(Math.random() * 4)],
+            triggered: false
+          });
+        }
+        
+        grid.push(column);
+      }
+    }
+    
+    function playStep(step) {
+      const column = grid[step];
+      const time = Tone.now();
+      
+      for (let row = 0; row < column.length; row++) {
+        const cell = column[row];
+        if (!cell) continue;
+        
+        cell.triggered = true;
+        setTimeout(() => cell.triggered = false, 100);
+        
+        // Pan based on row position
+        const pan = (row - rows/2) / (rows/2) * 0.6;
+        
+        // Velocity based on size
+        const velocity = 0.5 + (cell.size / cellSize) * 0.5;
+        
+        // Pitch variation based on color
+        let pitchOffset = 0;
+        if (cell.color === COLORS.red) pitchOffset = 0;
+        else if (cell.color === COLORS.yellow) pitchOffset = 2;
+        else if (cell.color === COLORS.blue) pitchOffset = -2;
+        
+        switch(cell.type) {
+          case 'circle':
+            kick.triggerAttackRelease(40 + pitchOffset, '8n', time, velocity);
+            break;
+          case 'triangle':
+            snare.triggerAttackRelease('16n', time, velocity * 0.8);
+            break;
+          case 'square':
+            hat.triggerAttackRelease('32n', time, velocity * 0.5);
+            break;
+          case 'halfCircle':
+            const notes = ['C4', 'D4', 'E4', 'G4', 'A4', 'C5', 'D5', 'E5'];
+            const note = notes[row % notes.length];
+            blip.triggerAttackRelease(note, '8n', time, velocity * 0.7);
+            break;
+        }
+      }
+    }
+    
+    function draw() {
+      ctx.fillStyle = COLORS.cream;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Center the grid
+      const gridWidth = cols * cellSize;
+      const gridHeight = rows * cellSize;
+      const offsetX = (width - gridWidth) / 2;
+      const offsetY = (height - gridHeight) / 2;
+      
+      // Draw grid lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+      ctx.lineWidth = 1;
+      
+      for (let x = 0; x <= cols; x++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + x * cellSize, offsetY);
+        ctx.lineTo(offsetX + x * cellSize, offsetY + gridHeight);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= rows; y++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX, offsetY + y * cellSize);
+        ctx.lineTo(offsetX + gridWidth, offsetY + y * cellSize);
+        ctx.stroke();
+      }
+      
+      // Highlight current column
+      if (isPlaying) {
+        ctx.fillStyle = 'rgba(0,0,0,0.05)';
+        ctx.fillRect(offsetX + currentStep * cellSize, offsetY, cellSize, gridHeight);
+      }
+      
+      // Draw elements
+      for (let step = 0; step < cols; step++) {
+        for (let row = 0; row < rows; row++) {
+          const cell = grid[step]?.[row];
+          if (!cell) continue;
+          
+          const x = offsetX + step * cellSize + cellSize / 2;
+          const y = offsetY + row * cellSize + cellSize / 2;
+          
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(cell.rotation);
+          
+          // Flash when triggered
+          if (cell.triggered) {
+            ctx.shadowColor = cell.color;
+            ctx.shadowBlur = 20;
+          }
+          
+          ctx.fillStyle = cell.color;
+          const s = cell.size * (cell.triggered ? 1.1 : 1);
+          
+          switch(cell.type) {
+            case 'circle':
+              ctx.beginPath();
+              ctx.arc(0, 0, s / 2, 0, Math.PI * 2);
+              ctx.fill();
+              break;
+            case 'square':
+              ctx.fillRect(-s/2, -s/2, s, s);
+              break;
+            case 'triangle':
+              ctx.beginPath();
+              ctx.moveTo(0, -s/2);
+              ctx.lineTo(-s/2, s/2);
+              ctx.lineTo(s/2, s/2);
+              ctx.closePath();
+              ctx.fill();
+              break;
+            case 'halfCircle':
+              ctx.beginPath();
+              ctx.arc(0, 0, s/2, 0, Math.PI);
+              ctx.fill();
+              break;
+          }
+          
+          ctx.restore();
+        }
+      }
+      
+      // Step indicator
+      if (isPlaying) {
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.font = '12px system-ui';
+        ctx.fillText(`step ${currentStep + 1}/${cols}  •  ${bpm} bpm`, 20, height - 20);
+      }
+    }
+    
+    function step() {
+      playStep(currentStep);
+      currentStep = (currentStep + 1) % cols;
+    }
+    
+    let loop;
+    
+    async function start() {
+      if (isPlaying) return;
+      
+      await Tone.start();
+      initAudio();
+      generateGrid();
+      
+      isPlaying = true;
+      startBtn.classList.add('hidden');
+      controls.classList.remove('hidden');
+      
+      Tone.Transport.bpm.value = bpm;
+      
+      loop = new Tone.Loop((time) => {
+        Tone.Draw.schedule(() => {
+          step();
+        }, time);
+      }, '8n').start(0);
+      
+      Tone.Transport.start();
+    }
+    
+    function animate() {
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Events
+    startBtn.addEventListener('click', start);
+    canvas.addEventListener('click', () => { if (!isPlaying) start(); });
+    
+    document.getElementById('regenerate').addEventListener('click', () => {
+      generateGrid();
+    });
+    
+    document.getElementById('tempo-down').addEventListener('click', () => {
+      bpm = Math.max(60, bpm - 10);
+      Tone.Transport.bpm.value = bpm;
+    });
+    
+    document.getElementById('tempo-up').addEventListener('click', () => {
+      bpm = Math.min(180, bpm + 10);
+      Tone.Transport.bpm.value = bpm;
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    generateGrid();
+    animate();
+  </script>
+</body>
+</html>
