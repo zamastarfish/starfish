@@ -14,7 +14,7 @@
 - **Threshold** — You're always approaching but never arriving. Zeno's paradox made visible. How close can you get?
 - ~~**Dust**~~ → shipped
 - **Sublime** — Caspar David Friedrich energy. Tiny figure, vast landscape. You are small; that's okay.
-- **Turing** — Reaction-diffusion patterns. The math of animal markings, coral, fingerprints. Biological emergence.
+- ~~**Turing**~~ → shipped
 - **Mono no aware** — The pathos of things. Cherry blossoms falling. Beauty is brief; that's what makes it beautiful.
 
 ### Completed
@@ -29,6 +29,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| turing | Reaction-diffusion patterns, biological emergence | 1 session | Mar 5 |
 | dust | Motes in a sunbeam, move to disturb, mundane made profound | 1 session | Mar 4 |
 | dogs | Regional hot dog tour — Seattle to Reykjavík | 1 session | Mar 4 |
 | tend | Shape dissolving, presence restores. Care vs entropy | 1 session | Mar 4 |

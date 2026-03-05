@@ -71,6 +71,13 @@ export default function Home() {
       href: "/projects/dust/",
       series: "escape"
     },
+    {
+      name: "Turing",
+      description: "Reaction-diffusion patterns. How zebras get stripes. Click to seed, watch patterns emerge",
+      date: "Mar 2026",
+      href: "/projects/turing/",
+      series: "inspire"
+    },
     // === NEW: Weird Motifs (starfish-interact.js) ===
     {
       name: "Decay: Bloom",

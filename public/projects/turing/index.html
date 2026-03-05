@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turing</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0a; 
+      overflow: hidden;
+      font-family: system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    canvas { 
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    
+    #controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 15px;
+      z-index: 100;
+    }
+    
+    #controls button {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      padding: 8px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      transition: all 0.3s;
+    }
+    
+    #controls button:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    
+    #controls button.active {
+      background: rgba(255,255,255,0.3);
+      color: #fff;
+    }
+
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s; font-family: system-ui, sans-serif;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.3);
+    }
+    /* Modal */
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #111; border: 1px solid #333; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #fff; }
+  </style>
+</head>
+<body>
+
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Turing</h2>
+      <h3>Concept</h3>
+      <p>Reaction-diffusion systems, first described by Alan Turing in 1952. Two chemicals interact and diffuse at different rates, creating patterns that emerge spontaneously — spots, stripes, labyrinths.</p>
+      <h3>In Nature</h3>
+      <p>This is how zebras get stripes, leopards get spots, and coral forms its patterns. The math of biology, made visible.</p>
+      <h3>Interaction</h3>
+      <p>Click or drag to add chemical. Use presets to explore different pattern types. Each preset adjusts the feed and kill rates.</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  
+  <div id="controls">
+    <button onclick="setPreset('spots')" id="btn-spots">Spots</button>
+    <button onclick="setPreset('stripes')" id="btn-stripes">Stripes</button>
+    <button onclick="setPreset('coral')" id="btn-coral" class="active">Coral</button>
+    <button onclick="setPreset('maze')" id="btn-maze">Maze</button>
+    <button onclick="reset()">Reset</button>
+  </div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Simulation size (smaller for performance)
+    const SIM_WIDTH = 200;
+    const SIM_HEIGHT = 200;
+    
+    // Display scale
+    let scale = 1;
+    
+    // Gray-Scott model parameters
+    let feed = 0.055;
+    let kill = 0.062;
+    const dA = 1.0;
+    const dB = 0.5;
+    
+    // Chemical concentrations
+    let gridA, gridB, nextA, nextB;
+    
+    // Presets
+    const PRESETS = {
+      spots: { feed: 0.034, kill: 0.059 },
+      stripes: { feed: 0.022, kill: 0.051 },
+      coral: { feed: 0.055, kill: 0.062 },
+      maze: { feed: 0.029, kill: 0.057 },
+    };
+    
+    // Color palette
+    const palette = [
+      [10, 10, 15],      // background
+      [20, 40, 80],      // dark blue
+      [40, 100, 140],    // medium blue
+      [80, 160, 180],    // cyan
+      [200, 220, 230],   // light
+    ];
+    
+    function init() {
+      scale = Math.min(
+        Math.floor(window.innerWidth / SIM_WIDTH),
+        Math.floor(window.innerHeight / SIM_HEIGHT),
+        4
+      );
+      scale = Math.max(scale, 2);
+      
+      canvas.width = SIM_WIDTH * scale;
+      canvas.height = SIM_HEIGHT * scale;
+      
+      reset();
+    }
+    
+    function reset() {
+      gridA = new Float32Array(SIM_WIDTH * SIM_HEIGHT);
+      gridB = new Float32Array(SIM_WIDTH * SIM_HEIGHT);
+      nextA = new Float32Array(SIM_WIDTH * SIM_HEIGHT);
+      nextB = new Float32Array(SIM_WIDTH * SIM_HEIGHT);
+      
+      // Fill with chemical A
+      gridA.fill(1);
+      gridB.fill(0);
+      
+      // Seed with some B in the center
+      const cx = SIM_WIDTH / 2;
+      const cy = SIM_HEIGHT / 2;
+      const radius = 10;
+      
+      for (let y = 0; y < SIM_HEIGHT; y++) {
+        for (let x = 0; x < SIM_WIDTH; x++) {
+          const dx = x - cx;
+          const dy = y - cy;
+          if (dx * dx + dy * dy < radius * radius) {
+            const i = y * SIM_WIDTH + x;
+            gridB[i] = 1;
+          }
+        }
+      }
+      
+      // Add some random seeds
+      for (let n = 0; n < 5; n++) {
+        const sx = Math.floor(Math.random() * SIM_WIDTH);
+        const sy = Math.floor(Math.random() * SIM_HEIGHT);
+        for (let dy = -3; dy <= 3; dy++) {
+          for (let dx = -3; dx <= 3; dx++) {
+            const x = (sx + dx + SIM_WIDTH) % SIM_WIDTH;
+            const y = (sy + dy + SIM_HEIGHT) % SIM_HEIGHT;
+            if (dx * dx + dy * dy < 9) {
+              gridB[y * SIM_WIDTH + x] = 1;
+            }
+          }
+        }
+      }
+    }
+    
+    function setPreset(name) {
+      const preset = PRESETS[name];
+      if (preset) {
+        feed = preset.feed;
+        kill = preset.kill;
+        
+        // Update button states
+        document.querySelectorAll('#controls button').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        document.getElementById('btn-' + name)?.classList.add('active');
+        
+        reset();
+      }
+    }
+    
+    function laplacian(grid, x, y) {
+      const w = SIM_WIDTH;
+      const h = SIM_HEIGHT;
+      
+      // Wrap coordinates
+      const xm = (x - 1 + w) % w;
+      const xp = (x + 1) % w;
+      const ym = (y - 1 + h) % h;
+      const yp = (y + 1) % h;
+      
+      const i = y * w + x;
+      
+      return (
+        grid[ym * w + x] * 0.2 +
+        grid[yp * w + x] * 0.2 +
+        grid[y * w + xm] * 0.2 +
+        grid[y * w + xp] * 0.2 +
+        grid[ym * w + xm] * 0.05 +
+        grid[ym * w + xp] * 0.05 +
+        grid[yp * w + xm] * 0.05 +
+        grid[yp * w + xp] * 0.05 +
+        grid[i] * -1
+      );
+    }
+    
+    function simulate() {
+      for (let y = 0; y < SIM_HEIGHT; y++) {
+        for (let x = 0; x < SIM_WIDTH; x++) {
+          const i = y * SIM_WIDTH + x;
+          
+          const a = gridA[i];
+          const b = gridB[i];
+          
+          const lapA = laplacian(gridA, x, y);
+          const lapB = laplacian(gridB, x, y);
+          
+          const reaction = a * b * b;
+          
+          nextA[i] = a + (dA * lapA - reaction + feed * (1 - a));
+          nextB[i] = b + (dB * lapB + reaction - (kill + feed) * b);
+          
+          // Clamp
+          nextA[i] = Math.max(0, Math.min(1, nextA[i]));
+          nextB[i] = Math.max(0, Math.min(1, nextB[i]));
+        }
+      }
+      
+      // Swap buffers
+      [gridA, nextA] = [nextA, gridA];
+      [gridB, nextB] = [nextB, gridB];
+    }
+    
+    function getColor(b) {
+      // Map B concentration to color
+      const t = Math.max(0, Math.min(1, b)) * (palette.length - 1);
+      const i = Math.floor(t);
+      const f = t - i;
+      
+      const c1 = palette[Math.min(i, palette.length - 1)];
+      const c2 = palette[Math.min(i + 1, palette.length - 1)];
+      
+      return [
+        Math.round(c1[0] + (c2[0] - c1[0]) * f),
+        Math.round(c1[1] + (c2[1] - c1[1]) * f),
+        Math.round(c1[2] + (c2[2] - c1[2]) * f),
+      ];
+    }
+    
+    function render() {
+      const imageData = ctx.createImageData(SIM_WIDTH, SIM_HEIGHT);
+      const data = imageData.data;
+      
+      for (let y = 0; y < SIM_HEIGHT; y++) {
+        for (let x = 0; x < SIM_WIDTH; x++) {
+          const i = y * SIM_WIDTH + x;
+          const pi = i * 4;
+          
+          const b = gridB[i];
+          const [r, g, bl] = getColor(b);
+          
+          data[pi] = r;
+          data[pi + 1] = g;
+          data[pi + 2] = bl;
+          data[pi + 3] = 255;
+        }
+      }
+      
+      // Draw scaled
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = SIM_WIDTH;
+      tempCanvas.height = SIM_HEIGHT;
+      tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
+      
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+    }
+    
+    function addChemical(px, py) {
+      const x = Math.floor(px / scale);
+      const y = Math.floor(py / scale);
+      const radius = 3;
+      
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (dx * dx + dy * dy <= radius * radius) {
+            const nx = (x + dx + SIM_WIDTH) % SIM_WIDTH;
+            const ny = (y + dy + SIM_HEIGHT) % SIM_HEIGHT;
+            gridB[ny * SIM_WIDTH + nx] = 1;
+          }
+        }
+      }
+    }
+    
+    function animate() {
+      // Run multiple simulation steps per frame
+      for (let i = 0; i < 8; i++) {
+        simulate();
+      }
+      render();
+      requestAnimationFrame(animate);
+    }
+    
+    // Input handling
+    let isDrawing = false;
+    
+    function getCanvasPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+    
+    canvas.addEventListener('mousedown', (e) => {
+      isDrawing = true;
+      const pos = getCanvasPos(e);
+      addChemical(pos.x, pos.y);
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDrawing) {
+        const pos = getCanvasPos(e);
+        addChemical(pos.x, pos.y);
+      }
+    });
+    
+    canvas.addEventListener('mouseup', () => isDrawing = false);
+    canvas.addEventListener('mouseleave', () => isDrawing = false);
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      addChemical(touch.clientX - rect.left, touch.clientY - rect.top);
+    }, {passive: false});
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      addChemical(touch.clientX - rect.left, touch.clientY - rect.top);
+    }, {passive: false});
+    
+    // Initialize
+    window.addEventListener('resize', init);
+    init();
+    animate();
+  </script>
+</body>
+</html>
