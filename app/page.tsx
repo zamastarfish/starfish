@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === March 5, 2026 ===
     {
+      name: "Turing: Drone",
+      description: "Reaction-diffusion with evolving drone. Pattern density shapes the sound. Click to seed",
+      date: "Mar 5",
+      href: "/projects/turing-drone/"
+    },
+    {
       name: "Flocking: Pad",
       description: "Starling murmuration with ambient pads. Cohesion = brightness, scatter = noise. Cursor is a hawk",
       date: "Mar 5",

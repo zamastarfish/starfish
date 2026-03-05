@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>turing — drone</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #0a0a0a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+    }
+    canvas { 
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.3);
+      text-decoration: none;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+    }
+    #back:hover { color: rgba(255,255,255,0.7); }
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255,255,255,0.5);
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      background: none;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 12px 24px;
+      cursor: pointer;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #start:hover {
+      color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.4);
+    }
+    #start.hidden { display: none; }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      color: rgba(255, 255, 255, 0.2);
+      font-size: 11px;
+      font-family: system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <a id="back" href="/">← back</a>
+  <button id="start">listen</button>
+  <canvas id="canvas"></canvas>
+  <div id="info">click to seed patterns</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start');
+    
+    // Simulation
+    const SIM_WIDTH = 150;
+    const SIM_HEIGHT = 150;
+    let scale = 1;
+    
+    // Gray-Scott parameters
+    let feed = 0.055;
+    let kill = 0.062;
+    const dA = 1.0;
+    const dB = 0.5;
+    
+    let gridA, gridB, nextA, nextB;
+    let isPlaying = false;
+    
+    // Audio state
+    let patternDensity = 0;
+    let activityLevel = 0;
+    
+    // Audio
+    let droneSynths = [];
+    let noiseSynth;
+    let reverb, filter, tremolo;
+    
+    // Drone frequencies (overtone series based on fundamental)
+    const FUNDAMENTAL = 55; // A1
+    const HARMONICS = [1, 2, 3, 4, 5, 6];
+    
+    function initAudio() {
+      reverb = new Tone.Reverb({ decay: 10, wet: 0.5 }).toDestination();
+      tremolo = new Tone.Tremolo({ frequency: 0.1, depth: 0.3 }).connect(reverb).start();
+      filter = new Tone.Filter({ frequency: 400, type: 'lowpass', Q: 2 }).connect(tremolo);
+      
+      // Create drone voices for harmonics
+      HARMONICS.forEach((h, i) => {
+        const synth = new Tone.Synth({
+          oscillator: { type: i < 2 ? 'sawtooth' : 'sine' },
+          envelope: { attack: 3, decay: 1, sustain: 0.8, release: 4 }
+        }).connect(filter);
+        synth.volume.value = -18 - i * 3;
+        droneSynths.push({ synth, harmonic: h, playing: false });
+      });
+      
+      // Noise for texture
+      noiseSynth = new Tone.NoiseSynth({
+        noise: { type: 'brown' },
+        envelope: { attack: 2, decay: 1, sustain: 0.5, release: 2 }
+      }).connect(filter);
+      noiseSynth.volume.value = -35;
+    }
+    
+    function startDrone() {
+      droneSynths.forEach(d => {
+        if (!d.playing) {
+          d.synth.triggerAttack(FUNDAMENTAL * d.harmonic);
+          d.playing = true;
+        }
+      });
+      noiseSynth.triggerAttack();
+    }
+    
+    function updateAudio() {
+      if (!isPlaying || droneSynths.length === 0) return;
+      
+      // Calculate pattern metrics
+      let totalB = 0;
+      let changes = 0;
+      
+      for (let i = 0; i < SIM_WIDTH * SIM_HEIGHT; i++) {
+        totalB += gridB[i];
+      }
+      
+      patternDensity = totalB / (SIM_WIDTH * SIM_HEIGHT);
+      
+      // Map density to filter (more pattern = brighter)
+      const targetFreq = 150 + patternDensity * 1500;
+      filter.frequency.rampTo(targetFreq, 1);
+      
+      // Map density to tremolo speed
+      const tremoloSpeed = 0.05 + patternDensity * 0.3;
+      tremolo.frequency.rampTo(tremoloSpeed, 1);
+      
+      // Adjust harmonic volumes based on density
+      droneSynths.forEach((d, i) => {
+        const baseVol = -18 - i * 3;
+        const densityMod = patternDensity * 8;
+        const targetVol = baseVol + densityMod - (i > 2 ? (1 - patternDensity) * 10 : 0);
+        d.synth.volume.rampTo(targetVol, 0.5);
+      });
+      
+      // Noise level inversely related to pattern clarity
+      const noiseVol = -30 - patternDensity * 10;
+      noiseSynth.volume.rampTo(noiseVol, 0.5);
+    }
+    
+    function resize() {
+      const size = Math.min(window.innerWidth, window.innerHeight) * 0.85;
+      scale = Math.floor(size / SIM_WIDTH);
+      canvas.width = SIM_WIDTH * scale;
+      canvas.height = SIM_HEIGHT * scale;
+      ctx.imageSmoothingEnabled = false;
+    }
+    
+    function init() {
+      gridA = new Float32Array(SIM_WIDTH * SIM_HEIGHT);
+      gridB = new Float32Array(SIM_WIDTH * SIM_HEIGHT);
+      nextA = new Float32Array(SIM_WIDTH * SIM_HEIGHT);
+      nextB = new Float32Array(SIM_WIDTH * SIM_HEIGHT);
+      
+      // Initialize with A=1, B=0
+      gridA.fill(1);
+      gridB.fill(0);
+      
+      // Seed some initial patterns
+      seedCenter();
+    }
+    
+    function seedCenter() {
+      const cx = Math.floor(SIM_WIDTH / 2);
+      const cy = Math.floor(SIM_HEIGHT / 2);
+      const r = 10;
+      
+      for (let y = cy - r; y <= cy + r; y++) {
+        for (let x = cx - r; x <= cx + r; x++) {
+          if (x >= 0 && x < SIM_WIDTH && y >= 0 && y < SIM_HEIGHT) {
+            const i = y * SIM_WIDTH + x;
+            gridB[i] = 1;
+          }
+        }
+      }
+    }
+    
+    function seedAt(px, py) {
+      const x = Math.floor(px / scale);
+      const y = Math.floor(py / scale);
+      const r = 5;
+      
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < SIM_WIDTH && ny >= 0 && ny < SIM_HEIGHT) {
+            if (dx * dx + dy * dy <= r * r) {
+              const i = ny * SIM_WIDTH + nx;
+              gridB[i] = 1;
+            }
+          }
+        }
+      }
+    }
+    
+    function laplacian(grid, x, y) {
+      const i = y * SIM_WIDTH + x;
+      const l = x > 0 ? grid[i - 1] : grid[i];
+      const r = x < SIM_WIDTH - 1 ? grid[i + 1] : grid[i];
+      const u = y > 0 ? grid[i - SIM_WIDTH] : grid[i];
+      const d = y < SIM_HEIGHT - 1 ? grid[i + SIM_WIDTH] : grid[i];
+      return (l + r + u + d) / 4 - grid[i];
+    }
+    
+    function simulate() {
+      for (let y = 0; y < SIM_HEIGHT; y++) {
+        for (let x = 0; x < SIM_WIDTH; x++) {
+          const i = y * SIM_WIDTH + x;
+          const a = gridA[i];
+          const b = gridB[i];
+          const lapA = laplacian(gridA, x, y);
+          const lapB = laplacian(gridB, x, y);
+          const reaction = a * b * b;
+          
+          nextA[i] = a + (dA * lapA - reaction + feed * (1 - a));
+          nextB[i] = b + (dB * lapB + reaction - (kill + feed) * b);
+          
+          nextA[i] = Math.max(0, Math.min(1, nextA[i]));
+          nextB[i] = Math.max(0, Math.min(1, nextB[i]));
+        }
+      }
+      
+      [gridA, nextA] = [nextA, gridA];
+      [gridB, nextB] = [nextB, gridB];
+    }
+    
+    function draw() {
+      const imageData = ctx.createImageData(SIM_WIDTH, SIM_HEIGHT);
+      const data = imageData.data;
+      
+      for (let i = 0; i < SIM_WIDTH * SIM_HEIGHT; i++) {
+        const b = gridB[i];
+        const idx = i * 4;
+        
+        // Color based on B concentration
+        const v = Math.floor(b * 255);
+        data[idx] = v * 0.3;      // R
+        data[idx + 1] = v * 0.5;  // G
+        data[idx + 2] = v;        // B
+        data[idx + 3] = 255;      // A
+      }
+      
+      // Draw small then scale up
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = SIM_WIDTH;
+      tempCanvas.height = SIM_HEIGHT;
+      tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
+      
+      ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+    }
+    
+    let frameCount = 0;
+    function animate() {
+      // Run multiple simulation steps per frame
+      for (let i = 0; i < 8; i++) {
+        simulate();
+      }
+      
+      draw();
+      
+      frameCount++;
+      if (frameCount % 10 === 0) {
+        updateAudio();
+      }
+      
+      requestAnimationFrame(animate);
+    }
+    
+    async function start() {
+      if (isPlaying) return;
+      
+      await Tone.start();
+      initAudio();
+      startDrone();
+      
+      isPlaying = true;
+      startBtn.classList.add('hidden');
+    }
+    
+    // Events
+    startBtn.addEventListener('click', start);
+    
+    canvas.addEventListener('click', (e) => {
+      if (!isPlaying) { start(); return; }
+      const rect = canvas.getBoundingClientRect();
+      seedAt(e.clientX - rect.left, e.clientY - rect.top);
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isPlaying || !e.buttons) return;
+      const rect = canvas.getBoundingClientRect();
+      seedAt(e.clientX - rect.left, e.clientY - rect.top);
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (!isPlaying) { start(); return; }
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      seedAt(touch.clientX - rect.left, touch.clientY - rect.top);
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (!isPlaying) return;
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      seedAt(touch.clientX - rect.left, touch.clientY - rect.top);
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    init();
+    animate();
+  </script>
+</body>
+</html>
