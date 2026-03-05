@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>fog</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #1a1a1a;
+      touch-action: none;
+    }
+    canvas { display: block; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.3);
+      text-decoration: none;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+    }
+    #back:hover { color: rgba(255,255,255,0.7); }
+  </style>
+</head>
+<body>
+  <a id="back" href="/">← back</a>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let mouseX = -1000, mouseY = -1000;
+    let lastMouseX = -1000, lastMouseY = -1000;
+    let isActive = false;
+    
+    // Hidden shapes - what lies beneath the fog
+    const shapes = [];
+    const shapeCount = 12;
+    
+    // Fog particles
+    const fogParticles = [];
+    const fogCount = 2000;
+    
+    // Fog density grid for performance
+    let fogGrid;
+    const gridSize = 20;
+    let gridCols, gridRows;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      gridCols = Math.ceil(width / gridSize);
+      gridRows = Math.ceil(height / gridSize);
+      initShapes();
+      initFog();
+    }
+    
+    function initShapes() {
+      shapes.length = 0;
+      
+      // Create mysterious shapes hidden in the fog
+      // These are abstract forms that suggest meaning without defining it
+      for (let i = 0; i < shapeCount; i++) {
+        const type = Math.floor(Math.random() * 4);
+        shapes.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          size: 30 + Math.random() * 100,
+          rotation: Math.random() * Math.PI * 2,
+          rotationSpeed: (Math.random() - 0.5) * 0.001,
+          type: type, // 0: circle, 1: ring, 2: lines, 3: constellation
+          opacity: 0.3 + Math.random() * 0.4,
+          hue: 200 + Math.random() * 60, // cool blues and cyans
+          drift: {
+            x: (Math.random() - 0.5) * 0.2,
+            y: (Math.random() - 0.5) * 0.2
+          }
+        });
+      }
+    }
+    
+    function initFog() {
+      fogParticles.length = 0;
+      fogGrid = new Array(gridCols * gridRows).fill(0);
+      
+      for (let i = 0; i < fogCount; i++) {
+        fogParticles.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          vx: (Math.random() - 0.5) * 0.3,
+          vy: (Math.random() - 0.5) * 0.3,
+          size: 20 + Math.random() * 60,
+          opacity: 0.02 + Math.random() * 0.04,
+          density: 1, // Current density (affected by mouse warmth)
+          targetDensity: 1
+        });
+      }
+    }
+    
+    function drawShape(shape, clarity) {
+      ctx.save();
+      ctx.translate(shape.x, shape.y);
+      ctx.rotate(shape.rotation);
+      
+      const alpha = shape.opacity * clarity;
+      if (alpha < 0.01) {
+        ctx.restore();
+        return;
+      }
+      
+      ctx.strokeStyle = `hsla(${shape.hue}, 40%, 70%, ${alpha})`;
+      ctx.fillStyle = `hsla(${shape.hue}, 30%, 60%, ${alpha * 0.3})`;
+      ctx.lineWidth = 1.5;
+      
+      switch(shape.type) {
+        case 0: // Soft circle
+          ctx.beginPath();
+          ctx.arc(0, 0, shape.size * 0.4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          break;
+          
+        case 1: // Ring with gap
+          ctx.beginPath();
+          ctx.arc(0, 0, shape.size * 0.4, 0.2, Math.PI * 1.8);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(0, 0, shape.size * 0.25, 0, Math.PI * 2);
+          ctx.stroke();
+          break;
+          
+        case 2: // Parallel lines
+          for (let i = -2; i <= 2; i++) {
+            ctx.beginPath();
+            ctx.moveTo(-shape.size * 0.4, i * 12);
+            ctx.lineTo(shape.size * 0.4, i * 12);
+            ctx.stroke();
+          }
+          break;
+          
+        case 3: // Constellation points
+          const points = 5 + Math.floor(shape.size / 30);
+          ctx.fillStyle = `hsla(${shape.hue}, 40%, 80%, ${alpha})`;
+          for (let i = 0; i < points; i++) {
+            const angle = (i / points) * Math.PI * 2;
+            const dist = shape.size * 0.2 + Math.sin(i * 1.5) * shape.size * 0.15;
+            const px = Math.cos(angle) * dist;
+            const py = Math.sin(angle) * dist;
+            ctx.beginPath();
+            ctx.arc(px, py, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          // Connect some points
+          ctx.beginPath();
+          for (let i = 0; i < points; i += 2) {
+            const angle = (i / points) * Math.PI * 2;
+            const dist = shape.size * 0.2 + Math.sin(i * 1.5) * shape.size * 0.15;
+            const px = Math.cos(angle) * dist;
+            const py = Math.sin(angle) * dist;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+          break;
+      }
+      
+      ctx.restore();
+    }
+    
+    function getClarity(x, y) {
+      // How clear is this point? Based on distance from mouse/touch
+      if (!isActive) return 0;
+      
+      const dx = x - mouseX;
+      const dy = y - mouseY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      // Warmth radius - the circle of clarity
+      const radius = 150;
+      const falloff = 100;
+      
+      if (dist < radius) {
+        return 1;
+      } else if (dist < radius + falloff) {
+        return 1 - (dist - radius) / falloff;
+      }
+      return 0;
+    }
+    
+    function updateFog() {
+      for (const particle of fogParticles) {
+        // Movement
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        
+        // Wrap around
+        if (particle.x < -particle.size) particle.x = width + particle.size;
+        if (particle.x > width + particle.size) particle.x = -particle.size;
+        if (particle.y < -particle.size) particle.y = height + particle.size;
+        if (particle.y > height + particle.size) particle.y = -particle.size;
+        
+        // React to mouse warmth
+        const clarity = getClarity(particle.x, particle.y);
+        particle.targetDensity = 1 - clarity * 0.9;
+        
+        // Smooth transition
+        particle.density += (particle.targetDensity - particle.density) * 0.05;
+        
+        // If near mouse, drift away slowly
+        if (clarity > 0.1) {
+          const dx = particle.x - mouseX;
+          const dy = particle.y - mouseY;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          particle.vx += (dx / dist) * clarity * 0.02;
+          particle.vy += (dy / dist) * clarity * 0.02;
+        }
+        
+        // Dampen velocity
+        particle.vx *= 0.99;
+        particle.vy *= 0.99;
+        
+        // Add slight random drift
+        particle.vx += (Math.random() - 0.5) * 0.01;
+        particle.vy += (Math.random() - 0.5) * 0.01;
+      }
+    }
+    
+    function updateShapes() {
+      for (const shape of shapes) {
+        shape.rotation += shape.rotationSpeed;
+        shape.x += shape.drift.x;
+        shape.y += shape.drift.y;
+        
+        // Soft wrap
+        if (shape.x < -shape.size) shape.x = width + shape.size;
+        if (shape.x > width + shape.size) shape.x = -shape.size;
+        if (shape.y < -shape.size) shape.y = height + shape.size;
+        if (shape.y > height + shape.size) shape.y = -shape.size;
+      }
+    }
+    
+    function draw() {
+      // Deep dark background
+      ctx.fillStyle = '#0a0a0f';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw hidden shapes (they show through where fog is cleared)
+      for (const shape of shapes) {
+        const clarity = getClarity(shape.x, shape.y);
+        drawShape(shape, clarity);
+      }
+      
+      // Draw fog
+      for (const particle of fogParticles) {
+        if (particle.density < 0.05) continue;
+        
+        const gradient = ctx.createRadialGradient(
+          particle.x, particle.y, 0,
+          particle.x, particle.y, particle.size
+        );
+        
+        const alpha = particle.opacity * particle.density;
+        gradient.addColorStop(0, `rgba(30, 35, 45, ${alpha})`);
+        gradient.addColorStop(0.5, `rgba(25, 30, 40, ${alpha * 0.5})`);
+        gradient.addColorStop(1, 'rgba(20, 25, 35, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(
+          particle.x - particle.size,
+          particle.y - particle.size,
+          particle.size * 2,
+          particle.size * 2
+        );
+      }
+      
+      // Subtle vignette
+      const vignette = ctx.createRadialGradient(
+        width / 2, height / 2, 0,
+        width / 2, height / 2, Math.max(width, height) * 0.7
+      );
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.4)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw subtle glow at mouse position when active
+      if (isActive) {
+        const glow = ctx.createRadialGradient(
+          mouseX, mouseY, 0,
+          mouseX, mouseY, 200
+        );
+        glow.addColorStop(0, 'rgba(255, 240, 220, 0.03)');
+        glow.addColorStop(0.3, 'rgba(255, 230, 200, 0.01)');
+        glow.addColorStop(1, 'rgba(255, 220, 180, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, width, height);
+      }
+    }
+    
+    function animate() {
+      updateFog();
+      updateShapes();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Mouse events
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      isActive = true;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      isActive = false;
+    });
+    
+    // Touch events
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+      isActive = true;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      isActive = false;
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>
