@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === March 5, 2026 ===
     {
+      name: "Orbit: Tone",
+      description: "Gravitational bodies with sound. Collisions boom, close passes chime. Drag to spawn. R for random",
+      date: "Mar 5",
+      href: "/projects/orbit-tone/"
+    },
+    {
       name: "Pendulum: Arp",
       description: "Pendulum wave with arpeggios. Each bob plays a note when crossing center. Patterns emerge, dissolve, return",
       date: "Mar 5",
