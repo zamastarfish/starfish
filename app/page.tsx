@@ -2,6 +2,24 @@ export default function Home() {
   const projects = [
     // === March 5, 2026 ===
     {
+      name: "Moiré",
+      description: "Op art interference patterns. Move to shift the layers. Your eyes will lie to you",
+      date: "Mar 5",
+      href: "/projects/moire/"
+    },
+    {
+      name: "Drone",
+      description: "Generative ambient audio. A hum that shifts slowly. Minimal visuals, maximum presence. Headphones recommended",
+      date: "Mar 5",
+      href: "/projects/drone/"
+    },
+    {
+      name: "Fog",
+      description: "Shapes hidden in mist, revealed by your presence. Move through it, glimpse what's beneath. The fog returns",
+      date: "Mar 5",
+      href: "/projects/fog/"
+    },
+    {
       name: "Turing",
       description: "Reaction-diffusion patterns. How zebras get stripes. Click to seed, watch patterns emerge",
       date: "Mar 5",
