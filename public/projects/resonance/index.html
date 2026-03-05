@@ -116,12 +116,15 @@
       dataArray = new Uint8Array(analyser.frequencyBinCount);
       masterGain.connect(analyser);
       
-      // Create richer base layer - 8 voices across frequency spectrum
+      // Create richer base layer - 8 voices, smooth waveforms
+      // Sawtooth only on lowest frequencies, rest are sine/triangle for warmth
       const baseFreqs = [41.2, 55, 73.4, 82.5, 110, 146.8, 165, 220];
-      const waveTypes = ['sawtooth', 'sawtooth', 'triangle', 'triangle', 'triangle', 'sine', 'sine', 'sine'];
+      const waveTypes = ['sawtooth', 'triangle', 'triangle', 'sine', 'sine', 'sine', 'sine', 'sine'];
+      const voiceGains = [0.3, 0.28, 0.25, 0.22, 0.18, 0.12, 0.1, 0.08]; // Taper off highs
       
       for (let i = 0; i < BASE_VOICE_COUNT; i++) {
         const voice = createVoice(baseFreqs[i], waveTypes[i], i, true);
+        voice.targetGain = voiceGains[i];
         baseVoices.push(voice);
       }
     }
@@ -136,8 +139,9 @@
       osc.frequency.value = freq;
       
       filter.type = 'lowpass';
-      filter.frequency.value = isBase ? (150 + index * 100) : (200 + Math.random() * 400);
-      filter.Q.value = isBase ? 1 : (0.5 + Math.random() * 2);
+      // Lower cutoffs for smoother sound
+      filter.frequency.value = isBase ? (120 + index * 60) : (150 + Math.random() * 250);
+      filter.Q.value = isBase ? 0.7 : (0.3 + Math.random() * 1);
       
       gain.gain.value = 0;
       
@@ -179,15 +183,16 @@
       const baseFreq = 55 * (1 + (1 - y / height) * 0.5); // 55-82.5 Hz base
       const freq = baseFreq * ratio;
       
-      // Random wave type
-      const waveTypes = ['sine', 'triangle', 'sawtooth'];
+      // Bias toward smooth waveforms (70% sine/triangle, 30% sawtooth)
+      const waveTypes = ['sine', 'sine', 'sine', 'triangle', 'triangle', 'triangle', 'triangle', 'sawtooth', 'sawtooth', 'sawtooth'];
       const waveType = waveTypes[Math.floor(Math.random() * waveTypes.length)];
       
       const voice = createVoice(freq, waveType, spawnedVoices.length, false);
+      voice.targetGain = 0.2; // Gentler spawned voices
       spawnedVoices.push(voice);
       
-      // Fade in
-      voice.gain.gain.setTargetAtTime(voice.targetGain, audioCtx.currentTime, 0.5);
+      // Fade in slowly
+      voice.gain.gain.setTargetAtTime(voice.targetGain, audioCtx.currentTime, 0.8);
       
       // Visual feedback
       spawnFlash = 1;
@@ -227,16 +232,18 @@
         const voice = baseVoices[i];
         
         // Alternating detune direction creates beating
-        const voiceDetune = detuneAmount * (i % 2 === 0 ? 1 : -1) * (1 + i * 0.3);
+        const voiceDetune = detuneAmount * (i % 2 === 0 ? 1 : -1) * (1 + i * 0.25);
         voice.osc.detune.setTargetAtTime(voiceDetune, t, 0.1);
         
-        const baseFilter = 150 + i * 80;
-        voice.filter.frequency.setTargetAtTime(baseFilter * filterMod + 80, t, 0.1);
+        // Gentler filter range - doesn't get too bright
+        const baseFilter = 120 + i * 50;
+        const maxFilter = baseFilter * 1.5; // Cap the brightness
+        voice.filter.frequency.setTargetAtTime(Math.min(baseFilter * filterMod + 60, maxFilter), t, 0.15);
         
         // Breathing with offset phases
-        const breathPhase = time * 0.4 + i * 0.6;
-        const breathMod = Math.sin(breathPhase) * 0.35 + 0.65;
-        voice.gain.gain.setTargetAtTime(voice.targetGain * breathMod, t, 0.3);
+        const breathPhase = time * 0.35 + i * 0.6;
+        const breathMod = Math.sin(breathPhase) * 0.3 + 0.7;
+        voice.gain.gain.setTargetAtTime(voice.targetGain * breathMod, t, 0.4);
       }
       
       // Update spawned voices with more variation
