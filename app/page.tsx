@@ -3,6 +3,12 @@ export default function Home() {
     // === March 5, 2026 ===
     // === March 6, 2026 ===
     {
+      name: "Vanitas",
+      description: "Memento mori — remember you will die. Flowers wilt, candles gutter, the skull watches. Classical still life, slowly decaying",
+      date: "Mar 6",
+      href: "/projects/vanitas/"
+    },
+    {
       name: "Brutalism",
       description: "Concrete monoliths. Click to strike, drag to scrape. Musique concrète — real recorded sounds, granularly mangled. Raw, exposed, heavy",
       date: "Mar 6",

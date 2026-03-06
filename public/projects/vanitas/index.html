@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vanitas — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0808; 
+      overflow: hidden; 
+      font-family: 'Georgia', serif;
+    }
+    canvas { display: block; }
+
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s; font-family: system-ui, sans-serif;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.3);
+    }
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #111; border: 1px solid #333; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #fff; }
+
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(200, 180, 150, 0.5);
+      font-size: 14px;
+      letter-spacing: 2px;
+      cursor: pointer;
+      padding: 20px 40px;
+      border: 1px solid rgba(200, 180, 150, 0.2);
+      background: rgba(0,0,0,0.5);
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #start:hover {
+      border-color: rgba(200, 180, 150, 0.4);
+      color: rgba(200, 180, 150, 0.8);
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Vanitas</h2>
+      <h3>Concept</h3>
+      <p>Memento mori — remember you will die. The classical vanitas still life: flowers wilt, candles gutter, skulls watch. All beauty fades.</p>
+      <h3>Interaction</h3>
+      <p>Watch the arrangement decay. Click to light a new candle, but it too will burn down. Time passes whether you're watching or not.</p>
+      <h3>Sound</h3>
+      <p>Low drone with occasional chimes. The sound of time passing. Fire crackles softly. When a flower wilts, a faint tone fades with it.</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="start">memento mori</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start');
+    
+    let width, height;
+    let audioStarted = false;
+    let time = 0;
+    
+    // Audio
+    let drone, droneGain, chime, fireNoise, fireFilter, fireGain;
+    
+    // Objects in the still life
+    const flowers = [];
+    const candles = [];
+    let skull = null;
+    
+    // Petals that have fallen
+    const fallenPetals = [];
+    
+    // Color palette - Dutch Golden Age
+    const palette = {
+      bg: '#0a0808',
+      gold: '#c9a227',
+      cream: '#f5e6c8',
+      rose: '#8b4557',
+      wiltedRose: '#4a3035',
+      leaf: '#2d4a3e',
+      wiltedLeaf: '#1a2a20',
+      flame: '#ff9933',
+      flameCore: '#ffcc66',
+      bone: '#e8dcc8',
+      shadow: '#1a1512'
+    };
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      
+      if (flowers.length === 0) {
+        initScene();
+      }
+    }
+    
+    function initScene() {
+      // Create flowers
+      const flowerCount = 5 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < flowerCount; i++) {
+        flowers.push({
+          x: width * 0.3 + Math.random() * width * 0.4,
+          y: height * 0.4 + Math.random() * height * 0.2,
+          size: 20 + Math.random() * 30,
+          petalCount: 5 + Math.floor(Math.random() * 4),
+          rotation: Math.random() * Math.PI * 2,
+          life: 1,
+          decayRate: 0.00005 + Math.random() * 0.00008,
+          hue: Math.random() > 0.5 ? 0 : 30, // Red or orange-ish
+          stemHeight: 50 + Math.random() * 80,
+          swayOffset: Math.random() * Math.PI * 2
+        });
+      }
+      
+      // Create candles
+      const candleCount = 2 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < candleCount; i++) {
+        candles.push(createCandle(
+          width * 0.2 + Math.random() * width * 0.6,
+          height * 0.6 + Math.random() * height * 0.1
+        ));
+      }
+      
+      // Create skull
+      skull = {
+        x: width * 0.5 + (Math.random() - 0.5) * 100,
+        y: height * 0.55,
+        size: 60 + Math.random() * 20,
+        rotation: (Math.random() - 0.5) * 0.3
+      };
+    }
+    
+    function createCandle(x, y) {
+      return {
+        x: x,
+        y: y,
+        height: 60 + Math.random() * 40,
+        maxHeight: 60 + Math.random() * 40,
+        width: 15 + Math.random() * 10,
+        life: 1,
+        burnRate: 0.00003 + Math.random() * 0.00002,
+        flicker: Math.random() * Math.PI * 2,
+        lit: true
+      };
+    }
+    
+    function initAudio() {
+      // Master
+      const master = new Tone.Gain(0.6).toDestination();
+      const reverb = new Tone.Reverb({ decay: 5, wet: 0.4 }).connect(master);
+      
+      // Low drone
+      droneGain = new Tone.Gain(0.15).connect(reverb);
+      drone = new Tone.Oscillator({ frequency: 55, type: 'sine' }).connect(droneGain);
+      const drone2 = new Tone.Oscillator({ frequency: 82.5, type: 'sine', volume: -6 }).connect(droneGain);
+      drone.start();
+      drone2.start();
+      
+      // Chime for decay events
+      chime = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.01, decay: 3, sustain: 0, release: 2 },
+        volume: -20
+      }).connect(reverb);
+      
+      // Fire crackle (filtered noise)
+      fireFilter = new Tone.Filter({ type: 'bandpass', frequency: 800, Q: 2 });
+      fireGain = new Tone.Gain(0).connect(master);
+      fireNoise = new Tone.Noise('brown').connect(fireFilter);
+      fireFilter.connect(fireGain);
+      fireNoise.start();
+    }
+    
+    function updateAudio() {
+      if (!audioStarted) return;
+      
+      // Fire volume based on lit candles
+      const litCandles = candles.filter(c => c.lit && c.life > 0).length;
+      const targetFireVol = litCandles * 0.02;
+      fireGain.gain.rampTo(targetFireVol, 0.5);
+      
+      // Drone fades as things decay
+      const avgLife = flowers.reduce((sum, f) => sum + f.life, 0) / flowers.length;
+      droneGain.gain.rampTo(0.1 + avgLife * 0.1, 1);
+    }
+    
+    function playDecayChime(life) {
+      if (!audioStarted) return;
+      // Lower notes as things die
+      const notes = ['C3', 'E3', 'G3', 'B3', 'D4'];
+      const note = notes[Math.floor((1 - life) * notes.length)];
+      chime.triggerAttackRelease(note, '4n', undefined, 0.2 + life * 0.3);
+    }
+    
+    function drawFlower(f) {
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      
+      // Stem (wilts as flower dies)
+      const wilt = 1 - f.life;
+      const stemCurve = wilt * 30;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(stemCurve, f.stemHeight * 0.5, stemCurve * 1.5, f.stemHeight);
+      ctx.strokeStyle = f.life > 0.3 ? palette.leaf : palette.wiltedLeaf;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      // Flower head position (droops as it wilts)
+      const headX = stemCurve * 1.5;
+      const headY = f.stemHeight;
+      const headDroop = wilt * 0.5;
+      
+      ctx.translate(headX, headY);
+      ctx.rotate(f.rotation + headDroop);
+      
+      // Petals
+      const petalColor = f.life > 0.3 ? palette.rose : palette.wiltedRose;
+      const size = f.size * (0.7 + f.life * 0.3);
+      
+      for (let i = 0; i < f.petalCount; i++) {
+        const angle = (i / f.petalCount) * Math.PI * 2;
+        ctx.save();
+        ctx.rotate(angle);
+        
+        // Petal droops and curls as it dies
+        const petalDroop = wilt * 0.3;
+        ctx.rotate(petalDroop);
+        
+        ctx.beginPath();
+        ctx.ellipse(0, -size * 0.4, size * 0.25, size * 0.5, 0, 0, Math.PI * 2);
+        ctx.fillStyle = petalColor;
+        ctx.globalAlpha = 0.5 + f.life * 0.5;
+        ctx.fill();
+        ctx.restore();
+      }
+      
+      // Center
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 0.15, 0, Math.PI * 2);
+      ctx.fillStyle = palette.gold;
+      ctx.globalAlpha = f.life;
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    function drawCandle(c) {
+      if (c.life <= 0) return;
+      
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      
+      const currentHeight = c.height * c.life;
+      
+      // Candle body
+      ctx.fillStyle = palette.cream;
+      ctx.fillRect(-c.width/2, -currentHeight, c.width, currentHeight);
+      
+      // Drips
+      ctx.fillStyle = palette.cream;
+      for (let i = 0; i < 3; i++) {
+        const dripX = -c.width/2 + Math.random() * c.width;
+        const dripH = 5 + Math.random() * 15;
+        ctx.beginPath();
+        ctx.ellipse(dripX, dripH/2, 3, dripH/2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      if (c.lit && c.life > 0.05) {
+        // Flame
+        c.flicker += 0.1;
+        const flickerX = Math.sin(c.flicker) * 2;
+        const flickerH = 15 + Math.sin(c.flicker * 1.3) * 5;
+        
+        // Outer flame
+        ctx.beginPath();
+        ctx.moveTo(flickerX - 8, -currentHeight);
+        ctx.quadraticCurveTo(flickerX, -currentHeight - flickerH * 1.5, flickerX + 8, -currentHeight);
+        ctx.fillStyle = palette.flame;
+        ctx.globalAlpha = 0.7;
+        ctx.fill();
+        
+        // Inner flame
+        ctx.beginPath();
+        ctx.moveTo(flickerX - 4, -currentHeight);
+        ctx.quadraticCurveTo(flickerX, -currentHeight - flickerH, flickerX + 4, -currentHeight);
+        ctx.fillStyle = palette.flameCore;
+        ctx.globalAlpha = 0.9;
+        ctx.fill();
+        
+        // Glow
+        const gradient = ctx.createRadialGradient(flickerX, -currentHeight - flickerH/2, 0, flickerX, -currentHeight - flickerH/2, 50);
+        gradient.addColorStop(0, 'rgba(255, 150, 50, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 150, 50, 0)');
+        ctx.fillStyle = gradient;
+        ctx.globalAlpha = 0.5 + Math.sin(c.flicker) * 0.2;
+        ctx.fillRect(-60, -currentHeight - 60, 120, 80);
+      }
+      
+      ctx.restore();
+    }
+    
+    function drawSkull() {
+      if (!skull) return;
+      
+      ctx.save();
+      ctx.translate(skull.x, skull.y);
+      ctx.rotate(skull.rotation);
+      
+      const s = skull.size;
+      
+      // Cranium
+      ctx.beginPath();
+      ctx.ellipse(0, -s * 0.3, s * 0.5, s * 0.6, 0, 0, Math.PI * 2);
+      ctx.fillStyle = palette.bone;
+      ctx.fill();
+      
+      // Face
+      ctx.beginPath();
+      ctx.ellipse(0, s * 0.1, s * 0.35, s * 0.3, 0, 0, Math.PI);
+      ctx.fill();
+      
+      // Eye sockets
+      ctx.fillStyle = palette.bg;
+      ctx.beginPath();
+      ctx.ellipse(-s * 0.18, -s * 0.15, s * 0.12, s * 0.15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(s * 0.18, -s * 0.15, s * 0.12, s * 0.15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Nose
+      ctx.beginPath();
+      ctx.moveTo(0, s * 0.05);
+      ctx.lineTo(-s * 0.06, s * 0.2);
+      ctx.lineTo(s * 0.06, s * 0.2);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Teeth
+      ctx.fillStyle = palette.bone;
+      for (let i = -3; i <= 3; i++) {
+        ctx.fillRect(i * s * 0.08 - s * 0.03, s * 0.25, s * 0.06, s * 0.1);
+      }
+      
+      // Subtle shadow in sockets (watching)
+      ctx.fillStyle = 'rgba(100, 50, 50, 0.3)';
+      ctx.beginPath();
+      ctx.arc(-s * 0.18, -s * 0.12, s * 0.05, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(s * 0.18, -s * 0.12, s * 0.05, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    function drawFallenPetals() {
+      for (let p of fallenPetals) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.size, p.size * 0.5, 0, 0, Math.PI * 2);
+        ctx.fillStyle = palette.wiltedRose;
+        ctx.globalAlpha = p.alpha;
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    
+    function update() {
+      time++;
+      
+      // Update flowers
+      for (let f of flowers) {
+        if (f.life > 0) {
+          const oldLife = f.life;
+          f.life -= f.decayRate;
+          
+          // Drop petals occasionally as dying
+          if (f.life < 0.5 && Math.random() < 0.002) {
+            fallenPetals.push({
+              x: f.x + (Math.random() - 0.5) * 30,
+              y: f.y + f.stemHeight + Math.random() * 20,
+              size: 5 + Math.random() * 8,
+              rotation: Math.random() * Math.PI * 2,
+              alpha: 0.5
+            });
+          }
+          
+          // Sound on major decay thresholds
+          if (Math.floor(oldLife * 10) !== Math.floor(f.life * 10)) {
+            playDecayChime(f.life);
+          }
+        }
+      }
+      
+      // Update candles
+      for (let c of candles) {
+        if (c.lit && c.life > 0) {
+          c.life -= c.burnRate;
+          if (c.life <= 0) {
+            c.lit = false;
+            playDecayChime(0);
+          }
+        }
+      }
+      
+      // Fade fallen petals
+      for (let i = fallenPetals.length - 1; i >= 0; i--) {
+        fallenPetals[i].alpha -= 0.0005;
+        if (fallenPetals[i].alpha <= 0) {
+          fallenPetals.splice(i, 1);
+        }
+      }
+      
+      updateAudio();
+    }
+    
+    function draw() {
+      // Dark background
+      ctx.fillStyle = palette.bg;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Table surface suggestion
+      ctx.fillStyle = palette.shadow;
+      ctx.fillRect(0, height * 0.65, width, height * 0.35);
+      
+      // Fallen petals (behind other objects)
+      drawFallenPetals();
+      
+      // Skull
+      drawSkull();
+      
+      // Candles
+      for (let c of candles) {
+        drawCandle(c);
+      }
+      
+      // Flowers
+      for (let f of flowers) {
+        drawFlower(f);
+      }
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Click to light a new candle
+    canvas.addEventListener('click', (e) => {
+      if (!audioStarted) return;
+      
+      // Find an unlit candle or add a new one
+      const unlit = candles.find(c => !c.lit || c.life <= 0);
+      if (unlit) {
+        unlit.lit = true;
+        unlit.life = 1;
+      } else {
+        candles.push(createCandle(e.clientX, height * 0.65));
+      }
+    });
+    
+    // Start
+    startBtn.addEventListener('click', async () => {
+      await Tone.start();
+      initAudio();
+      audioStarted = true;
+      startBtn.classList.add('hidden');
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>

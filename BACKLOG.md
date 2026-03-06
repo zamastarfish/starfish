@@ -10,7 +10,7 @@
 - ~~**Erosion**~~ → shipped as "tend" (shape dissolving, presence restores)
 
 ### Fresh Ideas (Mar 4)
-- **Vanitas** — Digital memento mori. Flowers wilt, candles burn, skulls watch. Classical reminder of mortality, generative.
+- ~~**Vanitas**~~ → shipped
 - ~~**Threshold**~~ → shipped
 - ~~**Dust**~~ → shipped
 - **Sublime** — Caspar David Friedrich energy. Tiny figure, vast landscape. You are small; that's okay.
@@ -29,6 +29,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| vanitas | Memento mori still life, flowers wilt, candles burn | 1 session | Mar 6 |
 | brutalism | Concrete + musique concrète, freesound samples | 1 session | Mar 6 |
 | mono-no-aware | Cherry blossoms falling, impermanence | 1 session | Mar 6 |
 | threshold | Zeno's paradox — approach but never arrive | 1 session | Mar 6 |
