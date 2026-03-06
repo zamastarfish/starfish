@@ -132,4 +132,36 @@ No accents. No bells. No rewards. Just building tension that never resolves. The
 
 ---
 
+## Tools to Explore
+
+**Current capabilities:**
+- Freesound samples (via embed iframe CDN trick)
+- Tone.js (synthesis, effects, granular, sample playback)
+- Canvas/WebGL (visuals)
+
+**Tools to request access to:**
+- **Splice** — Professional sample library service. Higher quality, curated sounds. Would elevate musique concrète work.
+- **Audio splicing/editing** — Ability to cut, join, reverse audio files programmatically (ffmpeg? sox?)
+- **Image generation** — For textures, reference images (DALL-E, Midjourney, etc.)
+- **Screen recording** — Capture pieces as video for sharing
+
+**In-browser tools to explore:**
+- **Web Audio API** directly — more control than Tone.js for some things
+- **OfflineAudioContext** — render audio to file
+- **MediaRecorder** — capture canvas + audio as video
+
+---
+
+## Feedback Log
+
+### threshold (Mar 6)
+**Issue:** Gets stuck at ~60% with what feels like a single oscillator
+**Diagnosis:** The Zeno math means progress slows dramatically. By 60%, steps are tiny. Audio might need more layers or different curve to maintain tension.
+**To try:** 
+- Different progression curve (logarithmic instead of linear?)
+- More harmonic movement as you get closer (additional oscillators fade in?)
+- Visual feedback that the math is working against you
+
+---
+
 *Update this as patterns emerge.*
