@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>brutalism — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #1a1a1a;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+    }
+    canvas { display: block; }
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #666;
+      font-size: 12px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      cursor: pointer;
+      padding: 20px 40px;
+      border: 1px solid #333;
+      background: rgba(0,0,0,0.8);
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #start:hover {
+      border-color: #666;
+      color: #999;
+    }
+    .hidden { display: none !important; }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: #333;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="start">ENTER</div>
+  <div id="info">click to strike</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start');
+    
+    let width, height;
+    let audioStarted = false;
+    
+    // Monoliths - massive concrete forms
+    const monoliths = [];
+    const maxMonoliths = 12;
+    
+    // Debris particles
+    const debris = [];
+    
+    // Audio
+    let players = {};
+    let grainPlayer;
+    let droneFilter, droneGain;
+    let masterGain, compressor;
+    let reverbSend;
+    
+    // Visual state
+    let lastImpactTime = 0;
+    let screenShake = 0;
+    let ambientNoise = 0;
+    
+    // Color palette - raw concrete
+    const concreteColors = [
+      '#2a2a2a', '#333333', '#3d3d3d', '#454545',
+      '#4a4a4a', '#525252', '#5a5a5a', '#636363'
+    ];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      
+      if (monoliths.length === 0) {
+        generateMonoliths();
+      }
+    }
+    
+    function generateMonoliths() {
+      monoliths.length = 0;
+      
+      // Create massive brutalist forms
+      for (let i = 0; i < maxMonoliths; i++) {
+        const isVertical = Math.random() > 0.3;
+        const w = isVertical ? 40 + Math.random() * 120 : 100 + Math.random() * 300;
+        const h = isVertical ? 150 + Math.random() * 400 : 40 + Math.random() * 100;
+        
+        monoliths.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          w: w,
+          h: h,
+          rotation: (Math.random() - 0.5) * 0.2,
+          color: concreteColors[Math.floor(Math.random() * concreteColors.length)],
+          shadowColor: '#0a0a0a',
+          depth: Math.random(),
+          vibration: 0,
+          originalX: 0,
+          originalY: 0
+        });
+        monoliths[i].originalX = monoliths[i].x;
+        monoliths[i].originalY = monoliths[i].y;
+      }
+      
+      // Sort by depth
+      monoliths.sort((a, b) => a.depth - b.depth);
+    }
+    
+    async function initAudio() {
+      // Master chain
+      compressor = new Tone.Compressor(-20, 4).toDestination();
+      masterGain = new Tone.Gain(0.8).connect(compressor);
+      
+      // Reverb for space
+      reverbSend = new Tone.Reverb({
+        decay: 4,
+        wet: 0.3
+      }).connect(masterGain);
+      
+      // Load samples
+      const samplePath = '/samples/';
+      
+      players.scrape = new Tone.Player({
+        url: samplePath + 'concrete-scrape.mp3',
+        loop: false
+      }).connect(reverbSend);
+      
+      players.impact = new Tone.Player({
+        url: samplePath + 'metal-impact.mp3',
+        loop: false
+      }).connect(masterGain);
+      
+      players.machine = new Tone.Player({
+        url: samplePath + 'machine-drone.mp3',
+        loop: true
+      });
+      
+      players.jackhammer = new Tone.Player({
+        url: samplePath + 'jackhammer.mp3',
+        loop: false
+      }).connect(reverbSend);
+      
+      // Grain player for texture
+      grainPlayer = new Tone.GrainPlayer({
+        url: samplePath + 'concrete-scrape.mp3',
+        grainSize: 0.1,
+        overlap: 0.05,
+        playbackRate: 1,
+        loop: true,
+        loopStart: 0,
+        loopEnd: 2
+      });
+      
+      // Drone processing chain
+      droneFilter = new Tone.Filter({
+        type: 'lowpass',
+        frequency: 200,
+        Q: 2
+      });
+      droneGain = new Tone.Gain(0).connect(masterGain);
+      
+      players.machine.connect(droneFilter);
+      droneFilter.connect(droneGain);
+      grainPlayer.connect(droneGain);
+      
+      // Wait for all samples to load
+      await Tone.loaded();
+      
+      // Start ambient drone
+      players.machine.start();
+      grainPlayer.start();
+      
+      // Fade in drone
+      droneGain.gain.rampTo(0.15, 2);
+    }
+    
+    function triggerImpact(x, y, intensity = 1) {
+      if (!audioStarted) return;
+      
+      const now = Date.now();
+      if (now - lastImpactTime < 100) return;
+      lastImpactTime = now;
+      
+      // Screen shake
+      screenShake = intensity * 15;
+      
+      // Spawn debris
+      for (let i = 0; i < 10 + intensity * 20; i++) {
+        debris.push({
+          x: x,
+          y: y,
+          vx: (Math.random() - 0.5) * 10 * intensity,
+          vy: (Math.random() - 0.5) * 10 * intensity - 5,
+          size: 2 + Math.random() * 6,
+          rotation: Math.random() * Math.PI * 2,
+          rotationSpeed: (Math.random() - 0.5) * 0.3,
+          life: 1,
+          color: concreteColors[Math.floor(Math.random() * concreteColors.length)]
+        });
+      }
+      
+      // Vibrate nearby monoliths
+      for (let m of monoliths) {
+        const dist = Math.hypot(m.x - x, m.y - y);
+        if (dist < 300) {
+          m.vibration = (1 - dist / 300) * intensity;
+        }
+      }
+      
+      // Play impact sounds
+      if (Math.random() > 0.5 && players.impact.loaded) {
+        players.impact.playbackRate = 0.5 + Math.random() * 1;
+        players.impact.start();
+      }
+      
+      if (Math.random() > 0.6 && players.scrape.loaded) {
+        players.scrape.playbackRate = 0.3 + Math.random() * 0.7;
+        players.scrape.start();
+      }
+      
+      if (intensity > 0.7 && players.jackhammer.loaded) {
+        players.jackhammer.playbackRate = 0.8 + Math.random() * 0.4;
+        players.jackhammer.start();
+      }
+      
+      // Modulate grain
+      if (grainPlayer) {
+        grainPlayer.playbackRate = 0.5 + intensity;
+        grainPlayer.grainSize = 0.05 + Math.random() * 0.2;
+      }
+      
+      // Drone responds
+      droneFilter.frequency.rampTo(200 + intensity * 400, 0.1);
+      droneGain.gain.rampTo(0.15 + intensity * 0.2, 0.1);
+      
+      // Decay
+      setTimeout(() => {
+        droneFilter.frequency.rampTo(200, 2);
+        droneGain.gain.rampTo(0.15, 2);
+        if (grainPlayer) {
+          grainPlayer.playbackRate = 1;
+        }
+      }, 500);
+    }
+    
+    function drawMonolith(m) {
+      ctx.save();
+      
+      // Apply vibration
+      const vibX = m.vibration * (Math.random() - 0.5) * 10;
+      const vibY = m.vibration * (Math.random() - 0.5) * 10;
+      
+      ctx.translate(m.x + vibX, m.y + vibY);
+      ctx.rotate(m.rotation);
+      
+      // Shadow (harsh, brutalist)
+      ctx.fillStyle = m.shadowColor;
+      ctx.fillRect(8, 8, m.w, m.h);
+      
+      // Main form
+      ctx.fillStyle = m.color;
+      ctx.fillRect(-m.w/2, -m.h/2, m.w, m.h);
+      
+      // Texture - rough concrete lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < m.h; i += 8 + Math.random() * 12) {
+        ctx.beginPath();
+        ctx.moveTo(-m.w/2, -m.h/2 + i);
+        ctx.lineTo(-m.w/2 + m.w * (0.3 + Math.random() * 0.7), -m.h/2 + i);
+        ctx.stroke();
+      }
+      
+      // Occasional darker patches
+      if (Math.random() > 0.7) {
+        ctx.fillStyle = 'rgba(0,0,0,0.1)';
+        ctx.fillRect(
+          -m.w/2 + Math.random() * m.w * 0.5,
+          -m.h/2 + Math.random() * m.h * 0.5,
+          m.w * 0.3,
+          m.h * 0.3
+        );
+      }
+      
+      ctx.restore();
+      
+      // Decay vibration
+      m.vibration *= 0.95;
+    }
+    
+    function drawDebris() {
+      for (let i = debris.length - 1; i >= 0; i--) {
+        const d = debris[i];
+        
+        d.vy += 0.3; // gravity
+        d.x += d.vx;
+        d.y += d.vy;
+        d.vx *= 0.99;
+        d.rotation += d.rotationSpeed;
+        d.life -= 0.015;
+        
+        if (d.life <= 0 || d.y > height + 50) {
+          debris.splice(i, 1);
+          continue;
+        }
+        
+        ctx.save();
+        ctx.translate(d.x, d.y);
+        ctx.rotate(d.rotation);
+        ctx.fillStyle = d.color;
+        ctx.globalAlpha = d.life;
+        ctx.fillRect(-d.size/2, -d.size/2, d.size, d.size);
+        ctx.restore();
+      }
+    }
+    
+    function draw() {
+      // Apply screen shake
+      ctx.save();
+      if (screenShake > 0.5) {
+        ctx.translate(
+          (Math.random() - 0.5) * screenShake,
+          (Math.random() - 0.5) * screenShake
+        );
+        screenShake *= 0.9;
+      }
+      
+      // Background - dark concrete
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Subtle grid (construction lines)
+      ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < width; x += 50) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < height; y += 50) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      
+      // Draw monoliths
+      for (let m of monoliths) {
+        drawMonolith(m);
+      }
+      
+      // Draw debris
+      ctx.globalAlpha = 1;
+      drawDebris();
+      
+      ctx.restore();
+    }
+    
+    function animate() {
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Interactions
+    canvas.addEventListener('click', (e) => {
+      if (!audioStarted) return;
+      triggerImpact(e.clientX, e.clientY, 0.5 + Math.random() * 0.5);
+    });
+    
+    canvas.addEventListener('mousedown', () => {
+      if (!audioStarted) return;
+      ambientNoise = 1;
+    });
+    
+    canvas.addEventListener('mouseup', () => {
+      ambientNoise = 0;
+    });
+    
+    // Drag to scrape
+    let isDragging = false;
+    let lastDragX, lastDragY;
+    
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      lastDragX = e.clientX;
+      lastDragY = e.clientY;
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isDragging || !audioStarted) return;
+      
+      const dx = e.clientX - lastDragX;
+      const dy = e.clientY - lastDragY;
+      const speed = Math.hypot(dx, dy);
+      
+      if (speed > 10) {
+        triggerImpact(e.clientX, e.clientY, Math.min(1, speed / 50));
+      }
+      
+      lastDragX = e.clientX;
+      lastDragY = e.clientY;
+    });
+    
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+    });
+    
+    // Touch support
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (!audioStarted) return;
+      const touch = e.touches[0];
+      triggerImpact(touch.clientX, touch.clientY, 0.7);
+      lastDragX = touch.clientX;
+      lastDragY = touch.clientY;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (!audioStarted) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - lastDragX;
+      const dy = touch.clientY - lastDragY;
+      const speed = Math.hypot(dx, dy);
+      
+      if (speed > 5) {
+        triggerImpact(touch.clientX, touch.clientY, Math.min(1, speed / 30));
+      }
+      
+      lastDragX = touch.clientX;
+      lastDragY = touch.clientY;
+    });
+    
+    // Start
+    startBtn.addEventListener('click', async () => {
+      await Tone.start();
+      await initAudio();
+      audioStarted = true;
+      startBtn.classList.add('hidden');
+    });
+    
+    // R to regenerate
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'r' || e.key === 'R') {
+        generateMonoliths();
+      }
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>

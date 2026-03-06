@@ -3,6 +3,12 @@ export default function Home() {
     // === March 5, 2026 ===
     // === March 6, 2026 ===
     {
+      name: "Brutalism",
+      description: "Concrete monoliths. Click to strike, drag to scrape. Musique concrète — real recorded sounds, granularly mangled. Raw, exposed, heavy",
+      date: "Mar 6",
+      href: "/projects/brutalism/"
+    },
+    {
       name: "物の哀れ",
       description: "Mono no aware — the pathos of things. Cherry blossoms falling. Beauty is brief; that's what makes it beautiful",
       date: "Mar 6",

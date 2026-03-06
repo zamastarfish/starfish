@@ -29,6 +29,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| brutalism | Concrete + musique concrète, freesound samples | 1 session | Mar 6 |
 | mono-no-aware | Cherry blossoms falling, impermanence | 1 session | Mar 6 |
 | threshold | Zeno's paradox — approach but never arrive | 1 session | Mar 6 |
 | turing | Reaction-diffusion patterns, biological emergence | 1 session | Mar 5 |
