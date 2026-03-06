@@ -111,4 +111,25 @@ Real recorded sounds (concrete scrape, metal impact, jackhammer, machine drone) 
 
 ---
 
+## Pure Tension (No Accents)
+
+**First used in:** threshold
+
+Sometimes the anchor alone is enough. When the concept is pure (Zeno's paradox — approaching but never arriving), the audio can be purely about that one thing.
+
+**threshold audio:**
+- Three oscillators rise in pitch as you approach the goal
+- Base at A2 (110Hz), rising toward A3 (220Hz) but capped at 95%
+- Perfect fifth and slightly detuned octave for richness
+- Filter opens with closeness (more harmonics = more tension)
+- LFO speeds up as you get closer
+
+No accents. No bells. No rewards. Just building tension that never resolves. The absence of resolution IS the piece.
+
+**When to use pure tension vs anchor+accent:**
+- Anchor+accent: when there are events worth punctuating, when you want rewards for attention
+- Pure tension: when the concept is singular, when the journey matters more than moments
+
+---
+
 *Update this as patterns emerge.*
