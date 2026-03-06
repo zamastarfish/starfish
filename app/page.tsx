@@ -16,7 +16,7 @@ export default function Home() {
     },
     {
       name: "Threshold",
-      description: "You're always approaching but never arriving. Zeno's paradox made visible. Hold to move closer",
+      description: "You're always approaching but never arriving. Zeno's paradox — visual and sonic. The drone rises but never resolves",
       date: "Mar 6",
       href: "/projects/threshold/"
     },

@@ -33,18 +33,41 @@
       font-family: monospace;
       pointer-events: none;
     }
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 220, 180, 0.5);
+      font-size: 14px;
+      letter-spacing: 2px;
+      cursor: pointer;
+      padding: 20px 40px;
+      border: 1px solid rgba(255, 220, 180, 0.2);
+      background: rgba(0,0,0,0.5);
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #start:hover {
+      border-color: rgba(255, 220, 180, 0.4);
+      color: rgba(255, 220, 180, 0.8);
+    }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
   <div id="info">approach</div>
   <div id="distance"></div>
+  <div id="start">enter</div>
   
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const info = document.getElementById('info');
     const distanceEl = document.getElementById('distance');
+    const startBtn = document.getElementById('start');
     
     let width, height;
     let targetX, targetY;
@@ -53,6 +76,17 @@
     let totalDistance = 0;
     let distanceTraveled = 0;
     let lastPlayerX, lastPlayerY;
+    let audioStarted = false;
+    
+    // Audio - rising tension that never resolves
+    let drone1, drone2, drone3;
+    let droneGain, masterGain;
+    let filter;
+    let lfo;
+    
+    // Base frequencies - approaching but never reaching the octave
+    const baseFreq = 110; // A2
+    const targetFreq = 220; // A3 - the resolution we never reach
     
     // The threshold — always visible, never reachable
     const thresholdRadius = 60;
@@ -65,6 +99,84 @@
     // Particles around threshold
     const particles = [];
     const numParticles = 50;
+    
+    function initAudio() {
+      masterGain = new Tone.Gain(0.5).toDestination();
+      
+      // Reverb for space
+      const reverb = new Tone.Reverb({
+        decay: 6,
+        wet: 0.4
+      }).connect(masterGain);
+      
+      // Filter - opens as we approach
+      filter = new Tone.Filter({
+        type: 'lowpass',
+        frequency: 300,
+        Q: 1
+      }).connect(reverb);
+      
+      droneGain = new Tone.Gain(0.3).connect(filter);
+      
+      // Three oscillators for rich drone
+      // They will rise in pitch as we approach, but asymptotically
+      drone1 = new Tone.Oscillator({
+        frequency: baseFreq,
+        type: 'sine'
+      }).connect(droneGain);
+      
+      drone2 = new Tone.Oscillator({
+        frequency: baseFreq * 1.5, // Perfect fifth
+        type: 'sine',
+        volume: -6
+      }).connect(droneGain);
+      
+      drone3 = new Tone.Oscillator({
+        frequency: baseFreq * 2.01, // Slightly detuned octave - tension
+        type: 'sine',
+        volume: -12
+      }).connect(droneGain);
+      
+      // Subtle LFO for movement
+      lfo = new Tone.LFO({
+        frequency: 0.1,
+        min: 0.25,
+        max: 0.35
+      }).start();
+      lfo.connect(droneGain.gain);
+      
+      // Start drones
+      drone1.start();
+      drone2.start();
+      drone3.start();
+    }
+    
+    function updateAudio(closeness) {
+      if (!audioStarted) return;
+      
+      // closeness is 0 (far) to ~1 (very close, but never 1)
+      // We approach the target frequency but never reach it
+      // Using the same Zeno logic: each step is half the remaining distance
+      
+      const freqRange = targetFreq - baseFreq;
+      const currentFreq = baseFreq + (freqRange * closeness * 0.95); // Never quite reach target
+      
+      // Smooth frequency transitions
+      drone1.frequency.rampTo(currentFreq, 0.3);
+      drone2.frequency.rampTo(currentFreq * 1.5, 0.3);
+      drone3.frequency.rampTo(currentFreq * 2.01, 0.3); // Stays slightly detuned
+      
+      // Filter opens as we approach - more harmonics, more tension
+      const filterFreq = 300 + closeness * 2000;
+      filter.frequency.rampTo(filterFreq, 0.3);
+      
+      // Volume increases slightly with closeness
+      const vol = 0.3 + closeness * 0.2;
+      droneGain.gain.rampTo(vol, 0.3);
+      
+      // LFO speeds up as tension builds
+      lfo.frequency.rampTo(0.1 + closeness * 0.3, 0.5);
+    }
     
     function resize() {
       width = canvas.width = window.innerWidth;
@@ -104,10 +216,12 @@
     }
     
     function update() {
+      const dist = distance(playerX, playerY, targetX, targetY);
+      const closeness = Math.max(0, 1 - (dist / totalDistance));
+      
       if (approaching) {
         const dx = targetX - playerX;
         const dy = targetY - playerY;
-        const dist = distance(playerX, playerY, targetX, targetY);
         
         // Zeno's paradox: always move half the remaining distance
         // But with a minimum step to keep it interesting
@@ -130,9 +244,11 @@
         }
         
         // Glow intensifies as you get closer
-        const closeness = 1 - (dist / totalDistance);
         thresholdGlow = closeness;
       }
+      
+      // Update audio based on closeness
+      updateAudio(closeness);
       
       // Age trail
       for (let t of trail) {
@@ -230,7 +346,7 @@
         info.textContent = 'approaching';
         info.style.opacity = 0.4;
       } else {
-        info.textContent = 'click to approach';
+        info.textContent = 'hold to approach';
         info.style.opacity = 0.3;
       }
     }
@@ -241,13 +357,9 @@
       requestAnimationFrame(animate);
     }
     
-    // Start/stop approaching on click
-    canvas.addEventListener('click', () => {
-      approaching = !approaching;
-    });
-    
-    // Alternative: hold to approach
+    // Hold to approach
     canvas.addEventListener('mousedown', () => {
+      if (!audioStarted) return;
       approaching = true;
     });
     
@@ -257,11 +369,20 @@
     
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
+      if (!audioStarted) return;
       approaching = true;
     });
     
     canvas.addEventListener('touchend', () => {
       approaching = false;
+    });
+    
+    // Start with audio
+    startBtn.addEventListener('click', async () => {
+      await Tone.start();
+      initAudio();
+      audioStarted = true;
+      startBtn.classList.add('hidden');
     });
     
     window.addEventListener('resize', resize);
