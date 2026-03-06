@@ -12,18 +12,6 @@
       touch-action: none;
     }
     canvas { display: block; cursor: none; }
-    #back {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      color: rgba(255,255,255,0.3);
-      text-decoration: none;
-      font-family: system-ui, sans-serif;
-      font-size: 14px;
-      z-index: 100;
-      transition: color 0.3s;
-    }
-    #back:hover { color: rgba(255,255,255,0.7); }
     #start {
       position: fixed;
       top: 50%;
@@ -47,7 +35,26 @@
   </style>
 </head>
 <body>
-  <a id="back" href="/">← back</a>
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Flocking: Pad</h2>
+      <h3>Concept</h3>
+      <p>Starling murmuration with ambient pads. Collective behavior becomes texture.</p>
+      <h3>Interaction</h3>
+      <p>Move your cursor — you're a hawk. Watch them scatter and reform. The sound follows their cohesion.</p>
+      <h3>Sound</h3>
+      <p>Flock cohesion controls pad brightness. Scattered = darker, noisy. Unified = bright, harmonic.</p>
+    </div>
+  </div>
+
   <button id="start">listen</button>
   <canvas id="canvas"></canvas>
   

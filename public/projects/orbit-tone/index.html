@@ -12,18 +12,6 @@
       touch-action: none;
     }
     canvas { display: block; cursor: crosshair; }
-    #back {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      color: rgba(255,255,255,0.3);
-      text-decoration: none;
-      font-family: system-ui, sans-serif;
-      font-size: 14px;
-      z-index: 100;
-      transition: color 0.3s;
-    }
-    #back:hover { color: rgba(255,255,255,0.7); }
     #start {
       position: fixed;
       top: 50%;
@@ -57,7 +45,26 @@
   </style>
 </head>
 <body>
-  <a id="back" href="/">← back</a>
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Orbit: Tone</h2>
+      <h3>Concept</h3>
+      <p>Gravitational n-body simulation with sound. Mass becomes music.</p>
+      <h3>Interaction</h3>
+      <p>Click to spawn bodies. Drag for velocity. Watch them orbit, collide, escape. Press R for random.</p>
+      <h3>Sound</h3>
+      <p>Collisions boom. Close passes chime — distance becomes pitch. Larger bodies make deeper sounds.</p>
+    </div>
+  </div>
+
   <button id="start">begin</button>
   <canvas id="canvas"></canvas>
   <div id="info">drag to spawn · r for random</div>

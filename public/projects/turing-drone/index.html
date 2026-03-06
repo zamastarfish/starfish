@@ -19,18 +19,6 @@
       image-rendering: pixelated;
       image-rendering: crisp-edges;
     }
-    #back {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      color: rgba(255,255,255,0.3);
-      text-decoration: none;
-      font-family: system-ui, sans-serif;
-      font-size: 14px;
-      z-index: 100;
-      transition: color 0.3s;
-    }
-    #back:hover { color: rgba(255,255,255,0.7); }
     #start {
       position: fixed;
       top: 50%;
@@ -62,7 +50,26 @@
   </style>
 </head>
 <body>
-  <a id="back" href="/">← back</a>
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Turing: Drone</h2>
+      <h3>Concept</h3>
+      <p>Reaction-diffusion patterns with evolving drone. Biological emergence in sight and sound.</p>
+      <h3>Interaction</h3>
+      <p>Click to seed patterns. Watch them grow, compete, stabilize. The drone follows the pattern density.</p>
+      <h3>Sound</h3>
+      <p>Pattern activity shapes harmonic content. More spots = richer harmonics. Calm patterns = pure tones.</p>
+    </div>
+  </div>
+
   <button id="start">listen</button>
   <canvas id="canvas"></canvas>
   <div id="info">click to seed patterns</div>
