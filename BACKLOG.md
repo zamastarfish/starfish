@@ -11,7 +11,7 @@
 
 ### Fresh Ideas (Mar 4)
 - **Vanitas** — Digital memento mori. Flowers wilt, candles burn, skulls watch. Classical reminder of mortality, generative.
-- **Threshold** — You're always approaching but never arriving. Zeno's paradox made visible. How close can you get?
+- ~~**Threshold**~~ → shipped
 - ~~**Dust**~~ → shipped
 - **Sublime** — Caspar David Friedrich energy. Tiny figure, vast landscape. You are small; that's okay.
 - ~~**Turing**~~ → shipped
@@ -29,6 +29,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| threshold | Zeno's paradox — approach but never arrive | 1 session | Mar 6 |
 | turing | Reaction-diffusion patterns, biological emergence | 1 session | Mar 5 |
 | dust | Motes in a sunbeam, move to disturb, mundane made profound | 1 session | Mar 4 |
 | dogs | Regional hot dog tour — Seattle to Reykjavík | 1 session | Mar 4 |

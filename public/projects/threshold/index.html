@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>threshold — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0a; 
+      overflow: hidden; 
+      font-family: 'Georgia', serif;
+    }
+    canvas { display: block; }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      pointer-events: none;
+      transition: opacity 0.5s;
+    }
+    #distance {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      color: rgba(255, 255, 255, 0.3);
+      font-size: 14px;
+      font-family: monospace;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="info">approach</div>
+  <div id="distance"></div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const distanceEl = document.getElementById('distance');
+    
+    let width, height;
+    let targetX, targetY;
+    let playerX, playerY;
+    let approaching = false;
+    let totalDistance = 0;
+    let distanceTraveled = 0;
+    let lastPlayerX, lastPlayerY;
+    
+    // The threshold — always visible, never reachable
+    const thresholdRadius = 60;
+    let thresholdGlow = 0;
+    
+    // Trail of where you've been
+    const trail = [];
+    const maxTrail = 200;
+    
+    // Particles around threshold
+    const particles = [];
+    const numParticles = 50;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      
+      // Place threshold in center
+      targetX = width / 2;
+      targetY = height / 2;
+      
+      // Start player at edge
+      if (!playerX) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.min(width, height) * 0.4;
+        playerX = targetX + Math.cos(angle) * dist;
+        playerY = targetY + Math.sin(angle) * dist;
+        lastPlayerX = playerX;
+        lastPlayerY = playerY;
+        totalDistance = dist;
+      }
+      
+      // Init particles
+      if (particles.length === 0) {
+        for (let i = 0; i < numParticles; i++) {
+          particles.push({
+            angle: Math.random() * Math.PI * 2,
+            radius: thresholdRadius + 10 + Math.random() * 30,
+            speed: 0.001 + Math.random() * 0.002,
+            size: 1 + Math.random() * 2,
+            alpha: 0.2 + Math.random() * 0.3
+          });
+        }
+      }
+    }
+    
+    function distance(x1, y1, x2, y2) {
+      return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+    }
+    
+    function update() {
+      if (approaching) {
+        const dx = targetX - playerX;
+        const dy = targetY - playerY;
+        const dist = distance(playerX, playerY, targetX, targetY);
+        
+        // Zeno's paradox: always move half the remaining distance
+        // But with a minimum step to keep it interesting
+        const step = Math.max(dist * 0.02, 0.5);
+        
+        if (dist > thresholdRadius + 5) {
+          const moved = Math.min(step, dist - thresholdRadius - 5);
+          playerX += (dx / dist) * moved;
+          playerY += (dy / dist) * moved;
+          
+          // Track distance traveled
+          const actualMoved = distance(lastPlayerX, lastPlayerY, playerX, playerY);
+          distanceTraveled += actualMoved;
+          lastPlayerX = playerX;
+          lastPlayerY = playerY;
+          
+          // Add to trail
+          trail.push({ x: playerX, y: playerY, age: 0 });
+          if (trail.length > maxTrail) trail.shift();
+        }
+        
+        // Glow intensifies as you get closer
+        const closeness = 1 - (dist / totalDistance);
+        thresholdGlow = closeness;
+      }
+      
+      // Age trail
+      for (let t of trail) {
+        t.age += 0.01;
+      }
+      
+      // Update particles
+      for (let p of particles) {
+        p.angle += p.speed;
+      }
+    }
+    
+    function draw() {
+      // Fade background
+      ctx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw trail
+      for (let i = 0; i < trail.length; i++) {
+        const t = trail[i];
+        const alpha = Math.max(0, 0.3 - t.age);
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, 2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(100, 150, 200, ${alpha})`;
+        ctx.fill();
+      }
+      
+      // Draw threshold glow
+      const glowSize = thresholdRadius + 40 + thresholdGlow * 30;
+      const gradient = ctx.createRadialGradient(
+        targetX, targetY, thresholdRadius * 0.5,
+        targetX, targetY, glowSize
+      );
+      gradient.addColorStop(0, `rgba(255, 220, 180, ${0.1 + thresholdGlow * 0.2})`);
+      gradient.addColorStop(0.5, `rgba(255, 180, 120, ${0.05 + thresholdGlow * 0.1})`);
+      gradient.addColorStop(1, 'rgba(255, 150, 100, 0)');
+      
+      ctx.beginPath();
+      ctx.arc(targetX, targetY, glowSize, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Draw threshold circle
+      ctx.beginPath();
+      ctx.arc(targetX, targetY, thresholdRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 220, 180, ${0.3 + thresholdGlow * 0.4})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      
+      // Inner glow
+      const innerGradient = ctx.createRadialGradient(
+        targetX, targetY, 0,
+        targetX, targetY, thresholdRadius
+      );
+      innerGradient.addColorStop(0, `rgba(255, 240, 220, ${0.15 + thresholdGlow * 0.2})`);
+      innerGradient.addColorStop(1, 'rgba(255, 220, 180, 0)');
+      ctx.fillStyle = innerGradient;
+      ctx.fill();
+      
+      // Draw particles orbiting threshold
+      for (let p of particles) {
+        const px = targetX + Math.cos(p.angle) * p.radius;
+        const py = targetY + Math.sin(p.angle) * p.radius;
+        ctx.beginPath();
+        ctx.arc(px, py, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 220, 180, ${p.alpha * (0.5 + thresholdGlow * 0.5)})`;
+        ctx.fill();
+      }
+      
+      // Draw player
+      const dist = distance(playerX, playerY, targetX, targetY);
+      const playerGlow = Math.max(0, 1 - dist / totalDistance) * 0.5;
+      
+      ctx.beginPath();
+      ctx.arc(playerX, playerY, 8, 0, Math.PI * 2);
+      const playerGradient = ctx.createRadialGradient(
+        playerX, playerY, 0,
+        playerX, playerY, 8
+      );
+      playerGradient.addColorStop(0, `rgba(150, 200, 255, ${0.8 + playerGlow})`);
+      playerGradient.addColorStop(1, 'rgba(100, 150, 200, 0.3)');
+      ctx.fillStyle = playerGradient;
+      ctx.fill();
+      
+      // Update distance display
+      const remaining = Math.max(0, dist - thresholdRadius).toFixed(1);
+      const percent = ((1 - dist / totalDistance) * 100).toFixed(2);
+      distanceEl.textContent = `${percent}% there`;
+      
+      // Update info based on state
+      if (dist < thresholdRadius + 10) {
+        info.textContent = 'almost';
+        info.style.opacity = 0.6;
+      } else if (approaching) {
+        info.textContent = 'approaching';
+        info.style.opacity = 0.4;
+      } else {
+        info.textContent = 'click to approach';
+        info.style.opacity = 0.3;
+      }
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Start/stop approaching on click
+    canvas.addEventListener('click', () => {
+      approaching = !approaching;
+    });
+    
+    // Alternative: hold to approach
+    canvas.addEventListener('mousedown', () => {
+      approaching = true;
+    });
+    
+    canvas.addEventListener('mouseup', () => {
+      approaching = false;
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      approaching = true;
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      approaching = false;
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>

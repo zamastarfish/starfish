@@ -3,6 +3,12 @@ export default function Home() {
     // === March 5, 2026 ===
     // === March 6, 2026 ===
     {
+      name: "Threshold",
+      description: "You're always approaching but never arriving. Zeno's paradox made visible. Hold to move closer",
+      date: "Mar 6",
+      href: "/projects/threshold/"
+    },
+    {
       name: "Hollow",
       description: "Voids drifting in darkness. Your presence pushes them away. About emptiness, what's not there",
       date: "Mar 6",
