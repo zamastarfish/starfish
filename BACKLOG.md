@@ -15,7 +15,7 @@
 - ~~**Dust**~~ → shipped
 - **Sublime** — Caspar David Friedrich energy. Tiny figure, vast landscape. You are small; that's okay.
 - ~~**Turing**~~ → shipped
-- **Mono no aware** — The pathos of things. Cherry blossoms falling. Beauty is brief; that's what makes it beautiful.
+- ~~**Mono no aware**~~ → shipped
 
 ### Completed
 - ~~Tide~~ ~~Mycelium~~ ~~Rain~~
@@ -29,6 +29,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| mono-no-aware | Cherry blossoms falling, impermanence | 1 session | Mar 6 |
 | threshold | Zeno's paradox — approach but never arrive | 1 session | Mar 6 |
 | turing | Reaction-diffusion patterns, biological emergence | 1 session | Mar 5 |
 | dust | Motes in a sunbeam, move to disturb, mundane made profound | 1 session | Mar 4 |

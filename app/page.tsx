@@ -3,6 +3,12 @@ export default function Home() {
     // === March 5, 2026 ===
     // === March 6, 2026 ===
     {
+      name: "物の哀れ",
+      description: "Mono no aware — the pathos of things. Cherry blossoms falling. Beauty is brief; that's what makes it beautiful",
+      date: "Mar 6",
+      href: "/projects/mono-no-aware/"
+    },
+    {
       name: "Threshold",
       description: "You're always approaching but never arriving. Zeno's paradox made visible. Hold to move closer",
       date: "Mar 6",
