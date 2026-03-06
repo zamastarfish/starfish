@@ -1,6 +1,14 @@
 export default function Home() {
   const projects = [
     // === March 5, 2026 ===
+    // === March 6, 2026 ===
+    {
+      name: "Hollow",
+      description: "Voids drifting in darkness. Your presence pushes them away. About emptiness, what's not there",
+      date: "Mar 6",
+      href: "/projects/hollow/"
+    },
+    // === March 5, 2026 ===
     {
       name: "Turing: Drone",
       description: "Reaction-diffusion with evolving drone. Pattern density shapes the sound. Click to seed",

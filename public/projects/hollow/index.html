@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>hollow</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #0a0a0a;
+      touch-action: none;
+    }
+    canvas { display: block; cursor: crosshair; }
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.2);
+      text-decoration: none;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      z-index: 100;
+      transition: color 0.3s;
+    }
+    #back:hover { color: rgba(255,255,255,0.5); }
+  </style>
+</head>
+<body>
+  <a id="back" href="/">← back</a>
+  <canvas id="canvas"></canvas>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let mouseX = -1000, mouseY = -1000;
+    let time = 0;
+    
+    // Voids - areas of deeper emptiness
+    let voids = [];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      initVoids();
+    }
+    
+    function initVoids() {
+      voids = [];
+      const count = 5 + Math.floor(Math.random() * 4);
+      
+      for (let i = 0; i < count; i++) {
+        voids.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          radius: 50 + Math.random() * 150,
+          depth: 0.3 + Math.random() * 0.5,
+          pulseSpeed: 0.5 + Math.random() * 1,
+          pulsePhase: Math.random() * Math.PI * 2,
+          driftX: (Math.random() - 0.5) * 0.2,
+          driftY: (Math.random() - 0.5) * 0.2
+        });
+      }
+    }
+    
+    function drawVoid(v) {
+      const pulse = Math.sin(time * v.pulseSpeed + v.pulsePhase) * 0.1 + 1;
+      const r = v.radius * pulse;
+      
+      // The void is darker than dark
+      const gradient = ctx.createRadialGradient(v.x, v.y, 0, v.x, v.y, r);
+      gradient.addColorStop(0, `rgba(0, 0, 0, ${v.depth})`);
+      gradient.addColorStop(0.5, `rgba(2, 2, 3, ${v.depth * 0.6})`);
+      gradient.addColorStop(0.8, `rgba(5, 5, 7, ${v.depth * 0.3})`);
+      gradient.addColorStop(1, 'rgba(10, 10, 12, 0)');
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(v.x, v.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Faint ring at edge - the boundary of emptiness
+      ctx.strokeStyle = `rgba(30, 30, 40, ${0.1 + Math.sin(time + v.pulsePhase) * 0.05})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(v.x, v.y, r * 0.9, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    function updateVoids() {
+      for (const v of voids) {
+        v.x += v.driftX;
+        v.y += v.driftY;
+        
+        // Soft wrap
+        if (v.x < -v.radius) v.x = width + v.radius;
+        if (v.x > width + v.radius) v.x = -v.radius;
+        if (v.y < -v.radius) v.y = height + v.radius;
+        if (v.y > height + v.radius) v.y = -v.radius;
+        
+        // Slight attraction to mouse (or repulsion?)
+        const dx = mouseX - v.x;
+        const dy = mouseY - v.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < 300 && dist > 0) {
+          // Voids drift away from presence
+          v.driftX -= (dx / dist) * 0.01;
+          v.driftY -= (dy / dist) * 0.01;
+          
+          // Dampen
+          v.driftX *= 0.99;
+          v.driftY *= 0.99;
+        }
+      }
+    }
+    
+    function draw() {
+      time += 0.01;
+      
+      // Almost black background with subtle texture
+      ctx.fillStyle = '#0a0a0c';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Subtle noise texture
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 3;
+        data[i] = Math.max(0, Math.min(255, data[i] + noise));
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
+      }
+      ctx.putImageData(imageData, 0, 0);
+      
+      // Draw voids
+      updateVoids();
+      for (const v of voids) {
+        drawVoid(v);
+      }
+      
+      // Where the mouse is, there's a faint presence - light pushing back the void
+      if (mouseX > 0 && mouseY > 0) {
+        const presenceGradient = ctx.createRadialGradient(
+          mouseX, mouseY, 0,
+          mouseX, mouseY, 100
+        );
+        presenceGradient.addColorStop(0, 'rgba(20, 22, 28, 0.3)');
+        presenceGradient.addColorStop(0.5, 'rgba(15, 16, 20, 0.15)');
+        presenceGradient.addColorStop(1, 'rgba(10, 10, 12, 0)');
+        
+        ctx.fillStyle = presenceGradient;
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, 100, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Vignette - deeper at edges
+      const vignette = ctx.createRadialGradient(
+        width / 2, height / 2, 0,
+        width / 2, height / 2, Math.max(width, height) * 0.6
+      );
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(0.7, 'rgba(0,0,0,0.2)');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.6)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, width, height);
+    }
+    
+    function animate() {
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Events
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    canvas.addEventListener('click', () => {
+      initVoids();
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>
