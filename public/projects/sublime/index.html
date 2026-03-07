@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sublime — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a12; 
+      overflow: hidden; 
+      font-family: 'Georgia', serif;
+    }
+    canvas { display: block; }
+
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s; font-family: system-ui, sans-serif;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.3);
+    }
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #111; border: 1px solid #333; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #fff; }
+
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(180, 190, 210, 0.5);
+      font-size: 14px;
+      letter-spacing: 2px;
+      cursor: pointer;
+      padding: 20px 40px;
+      border: 1px solid rgba(180, 190, 210, 0.2);
+      background: rgba(0,0,0,0.5);
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #start:hover {
+      border-color: rgba(180, 190, 210, 0.4);
+      color: rgba(180, 190, 210, 0.8);
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>Sublime</h2>
+      <h3>Concept</h3>
+      <p>The Romantic sublime — awe in the face of vastness. Caspar David Friedrich's wanderer above the sea of fog. You are small against the infinite. That's not a tragedy; it's a comfort.</p>
+      <h3>Interaction</h3>
+      <p>Move to shift the mist. Click to change vistas. The figure stays small. The landscape stays vast. You remain, watching.</p>
+      <h3>Sound</h3>
+      <p>Wind across distances. Low drone of presence. The sound of being somewhere immense and indifferent. Occasional tones drift in like thoughts.</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="start">gaze</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start');
+    
+    let width, height;
+    let audioStarted = false;
+    let time = 0;
+    let mouseX = 0.5, mouseY = 0.5;
+    
+    // Audio
+    let windNoise, windFilter, windGain;
+    let drone1, drone2, droneGain;
+    let chime;
+    
+    // Landscape layers
+    let mountains = [];
+    let mistLayers = [];
+    let figure = null;
+    
+    // Colors - Romantic era palette
+    const palette = {
+      sky: ['#1a1a2e', '#16213e', '#1f3460', '#2a4a7a'],
+      mountain: ['#0d0d15', '#151520', '#1a1a28', '#252535'],
+      mist: ['rgba(180, 190, 210, 0.1)', 'rgba(160, 175, 200, 0.08)', 'rgba(140, 160, 190, 0.05)'],
+      figure: '#0a0a0f',
+      accent: '#8090a8'
+    };
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      generateLandscape();
+    }
+    
+    function generateLandscape() {
+      mountains = [];
+      mistLayers = [];
+      
+      // Generate mountain ranges (back to front)
+      for (let layer = 0; layer < 5; layer++) {
+        const mountain = {
+          layer: layer,
+          points: [],
+          color: palette.mountain[Math.min(layer, palette.mountain.length - 1)],
+          baseY: height * (0.3 + layer * 0.12)
+        };
+        
+        // Generate ridge line
+        const segments = 20 + layer * 5;
+        for (let i = 0; i <= segments; i++) {
+          const x = (i / segments) * width;
+          const noise = Math.sin(i * 0.3 + layer) * 50 + 
+                       Math.sin(i * 0.7 + layer * 2) * 30 +
+                       Math.sin(i * 0.1 + layer * 0.5) * 80;
+          const y = mountain.baseY - Math.abs(noise) - (4 - layer) * 40;
+          mountain.points.push({ x, y });
+        }
+        
+        mountains.push(mountain);
+      }
+      
+      // Generate mist layers
+      for (let i = 0; i < 3; i++) {
+        mistLayers.push({
+          y: height * (0.5 + i * 0.15),
+          opacity: 0.15 - i * 0.04,
+          speed: 0.0002 + i * 0.0001,
+          offset: Math.random() * 1000
+        });
+      }
+      
+      // Figure position - on a promontory
+      const figureX = width * (0.3 + Math.random() * 0.4);
+      figure = {
+        x: figureX,
+        y: height * 0.55,
+        scale: 0.015 + Math.random() * 0.005 // Very small
+      };
+    }
+    
+    function initAudio() {
+      const master = new Tone.Gain(0.6).toDestination();
+      const reverb = new Tone.Reverb({ decay: 8, wet: 0.6 }).connect(master);
+      
+      // Wind
+      windFilter = new Tone.Filter({ type: 'lowpass', frequency: 400, Q: 1 });
+      windGain = new Tone.Gain(0.12).connect(reverb);
+      windNoise = new Tone.Noise('pink').connect(windFilter);
+      windFilter.connect(windGain);
+      windNoise.start();
+      
+      // Deep drone
+      droneGain = new Tone.Gain(0.1).connect(reverb);
+      drone1 = new Tone.Oscillator({ frequency: 55, type: 'sine' }).connect(droneGain);
+      drone2 = new Tone.Oscillator({ frequency: 82.5, type: 'sine', volume: -8 }).connect(droneGain);
+      drone1.start();
+      drone2.start();
+      
+      // Occasional distant tones
+      chime = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: { attack: 2, decay: 4, sustain: 0.3, release: 5 },
+        volume: -24
+      }).connect(reverb);
+      
+      // Random chimes
+      setInterval(() => {
+        if (audioStarted && Math.random() > 0.7) {
+          const notes = ['C3', 'E3', 'G3', 'C4', 'E4'];
+          const note = notes[Math.floor(Math.random() * notes.length)];
+          chime.triggerAttackRelease(note, '2n');
+        }
+      }, 8000);
+    }
+    
+    function updateAudio() {
+      if (!audioStarted) return;
+      
+      // Wind responds to mouse movement
+      const windIntensity = Math.abs(mouseX - 0.5) + Math.abs(mouseY - 0.5);
+      windFilter.frequency.rampTo(300 + windIntensity * 400, 0.5);
+      windGain.gain.rampTo(0.08 + windIntensity * 0.08, 0.5);
+    }
+    
+    function drawSky() {
+      const gradient = ctx.createLinearGradient(0, 0, 0, height * 0.7);
+      gradient.addColorStop(0, palette.sky[0]);
+      gradient.addColorStop(0.3, palette.sky[1]);
+      gradient.addColorStop(0.6, palette.sky[2]);
+      gradient.addColorStop(1, palette.sky[3]);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+    }
+    
+    function drawMountains() {
+      for (let m of mountains) {
+        ctx.beginPath();
+        ctx.moveTo(0, height);
+        
+        for (let p of m.points) {
+          ctx.lineTo(p.x, p.y);
+        }
+        
+        ctx.lineTo(width, height);
+        ctx.closePath();
+        ctx.fillStyle = m.color;
+        ctx.fill();
+      }
+    }
+    
+    function drawMist() {
+      for (let m of mistLayers) {
+        const waveOffset = time * m.speed + m.offset;
+        
+        ctx.beginPath();
+        ctx.moveTo(0, m.y);
+        
+        for (let x = 0; x <= width; x += 20) {
+          const wave = Math.sin(x * 0.005 + waveOffset) * 30 +
+                      Math.sin(x * 0.01 + waveOffset * 1.5) * 20;
+          const mouseInfluence = Math.sin((x / width - mouseX) * Math.PI) * 20;
+          ctx.lineTo(x, m.y + wave + mouseInfluence);
+        }
+        
+        ctx.lineTo(width, height);
+        ctx.lineTo(0, height);
+        ctx.closePath();
+        
+        const gradient = ctx.createLinearGradient(0, m.y - 50, 0, m.y + 100);
+        gradient.addColorStop(0, 'rgba(180, 190, 210, 0)');
+        gradient.addColorStop(0.3, `rgba(180, 190, 210, ${m.opacity})`);
+        gradient.addColorStop(0.7, `rgba(180, 190, 210, ${m.opacity * 0.7})`);
+        gradient.addColorStop(1, 'rgba(180, 190, 210, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
+    }
+    
+    function drawFigure() {
+      if (!figure) return;
+      
+      const h = height * figure.scale;
+      const w = h * 0.4;
+      const x = figure.x;
+      const y = figure.y;
+      
+      ctx.fillStyle = palette.figure;
+      
+      // Simple silhouette - person from behind
+      // Head
+      ctx.beginPath();
+      ctx.arc(x, y - h * 0.85, w * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Body (coat/cloak shape)
+      ctx.beginPath();
+      ctx.moveTo(x - w * 0.4, y - h * 0.7);
+      ctx.lineTo(x + w * 0.4, y - h * 0.7);
+      ctx.lineTo(x + w * 0.5, y);
+      ctx.lineTo(x - w * 0.5, y);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Standing surface (rock promontory)
+      ctx.beginPath();
+      ctx.moveTo(x - w * 2, y);
+      ctx.quadraticCurveTo(x - w, y - h * 0.1, x, y);
+      ctx.quadraticCurveTo(x + w, y - h * 0.05, x + w * 2, y + h * 0.1);
+      ctx.lineTo(x + w * 2, y + h * 0.3);
+      ctx.lineTo(x - w * 2, y + h * 0.3);
+      ctx.closePath();
+      ctx.fillStyle = palette.mountain[2];
+      ctx.fill();
+    }
+    
+    function draw() {
+      drawSky();
+      drawMountains();
+      drawMist();
+      drawFigure();
+      
+      // Subtle vignette
+      const vignette = ctx.createRadialGradient(
+        width/2, height/2, height * 0.3,
+        width/2, height/2, height
+      );
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.4)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, width, height);
+    }
+    
+    function update() {
+      time++;
+      updateAudio();
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Mouse influences mist
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX / width;
+      mouseY = e.clientY / height;
+    });
+    
+    // Click to regenerate landscape
+    canvas.addEventListener('click', () => {
+      if (!audioStarted) return;
+      generateLandscape();
+    });
+    
+    // Touch
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouseX = touch.clientX / width;
+      mouseY = touch.clientY / height;
+    });
+    
+    // Start
+    startBtn.addEventListener('click', async () => {
+      await Tone.start();
+      initAudio();
+      audioStarted = true;
+      startBtn.classList.add('hidden');
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>

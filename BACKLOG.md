@@ -13,7 +13,7 @@
 - ~~**Vanitas**~~ → shipped
 - ~~**Threshold**~~ → shipped
 - ~~**Dust**~~ → shipped
-- **Sublime** — Caspar David Friedrich energy. Tiny figure, vast landscape. You are small; that's okay.
+- ~~**Sublime**~~ → shipped
 - ~~**Turing**~~ → shipped
 - ~~**Mono no aware**~~ → shipped
 
@@ -29,6 +29,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| sublime | Romantic landscape, tiny figure against vastness | 1 session | Mar 7 |
 | vanitas | Memento mori still life, flowers wilt, candles burn | 1 session | Mar 6 |
 | brutalism | Concrete + musique concrète, freesound samples | 1 session | Mar 6 |
 | mono-no-aware | Cherry blossoms falling, impermanence | 1 session | Mar 6 |

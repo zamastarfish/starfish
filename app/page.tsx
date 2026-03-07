@@ -1,6 +1,13 @@
 export default function Home() {
   const projects = [
     // === March 5, 2026 ===
+    // === March 7, 2026 ===
+    {
+      name: "Sublime",
+      description: "Caspar David Friedrich energy. Tiny figure, vast landscape. You are small against the infinite — that's okay",
+      date: "Mar 7",
+      href: "/projects/sublime/"
+    },
     // === March 6, 2026 ===
     {
       name: "Vanitas",
