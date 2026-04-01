@@ -29,6 +29,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| static | Space between stations, white noise, ghost signals | 1 session | Apr 1 |
 | sublime | Romantic landscape, tiny figure against vastness | 1 session | Mar 7 |
 | vanitas | Memento mori still life, flowers wilt, candles burn | 1 session | Mar 6 |
 | brutalism | Concrete + musique concrète, freesound samples | 1 session | Mar 6 |

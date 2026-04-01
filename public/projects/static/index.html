@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>static — zama.starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #000; 
+      overflow: hidden; 
+      font-family: 'Courier New', monospace;
+    }
+    canvas { display: block; }
+    
+    /* Navigation */
+    .nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.3);
+      background: rgba(0,0,0,0.5);
+      color: rgba(255,255,255,0.7);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      z-index: 1000;
+      backdrop-filter: blur(4px);
+    }
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.15);
+      border-color: rgba(255,255,255,0.5);
+    }
+    .back-btn { left: 20px; }
+    .info-btn { right: 20px; }
+    
+    /* Info overlay */
+    .info-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.4s ease;
+      z-index: 999;
+      backdrop-filter: blur(8px);
+    }
+    .info-overlay.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+    .info-content {
+      max-width: 500px;
+      padding: 40px;
+      color: rgba(255,255,255,0.85);
+      line-height: 1.7;
+    }
+    .info-content h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+      font-weight: normal;
+      color: #fff;
+      letter-spacing: 3px;
+    }
+    .info-content .subtitle {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 24px;
+      letter-spacing: 1px;
+    }
+    .info-content p {
+      font-size: 15px;
+      margin-bottom: 16px;
+    }
+    .info-content .interaction {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255,255,255,0.15);
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+    }
+    
+    /* Frequency indicator */
+    .freq-display {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 2px;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <button class="nav-btn back-btn" onclick="location.href='/'">←</button>
+  <button class="nav-btn info-btn" onclick="toggleInfo()">?</button>
+  
+  <div class="info-overlay" id="infoOverlay" onclick="toggleInfo()">
+    <div class="info-content" onclick="event.stopPropagation()">
+      <h1>STATIC</h1>
+      <div class="subtitle">THE SPACE BETWEEN STATIONS</div>
+      <p>
+        Between signals, there is noise. Not silence — noise. The hiss of nothing, 
+        the snow of absent pictures, the white roar of entropy.
+      </p>
+      <p>
+        Tune the dial. Find the ghost stations. Listen to the sound of the universe 
+        talking to itself when no one is broadcasting.
+      </p>
+      <p>
+        Sometimes, almost, you hear something. A voice? A pattern? Or just your 
+        pattern-seeking mind, finding shapes in chaos.
+      </p>
+      <div class="interaction">
+        Move left/right to tune frequency<br>
+        Move up/down to adjust gain<br>
+        Click to toggle between AM/FM
+      </div>
+    </div>
+  </div>
+  
+  <div class="freq-display" id="freqDisplay">88.1 FM</div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const freqDisplay = document.getElementById('freqDisplay');
+    
+    let width, height;
+    let audioCtx, noiseNode, gainNode, filterNode;
+    let audioStarted = false;
+    
+    // State
+    let frequency = 88.1;  // MHz for FM feel
+    let gain = 0.5;
+    let isFM = true;
+    let mouseX = 0.5;
+    let mouseY = 0.5;
+    
+    // Ghost stations - occasional semi-coherent zones
+    const stations = [
+      { freq: 91.5, strength: 0.3 },
+      { freq: 97.3, strength: 0.5 },
+      { freq: 103.7, strength: 0.2 },
+      { freq: 106.1, strength: 0.4 },
+    ];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    function toggleInfo() {
+      document.getElementById('infoOverlay').classList.toggle('visible');
+    }
+    
+    // Audio setup
+    function initAudio() {
+      if (audioStarted) return;
+      
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Create noise
+      const bufferSize = 2 * audioCtx.sampleRate;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      
+      noiseNode = audioCtx.createBufferSource();
+      noiseNode.buffer = noiseBuffer;
+      noiseNode.loop = true;
+      
+      // Bandpass filter - the "tuning"
+      filterNode = audioCtx.createBiquadFilter();
+      filterNode.type = 'bandpass';
+      filterNode.frequency.value = 1000;
+      filterNode.Q.value = 1;
+      
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = 0.15;
+      
+      noiseNode.connect(filterNode);
+      filterNode.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      noiseNode.start();
+      audioStarted = true;
+    }
+    
+    function getStationStrength(freq) {
+      let strength = 0;
+      for (const station of stations) {
+        const dist = Math.abs(freq - station.freq);
+        if (dist < 1.5) {
+          strength = Math.max(strength, station.strength * (1 - dist / 1.5));
+        }
+      }
+      return strength;
+    }
+    
+    function updateAudio() {
+      if (!audioStarted) return;
+      
+      const stationStrength = getStationStrength(frequency);
+      
+      // Filter frequency changes with tuning - maps to audio frequency
+      const baseFreq = 200 + (frequency - 88) * 50;
+      filterNode.frequency.value = baseFreq;
+      
+      // Q changes based on station proximity (more resonant near stations)
+      filterNode.Q.value = 0.5 + stationStrength * 4;
+      
+      // Gain controlled by mouse Y
+      gainNode.gain.value = gain * 0.25 * (1 - stationStrength * 0.5);
+    }
+    
+    // Visual noise generation
+    function drawNoise() {
+      const imageData = ctx.createImageData(width, height);
+      const data = imageData.data;
+      
+      const stationStrength = getStationStrength(frequency);
+      const time = Date.now() * 0.001;
+      
+      // Near stations, the noise becomes more structured
+      const pixelSize = stationStrength > 0.2 ? 1 : (2 + Math.floor(Math.random() * 2));
+      
+      for (let y = 0; y < height; y += pixelSize) {
+        for (let x = 0; x < width; x += pixelSize) {
+          // Base noise
+          let noise = Math.random();
+          
+          // Add scanline effect
+          const scanline = (Math.sin(y * 0.5 + time * 10) + 1) * 0.1;
+          
+          // Near stations, add horizontal bands (like trying to sync)
+          if (stationStrength > 0.1) {
+            const band = Math.sin(y * 0.1 + time * 2) * stationStrength;
+            noise = noise * (1 - stationStrength) + (0.5 + band * 0.3) * stationStrength;
+          }
+          
+          // Occasional horizontal tearing
+          if (Math.random() < 0.001) {
+            const tearY = y;
+            const tearOffset = Math.random() * 50 - 25;
+            // This would shift pixels but we're generating them fresh
+          }
+          
+          // Vertical hold issues near stations
+          const verticalRoll = stationStrength > 0.3 ? 
+            Math.sin(time * 3 + y * 0.01) * stationStrength * 0.2 : 0;
+          
+          // Ghost images - faint horizontal offset
+          let ghostNoise = 0;
+          if (stationStrength > 0.2 && x > 20) {
+            ghostNoise = Math.random() * 0.3 * stationStrength;
+          }
+          
+          // Calculate final value
+          let value = noise + scanline + verticalRoll;
+          value = Math.max(0, Math.min(1, value));
+          
+          // Convert to grayscale with slight blue tint (CRT phosphor)
+          const v = Math.floor(value * 255);
+          const r = v;
+          const g = v;
+          const b = Math.min(255, v + 10);
+          
+          // Fill the pixel block
+          for (let py = 0; py < pixelSize && y + py < height; py++) {
+            for (let px = 0; px < pixelSize && x + px < width; px++) {
+              const i = ((y + py) * width + (x + px)) * 4;
+              data[i] = r;
+              data[i + 1] = g;
+              data[i + 2] = b;
+              data[i + 3] = 255;
+            }
+          }
+        }
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+      
+      // Add vignette
+      const gradient = ctx.createRadialGradient(
+        width/2, height/2, height * 0.3,
+        width/2, height/2, height * 0.8
+      );
+      gradient.addColorStop(0, 'rgba(0,0,0,0)');
+      gradient.addColorStop(1, 'rgba(0,0,0,0.6)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Occasional flash near stations
+      if (stationStrength > 0.3 && Math.random() < 0.02) {
+        ctx.fillStyle = `rgba(255,255,255,${stationStrength * 0.3})`;
+        ctx.fillRect(0, 0, width, height);
+      }
+    }
+    
+    function updateDisplay() {
+      const band = isFM ? 'FM' : 'AM';
+      const freq = isFM ? frequency.toFixed(1) : Math.floor(frequency * 10 + 530);
+      const unit = isFM ? '' : ' kHz';
+      freqDisplay.textContent = `${freq}${unit} ${band}`;
+      
+      // Glitch the display near stations
+      const stationStrength = getStationStrength(frequency);
+      if (stationStrength > 0.2 && Math.random() < stationStrength) {
+        freqDisplay.style.opacity = 0.3 + Math.random() * 0.7;
+      } else {
+        freqDisplay.style.opacity = 0.4;
+      }
+    }
+    
+    function animate() {
+      drawNoise();
+      updateAudio();
+      updateDisplay();
+      requestAnimationFrame(animate);
+    }
+    
+    // Input handlers
+    function handleMouseMove(e) {
+      mouseX = e.clientX / width;
+      mouseY = e.clientY / height;
+      
+      // Map X to frequency (88-108 for FM)
+      frequency = 88 + mouseX * 20;
+      
+      // Map Y to gain
+      gain = 1 - mouseY;
+    }
+    
+    function handleClick(e) {
+      initAudio();
+      isFM = !isFM;
+    }
+    
+    function handleTouch(e) {
+      e.preventDefault();
+      initAudio();
+      const touch = e.touches[0];
+      mouseX = touch.clientX / width;
+      mouseY = touch.clientY / height;
+      frequency = 88 + mouseX * 20;
+      gain = 1 - mouseY;
+    }
+    
+    // Initialize
+    window.addEventListener('resize', resize);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('click', handleClick);
+    window.addEventListener('touchstart', handleTouch);
+    window.addEventListener('touchmove', handleTouch);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>

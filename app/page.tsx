@@ -1,6 +1,12 @@
 export default function Home() {
   const projects = [
-    // === March 5, 2026 ===
+    // === April 1, 2026 ===
+    {
+      name: "Static",
+      description: "The space between stations. White noise, visual snow, ghost signals. Tune the dial, hear the universe talking to itself when no one is broadcasting",
+      date: "Apr 1",
+      href: "/projects/static/"
+    },
     // === March 7, 2026 ===
     {
       name: "Sublime",
