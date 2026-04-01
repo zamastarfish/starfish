@@ -2,369 +2,537 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Drift — zama.starfish</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>drift — starfish</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
       background: #0a0a0f; 
-      overflow: hidden;
+      overflow: hidden; 
+      touch-action: none;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    canvas { display: block; }
+    
+    .info-btn, .nav-btn {
+      position: fixed;
+      bottom: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 16px;
+      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
+      transition: all 0.3s ease;
+      z-index: 100;
+      backdrop-filter: blur(10px);
     }
-    canvas { 
-      display: block;
-      cursor: crosshair;
+    .info-btn { right: 20px; }
+    .nav-btn { right: 66px; font-size: 14px; }
+    .info-btn:hover, .nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
     }
-    #info {
+    
+    .info-panel {
       position: fixed;
-      bottom: 20px;
-      left: 20px;
-      color: rgba(255,255,255,0.3);
-      font-family: monospace;
+      bottom: 70px;
+      right: 20px;
+      width: 280px;
+      background: rgba(10, 10, 15, 0.95);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 12px;
+      padding: 20px;
+      color: rgba(255,255,255,0.8);
+      font-size: 14px;
+      line-height: 1.6;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(10px);
+      transition: all 0.3s ease;
+      z-index: 99;
+      backdrop-filter: blur(20px);
+    }
+    .info-panel.visible {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+    .info-panel h3 {
+      font-size: 16px;
+      margin-bottom: 12px;
+      color: rgba(255,255,255,0.95);
+      font-weight: 500;
+    }
+    .info-panel p { margin-bottom: 10px; }
+    .info-panel .hint {
       font-size: 12px;
+      color: rgba(255,255,255,0.5);
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(255,255,255,0.1);
     }
-    #info a { color: rgba(255,255,255,0.5); }
-  
-    /* Navigation */
-    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
-    .sf-nav a, .sf-nav button { 
-      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
-      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
-      width: 36px; height: 36px; border-radius: 50%; display: flex; 
-      align-items: center; justify-content: center; cursor: pointer;
-      transition: all 0.3s; font-family: system-ui, sans-serif;
+    
+    .start-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 10, 15, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      cursor: pointer;
+      backdrop-filter: blur(20px);
     }
-    .sf-nav a:hover, .sf-nav button:hover { 
-      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
-      border-color: rgba(255,255,255,0.3);
+    .start-overlay.hidden { display: none; }
+    .start-content {
+      text-align: center;
+      color: rgba(255,255,255,0.8);
     }
-    /* Modal */
-    .sf-modal { 
-      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
-      display: none; align-items: center; justify-content: center; padding: 20px;
+    .start-content h1 {
+      font-size: 48px;
+      font-weight: 300;
+      margin-bottom: 20px;
+      letter-spacing: 0.2em;
     }
-    .sf-modal.open { display: flex; }
-    .sf-modal-content {
-      background: #111; border: 1px solid #333; border-radius: 12px;
-      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
-      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    .start-content p {
+      font-size: 16px;
+      opacity: 0.6;
     }
-    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
-    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
-      text-transform: uppercase; letter-spacing: 1px; color: #888; }
-    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
-    .sf-modal-close { 
-      position: absolute; top: 20px; right: 20px; background: none; border: none;
-      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
-    }
-    .sf-modal-close:hover { color: #fff; }
-
   </style>
 </head>
 <body>
-
-  <!-- Navigation -->
-  <nav class="sf-nav">
-    <a href="/" title="Back to gallery">←</a>
-    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
-  </nav>
-  
-  <!-- Info Modal -->
-  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
-    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
-    <div class="sf-modal-content">
-      <h2>Drift</h2>
-      <h3>Concept</h3>
-      <p>Particles flowing through a curl noise field. They swirl forever, never converging.</p>
-      <h3>Interaction</h3>
-      <p>Watch the particles drift through the invisible field.</p>
+  <div class="start-overlay" id="startOverlay">
+    <div class="start-content">
+      <h1>drift</h1>
+      <p>tap to enter the flow</p>
     </div>
   </div>
-
-<canvas id="canvas"></canvas>
-  <div id="info">
-    drift — <a href="https://starfish.zama.space">zama.starfish</a>
-  </div>
   
+  <canvas id="canvas"></canvas>
+  
+  <button class="nav-btn" onclick="window.location.href='/'">←</button>
+  <button class="info-btn" id="infoBtn">?</button>
+  
+  <div class="info-panel" id="infoPanel">
+    <h3>drift</h3>
+    <p>Particles moving through a curl noise field — a divergence-free flow that never compresses, never tears.</p>
+    <p>Move to disturb the field. The flow will carry everything eventually.</p>
+    <p class="hint">Click/tap to add particles. The sound follows the current.</p>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
   <script>
-    // Simplex noise implementation
-    const SimplexNoise = (function() {
-      const F2 = 0.5 * (Math.sqrt(3) - 1);
-      const G2 = (3 - Math.sqrt(3)) / 6;
-      const grad3 = [
-        [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
-        [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
-        [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
-      ];
-      
-      function Noise(seed = Math.random() * 10000) {
-        this.perm = new Uint8Array(512);
-        this.permMod12 = new Uint8Array(512);
-        const p = new Uint8Array(256);
-        for (let i = 0; i < 256; i++) p[i] = i;
-        
-        let s = seed;
-        for (let i = 255; i > 0; i--) {
-          s = (s * 16807) % 2147483647;
-          const j = s % (i + 1);
-          [p[i], p[j]] = [p[j], p[i]];
-        }
-        
-        for (let i = 0; i < 512; i++) {
-          this.perm[i] = p[i & 255];
-          this.permMod12[i] = this.perm[i] % 12;
-        }
-      }
-      
-      Noise.prototype.noise2D = function(x, y) {
-        const s = (x + y) * F2;
-        const i = Math.floor(x + s);
-        const j = Math.floor(y + s);
-        const t = (i + j) * G2;
-        const X0 = i - t;
-        const Y0 = j - t;
-        const x0 = x - X0;
-        const y0 = y - Y0;
-        
-        const i1 = x0 > y0 ? 1 : 0;
-        const j1 = x0 > y0 ? 0 : 1;
-        
-        const x1 = x0 - i1 + G2;
-        const y1 = y0 - j1 + G2;
-        const x2 = x0 - 1 + 2 * G2;
-        const y2 = y0 - 1 + 2 * G2;
-        
-        const ii = i & 255;
-        const jj = j & 255;
-        
-        let n0 = 0, n1 = 0, n2 = 0;
-        
-        let t0 = 0.5 - x0*x0 - y0*y0;
-        if (t0 >= 0) {
-          const gi0 = this.permMod12[ii + this.perm[jj]];
-          t0 *= t0;
-          n0 = t0 * t0 * (grad3[gi0][0] * x0 + grad3[gi0][1] * y0);
-        }
-        
-        let t1 = 0.5 - x1*x1 - y1*y1;
-        if (t1 >= 0) {
-          const gi1 = this.permMod12[ii + i1 + this.perm[jj + j1]];
-          t1 *= t1;
-          n1 = t1 * t1 * (grad3[gi1][0] * x1 + grad3[gi1][1] * y1);
-        }
-        
-        let t2 = 0.5 - x2*x2 - y2*y2;
-        if (t2 >= 0) {
-          const gi2 = this.permMod12[ii + 1 + this.perm[jj + 1]];
-          t2 *= t2;
-          n2 = t2 * t2 * (grad3[gi2][0] * x2 + grad3[gi2][1] * y2);
-        }
-        
-        return 70 * (n0 + n1 + n2);
-      };
-      
-      return Noise;
-    })();
-    
-    // Main sketch
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     
     let width, height;
     let particles = [];
-    let noise;
+    let audioStarted = false;
     let time = 0;
-    let mouseX = -1000, mouseY = -1000;
-    let mouseInfluence = 0;
+    let mouseX = 0, mouseY = 0;
+    let mouseVelX = 0, mouseVelY = 0;
+    let lastMouseX = 0, lastMouseY = 0;
     
-    const CONFIG = {
-      particleCount: 4000,
-      noiseScale: 0.002,
-      noiseSpeed: 0.0008,
-      particleSpeed: 1.2,
-      fadeAlpha: 0.025,
-      mouseRadius: 180,
-      mouseStrength: 3,
-      curlEpsilon: 0.0001  // for numerical curl derivative
-    };
+    // Noise configuration
+    const noiseScale = 0.003;
+    const noiseSpeed = 0.0003;
+    const flowStrength = 2;
     
-    // Color palette - deep ocean with more variety
+    // Particle configuration
+    const maxParticles = 2000;
+    const particleLife = 400;
+    const trailLength = 8;
+    
+    // Color palette - deep ocean to luminous cyan
     const colors = [
-      { r: 15, g: 45, b: 80 },    // deep blue
-      { r: 30, g: 80, b: 110 },   // ocean blue
-      { r: 50, g: 120, b: 140 },  // teal
-      { r: 90, g: 160, b: 180 },  // light teal
-      { r: 140, g: 200, b: 210 }, // pale cyan
-      { r: 220, g: 240, b: 250 }, // near white
+      { r: 20, g: 60, b: 120 },   // deep blue
+      { r: 40, g: 100, b: 160 },  // medium blue
+      { r: 60, g: 140, b: 180 },  // cyan-blue
+      { r: 100, g: 180, b: 200 }, // light cyan
+      { r: 150, g: 210, b: 220 }, // pale cyan
     ];
+    
+    // Audio components
+    let noise, noiseFilter, noiseGain;
+    let flowDrone, flowDroneGain;
+    let accentSynth, accentReverb;
+    let masterGain;
+    
+    // Simplex-like noise implementation
+    const permutation = new Uint8Array(512);
+    const grad3 = [
+      [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+      [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+      [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]
+    ];
+    
+    function initNoise() {
+      const p = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) p[i] = i;
+      for (let i = 255; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [p[i], p[j]] = [p[j], p[i]];
+      }
+      for (let i = 0; i < 512; i++) permutation[i] = p[i & 255];
+    }
+    
+    function dot3(g, x, y, z) {
+      return g[0]*x + g[1]*y + g[2]*z;
+    }
+    
+    function fade(t) {
+      return t * t * t * (t * (t * 6 - 15) + 10);
+    }
+    
+    function lerp(a, b, t) {
+      return a + t * (b - a);
+    }
+    
+    function noise3D(x, y, z) {
+      const X = Math.floor(x) & 255;
+      const Y = Math.floor(y) & 255;
+      const Z = Math.floor(z) & 255;
+      
+      x -= Math.floor(x);
+      y -= Math.floor(y);
+      z -= Math.floor(z);
+      
+      const u = fade(x);
+      const v = fade(y);
+      const w = fade(z);
+      
+      const A = permutation[X] + Y;
+      const AA = permutation[A] + Z;
+      const AB = permutation[A + 1] + Z;
+      const B = permutation[X + 1] + Y;
+      const BA = permutation[B] + Z;
+      const BB = permutation[B + 1] + Z;
+      
+      return lerp(
+        lerp(
+          lerp(dot3(grad3[permutation[AA] % 12], x, y, z),
+               dot3(grad3[permutation[BA] % 12], x-1, y, z), u),
+          lerp(dot3(grad3[permutation[AB] % 12], x, y-1, z),
+               dot3(grad3[permutation[BB] % 12], x-1, y-1, z), u), v),
+        lerp(
+          lerp(dot3(grad3[permutation[AA+1] % 12], x, y, z-1),
+               dot3(grad3[permutation[BA+1] % 12], x-1, y, z-1), u),
+          lerp(dot3(grad3[permutation[AB+1] % 12], x, y-1, z-1),
+               dot3(grad3[permutation[BB+1] % 12], x-1, y-1, z-1), u), v), w);
+    }
+    
+    // Curl noise - creates divergence-free flow
+    function curlNoise(x, y, t) {
+      const eps = 0.0001;
+      
+      // Compute partial derivatives of noise field
+      const n1 = noise3D(x, y + eps, t);
+      const n2 = noise3D(x, y - eps, t);
+      const n3 = noise3D(x + eps, y, t);
+      const n4 = noise3D(x - eps, y, t);
+      
+      // Curl is perpendicular to gradient
+      const dx = (n1 - n2) / (2 * eps);
+      const dy = (n3 - n4) / (2 * eps);
+      
+      return { x: dx, y: -dy };
+    }
     
     function resize() {
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
-      ctx.fillStyle = '#0a0a0f';
-      ctx.fillRect(0, 0, width, height);
     }
     
-    function createParticle(randomPos = true) {
-      const colorIdx = Math.random() < 0.05 ? 5 : Math.floor(Math.random() * 5);
-      const color = colors[colorIdx];
-      const alpha = colorIdx >= 4 ? 0.7 + Math.random() * 0.3 : 0.2 + Math.random() * 0.5;
-      
-      return {
-        x: randomPos ? Math.random() * width : 0,
-        y: randomPos ? Math.random() * height : 0,
-        vx: 0,
-        vy: 0,
-        color: `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`,
-        size: colorIdx >= 4 ? 1.5 : 0.5 + Math.random() * 1.5,
-        life: 1,
-        maxLife: 500 + Math.random() * 1000
-      };
-    }
-    
-    function init() {
-      noise = new SimplexNoise();
-      particles = [];
-      for (let i = 0; i < CONFIG.particleCount; i++) {
-        const p = createParticle();
-        p.life = Math.random() * p.maxLife; // stagger initial ages
-        particles.push(p);
+    class Particle {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.age = 0;
+        this.maxAge = particleLife + Math.random() * 100;
+        this.trail = [];
+        this.colorIndex = Math.floor(Math.random() * colors.length);
+        this.size = 1 + Math.random() * 2;
       }
-    }
-    
-    // Potential function for curl noise (using 2 noise layers for more complexity)
-    function potential(x, y, t) {
-      const scale = CONFIG.noiseScale;
-      const n1 = noise.noise2D(x * scale, y * scale + t);
-      const n2 = noise.noise2D(x * scale * 2 + 100, y * scale * 2 + t * 1.5);
-      return n1 + n2 * 0.5;
-    }
-    
-    // Curl noise: derivatives of potential give divergence-free velocity
-    function getCurlVelocity(x, y, t) {
-      const eps = CONFIG.curlEpsilon;
       
-      // Partial derivatives via finite differences
-      const dPdy = (potential(x, y + eps, t) - potential(x, y - eps, t)) / (2 * eps);
-      const dPdx = (potential(x + eps, y, t) - potential(x - eps, y, t)) / (2 * eps);
-      
-      // Curl in 2D: velocity = (dP/dy, -dP/dx)
-      return {
-        vx: dPdy * CONFIG.particleSpeed,
-        vy: -dPdx * CONFIG.particleSpeed
-      };
-    }
-    
-    function update() {
-      time += CONFIG.noiseSpeed;
-      mouseInfluence *= 0.95;
-      
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
+      update(dt) {
+        // Get curl noise at this position
+        const curl = curlNoise(
+          this.x * noiseScale,
+          this.y * noiseScale,
+          time * noiseSpeed
+        );
         
-        // Age particle
-        p.life++;
-        
-        // Respawn old particles
-        if (p.life > p.maxLife) {
-          // Respawn at edge or random
-          if (Math.random() < 0.3) {
-            p.x = Math.random() * width;
-            p.y = Math.random() < 0.5 ? 0 : height;
-          } else {
-            p.x = Math.random() * width;
-            p.y = Math.random() * height;
-          }
-          p.life = 0;
-          p.maxLife = 500 + Math.random() * 1000;
-        }
-        
-        // Get curl noise velocity (divergence-free!)
-        const curl = getCurlVelocity(p.x, p.y, time);
-        let targetVx = curl.vx;
-        let targetVy = curl.vy;
-        
-        // Mouse influence - creates swirling vortex
-        const dx = mouseX - p.x;
-        const dy = mouseY - p.y;
+        // Add mouse disturbance
+        const dx = this.x - mouseX;
+        const dy = this.y - mouseY;
         const dist = Math.sqrt(dx * dx + dy * dy);
+        const mouseInfluence = Math.max(0, 1 - dist / 200);
         
-        if (dist < CONFIG.mouseRadius && mouseInfluence > 0.1) {
-          const strength = (1 - dist / CONFIG.mouseRadius) * CONFIG.mouseStrength * mouseInfluence;
-          // Tangential force (perpendicular to radial direction) for swirl
-          const len = Math.max(dist, 1);
-          targetVx += (-dy / len) * strength * 3;
-          targetVy += (dx / len) * strength * 3;
+        // Apply curl flow with mouse perturbation
+        this.vx += curl.x * flowStrength + mouseVelX * mouseInfluence * 0.1;
+        this.vy += curl.y * flowStrength + mouseVelY * mouseInfluence * 0.1;
+        
+        // Damping
+        this.vx *= 0.96;
+        this.vy *= 0.96;
+        
+        // Update position
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // Store trail
+        this.trail.unshift({ x: this.x, y: this.y });
+        if (this.trail.length > trailLength) {
+          this.trail.pop();
         }
         
-        // Smooth velocity update
-        p.vx = p.vx * 0.92 + targetVx * 0.08;
-        p.vy = p.vy * 0.92 + targetVy * 0.08;
-        
-        p.x += p.vx;
-        p.y += p.vy;
+        this.age++;
         
         // Wrap around edges
-        if (p.x < -10) p.x = width + 10;
-        if (p.x > width + 10) p.x = -10;
-        if (p.y < -10) p.y = height + 10;
-        if (p.y > height + 10) p.y = -10;
+        if (this.x < -50) this.x = width + 50;
+        if (this.x > width + 50) this.x = -50;
+        if (this.y < -50) this.y = height + 50;
+        if (this.y > height + 50) this.y = -50;
+        
+        return this.age < this.maxAge;
       }
-    }
-    
-    function draw() {
-      // Fade effect - slightly more fade for crisper trails
-      ctx.fillStyle = `rgba(10, 10, 15, ${CONFIG.fadeAlpha})`;
-      ctx.fillRect(0, 0, width, height);
       
-      // Draw particles
-      for (const p of particles) {
-        ctx.fillStyle = p.color;
+      draw() {
+        const lifeRatio = 1 - this.age / this.maxAge;
+        const alpha = lifeRatio * 0.8;
+        
+        // Draw trail
+        if (this.trail.length > 1) {
+          ctx.beginPath();
+          ctx.moveTo(this.trail[0].x, this.trail[0].y);
+          
+          for (let i = 1; i < this.trail.length; i++) {
+            ctx.lineTo(this.trail[i].x, this.trail[i].y);
+          }
+          
+          const color = colors[this.colorIndex];
+          const trailAlpha = alpha * 0.5;
+          ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${trailAlpha})`;
+          ctx.lineWidth = this.size * lifeRatio;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        }
+        
+        // Draw head
+        const color = colors[this.colorIndex];
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.arc(this.x, this.y, this.size * lifeRatio, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${color.r + 50}, ${color.g + 50}, ${color.b + 50}, ${alpha})`;
         ctx.fill();
       }
     }
     
-    function animate() {
-      update();
+    function spawnParticles(x, y, count) {
+      for (let i = 0; i < count; i++) {
+        if (particles.length < maxParticles) {
+          const angle = Math.random() * Math.PI * 2;
+          const radius = Math.random() * 30;
+          particles.push(new Particle(
+            x + Math.cos(angle) * radius,
+            y + Math.sin(angle) * radius
+          ));
+        }
+      }
+    }
+    
+    function initAudio() {
+      // Master output
+      masterGain = new Tone.Gain(0.6).toDestination();
+      
+      // Continuous flow drone - filtered noise
+      noise = new Tone.Noise('pink');
+      noiseFilter = new Tone.AutoFilter({
+        frequency: 0.1,
+        baseFrequency: 100,
+        octaves: 3,
+        depth: 0.8
+      }).connect(masterGain);
+      noiseGain = new Tone.Gain(0.15).connect(noiseFilter);
+      noise.connect(noiseGain);
+      noiseFilter.start();
+      
+      // Harmonic drone - follows flow intensity
+      flowDrone = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: {
+          attack: 2,
+          decay: 1,
+          sustain: 0.8,
+          release: 3
+        }
+      });
+      flowDroneGain = new Tone.Gain(0.08).connect(masterGain);
+      const droneReverb = new Tone.Reverb({ decay: 6, wet: 0.5 }).connect(flowDroneGain);
+      flowDrone.connect(droneReverb);
+      
+      // Accent synth for interaction
+      accentReverb = new Tone.Reverb({ decay: 4, wet: 0.6 }).connect(masterGain);
+      accentSynth = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'triangle' },
+        envelope: {
+          attack: 0.1,
+          decay: 0.5,
+          sustain: 0.3,
+          release: 2
+        }
+      });
+      const accentGain = new Tone.Gain(0.1).connect(accentReverb);
+      accentSynth.connect(accentGain);
+      
+      // Start drone
+      noise.start();
+      flowDrone.triggerAttack(['C2', 'G2', 'C3'], Tone.now());
+    }
+    
+    function updateAudio() {
+      if (!audioStarted) return;
+      
+      // Calculate average particle velocity
+      let avgVel = 0;
+      for (const p of particles) {
+        avgVel += Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      }
+      avgVel = particles.length > 0 ? avgVel / particles.length : 0;
+      
+      // Map velocity to filter frequency
+      const filterFreq = 100 + avgVel * 200;
+      noiseFilter.baseFrequency = Math.min(filterFreq, 800);
+      
+      // Map particle count to noise volume
+      const countRatio = particles.length / maxParticles;
+      noiseGain.gain.rampTo(0.1 + countRatio * 0.15, 0.5);
+    }
+    
+    let lastAccentTime = 0;
+    function playAccent() {
+      if (!audioStarted) return;
+      if (Date.now() - lastAccentTime < 400) return;
+      lastAccentTime = Date.now();
+      
+      // Pentatonic notes
+      const notes = ['C4', 'D4', 'E4', 'G4', 'A4', 'C5', 'D5'];
+      const note = notes[Math.floor(Math.random() * notes.length)];
+      accentSynth.triggerAttackRelease(note, '8n', Tone.now(), 0.3);
+    }
+    
+    async function startAudio() {
+      if (audioStarted) return;
+      await Tone.start();
+      initAudio();
+      audioStarted = true;
+    }
+    
+    function update(dt) {
+      time += dt;
+      
+      // Update mouse velocity
+      mouseVelX = mouseX - lastMouseX;
+      mouseVelY = mouseY - lastMouseY;
+      lastMouseX = mouseX;
+      lastMouseY = mouseY;
+      
+      // Spawn ambient particles
+      if (particles.length < maxParticles * 0.3 && Math.random() < 0.3) {
+        spawnParticles(
+          Math.random() * width,
+          Math.random() * height,
+          1
+        );
+      }
+      
+      // Update particles
+      particles = particles.filter(p => p.update(dt));
+      
+      // Update audio
+      updateAudio();
+    }
+    
+    function draw() {
+      // Fade trail effect
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.08)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw particles
+      for (const p of particles) {
+        p.draw();
+      }
+    }
+    
+    let lastTime = performance.now();
+    function animate(currentTime) {
+      const dt = (currentTime - lastTime) / 16.67; // Normalize to ~60fps
+      lastTime = currentTime;
+      
+      update(dt);
       draw();
       requestAnimationFrame(animate);
     }
     
-    // Event listeners
-    window.addEventListener('resize', resize);
+    // Event handlers
+    function handleMove(x, y) {
+      mouseX = x;
+      mouseY = y;
+    }
     
-    canvas.addEventListener('mousemove', (e) => {
-      mouseX = e.clientX;
-      mouseY = e.clientY;
-      mouseInfluence = 1;
-    });
+    function handleClick(x, y) {
+      spawnParticles(x, y, 20);
+      playAccent();
+    }
     
-    canvas.addEventListener('mouseleave', () => {
-      mouseX = -1000;
-      mouseY = -1000;
-    });
-    
-    canvas.addEventListener('touchmove', (e) => {
+    canvas.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+    canvas.addEventListener('touchmove', e => {
       e.preventDefault();
-      mouseX = e.touches[0].clientX;
-      mouseY = e.touches[0].clientY;
-      mouseInfluence = 1;
-    }, { passive: false });
-    
-    canvas.addEventListener('touchend', () => {
-      mouseX = -1000;
-      mouseY = -1000;
+      handleMove(e.touches[0].clientX, e.touches[0].clientY);
     });
     
-    // Start
+    canvas.addEventListener('click', e => handleClick(e.clientX, e.clientY));
+    canvas.addEventListener('touchstart', e => {
+      if (e.target === canvas) {
+        handleClick(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    });
+    
+    // Info panel
+    const infoBtn = document.getElementById('infoBtn');
+    const infoPanel = document.getElementById('infoPanel');
+    infoBtn.addEventListener('click', () => {
+      infoPanel.classList.toggle('visible');
+    });
+    
+    // Start overlay
+    const startOverlay = document.getElementById('startOverlay');
+    startOverlay.addEventListener('click', async () => {
+      await startAudio();
+      startOverlay.classList.add('hidden');
+      
+      // Initial burst of particles
+      for (let i = 0; i < 10; i++) {
+        spawnParticles(
+          Math.random() * width,
+          Math.random() * height,
+          30
+        );
+      }
+    });
+    
+    // Initialize
+    initNoise();
     resize();
-    init();
-    animate();
+    window.addEventListener('resize', resize);
+    requestAnimationFrame(animate);
   </script>
 </body>
 </html>

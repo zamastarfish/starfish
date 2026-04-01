@@ -16,6 +16,7 @@
 - ~~**Sublime**~~ → shipped
 - ~~**Turing**~~ → shipped
 - ~~**Mono no aware**~~ → shipped
+- ~~**Drift**~~ → updated with audio (Apr 1)
 
 ### Completed
 - ~~Tide~~ ~~Mycelium~~ ~~Rain~~
@@ -29,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| drift (audio) | Added audio to curl noise flow field - drone + accents | 1 session | Apr 1 |
 | static | Space between stations, white noise, ghost signals | 1 session | Apr 1 |
 | sublime | Romantic landscape, tiny figure against vastness | 1 session | Mar 7 |
 | vanitas | Memento mori still life, flowers wilt, candles burn | 1 session | Mar 6 |

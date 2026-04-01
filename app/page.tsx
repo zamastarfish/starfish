@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 1, 2026 ===
     {
+      name: "Drift",
+      description: "Curl noise flow field with audio. Particles trace divergence-free currents. Move to disturb, click to spawn. The drone follows the flow",
+      date: "Apr 1",
+      href: "/projects/drift/"
+    },
+    {
       name: "Static",
       description: "The space between stations. White noise, visual snow, ghost signals. Tune the dial, hear the universe talking to itself when no one is broadcasting",
       date: "Apr 1",
@@ -470,12 +476,6 @@ export default function Home() {
       description: "Shapes trying to cooperate. They almost reach consensus, then one defects",
       date: "Feb 23",
       href: "/projects/alignment/"
-    },
-    {
-      name: "Drift",
-      description: "Particles flowing through a curl noise field — they swirl forever, never converging",
-      date: "Feb 23",
-      href: "/projects/drift/"
     }
   ];
 
