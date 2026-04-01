@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>null — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      height: 100%;
+      background: #000; 
+      overflow: hidden;
+    }
+    
+    .void {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      cursor: default;
+    }
+    
+    /* The almost-invisible hint */
+    .presence {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 1px;
+      height: 1px;
+      background: #010101;
+      border-radius: 50%;
+      opacity: 0;
+      transition: all 60s ease-out;
+    }
+    
+    .presence.awaken {
+      width: 3px;
+      height: 3px;
+      background: #030303;
+      opacity: 1;
+    }
+    
+    .presence.seen {
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, #0a0a0a 0%, #000 100%);
+      opacity: 1;
+      transition: all 2s ease-out;
+    }
+    
+    /* Navigation - barely visible */
+    .nav-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: transparent;
+      border: 1px solid #0a0a0a;
+      color: #111;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.5s ease;
+      z-index: 100;
+      opacity: 0;
+    }
+    
+    .nav-btn:hover {
+      border-color: #333;
+      color: #333;
+      opacity: 1;
+    }
+    
+    .nav-btn.visible {
+      opacity: 0.3;
+    }
+    
+    /* Title appears only after long contemplation */
+    .title {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      color: #111;
+      opacity: 0;
+      transition: opacity 10s ease;
+    }
+    
+    .title.visible {
+      opacity: 0.3;
+    }
+  </style>
+</head>
+<body>
+  <div class="void" id="void"></div>
+  <div class="presence" id="presence"></div>
+  <div class="title" id="title">null</div>
+  <button class="nav-btn" id="nav" onclick="window.location.href='/'">←</button>
+
+  <script>
+    const presence = document.getElementById('presence');
+    const title = document.getElementById('title');
+    const nav = document.getElementById('nav');
+    const voidEl = document.getElementById('void');
+    
+    let timeSpent = 0;
+    let hasAwakened = false;
+    let hasSeen = false;
+    let clicks = 0;
+    
+    // Track time spent
+    setInterval(() => {
+      timeSpent++;
+      
+      // After 30 seconds, the tiniest hint appears
+      if (timeSpent >= 30 && !hasAwakened) {
+        presence.classList.add('awaken');
+        hasAwakened = true;
+      }
+      
+      // After 2 minutes, reveal more
+      if (timeSpent >= 120 && !hasSeen) {
+        presence.classList.add('seen');
+        title.classList.add('visible');
+        nav.classList.add('visible');
+        hasSeen = true;
+      }
+    }, 1000);
+    
+    // Clicking in the void
+    voidEl.addEventListener('click', () => {
+      clicks++;
+      
+      // After 5 clicks, speed up revelation
+      if (clicks >= 5 && !hasAwakened) {
+        presence.classList.add('awaken');
+        hasAwakened = true;
+      }
+      
+      // After 10 clicks
+      if (clicks >= 10 && !hasSeen) {
+        presence.classList.add('seen');
+        title.classList.add('visible');
+        nav.classList.add('visible');
+        hasSeen = true;
+      }
+    });
+    
+    // If they try to select or interact, subtle feedback
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && hasSeen) {
+        // Reset to void
+        presence.classList.remove('awaken', 'seen');
+        title.classList.remove('visible');
+        nav.classList.remove('visible');
+        hasAwakened = false;
+        hasSeen = false;
+        timeSpent = 0;
+        clicks = 0;
+      }
+    });
+  </script>
+</body>
+</html>

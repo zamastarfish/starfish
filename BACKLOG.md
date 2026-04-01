@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| null | Nothing. The void. Rewards patience (or not) | 1 session | Apr 1 |
 | drift (audio) | Added audio to curl noise flow field - drone + accents | 1 session | Apr 1 |
 | static | Space between stations, white noise, ghost signals | 1 session | Apr 1 |
 | sublime | Romantic landscape, tiny figure against vastness | 1 session | Mar 7 |

@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 1, 2026 ===
     {
+      name: "Null",
+      description: "Nothing. Or almost nothing. Stay long enough and something might emerge. Or don't — the void doesn't mind",
+      date: "Apr 1",
+      href: "/projects/null/"
+    },
+    {
       name: "Drift",
       description: "Curl noise flow field with audio. Particles trace divergence-free currents. Move to disturb, click to spawn. The drone follows the flow",
       date: "Apr 1",
