@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| glow | Bioluminescent orbs, pulse, drift, mouse repulsion | 1 session | Apr 2 |
 | ink | Ink drops diffusing in water, Brownian motion, color palette | 1 session | Apr 2 |
 | smoke | Rising wisps from ember, curl physics, mouse creates air currents | 1 session | Apr 2 |
 | ripple | Concentric circles on water, interference patterns, position-mapped pitch | 1 session | Apr 2 |

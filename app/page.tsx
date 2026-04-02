@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 2, 2026 ===
     {
+      name: "Glow",
+      description: "Bioluminescence in the deep. Soft orbs drift, pulse, fade. Move near to push them. Click to spawn. Creatures making their own light",
+      date: "Apr 2",
+      href: "/projects/glow/"
+    },
+    {
       name: "Ink",
       description: "Drops diffusing in water. Click to drop, drag to trail. Choose colors. Brownian motion, organic chaos — you start it, the water finishes it",
       date: "Apr 2",
