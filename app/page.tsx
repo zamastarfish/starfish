@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 2, 2026 ===
     {
+      name: "Smoke",
+      description: "Wisps rising from an ember. Move to disturb the air, watch it curl and vanish. Nothing solid, nothing permanent — just the trace of something burning",
+      date: "Apr 2",
+      href: "/projects/smoke/"
+    },
+    {
       name: "Ripple",
       description: "Drop a stone in still water. Watch the circles spread, interfere, fade. Position maps to pitch. Drag to trail. The drone follows the energy",
       date: "Apr 2",

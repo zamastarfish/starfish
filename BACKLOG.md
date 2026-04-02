@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| smoke | Rising wisps from ember, curl physics, mouse creates air currents | 1 session | Apr 2 |
 | ripple | Concentric circles on water, interference patterns, position-mapped pitch | 1 session | Apr 2 |
 | enso | Zen circle — one breath, one stroke, brush texture, singing bowl | 1 session | Apr 2 |
 | bounce | Colorful bouncing balls with musical physics | 1 session | Apr 2 |
