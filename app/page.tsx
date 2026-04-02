@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 2, 2026 ===
     {
+      name: "Ripple",
+      description: "Drop a stone in still water. Watch the circles spread, interfere, fade. Position maps to pitch. Drag to trail. The drone follows the energy",
+      date: "Apr 2",
+      href: "/projects/ripple/"
+    },
+    {
       name: "円相 (ensō)",
       description: "One breath, one stroke. The Zen circle — completeness, emptiness, the moment. Each circle reveals the artist's state of mind. Click to draw",
       date: "Apr 2",

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ripple — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a1520;
+      overflow: hidden; 
+      font-family: system-ui, sans-serif;
+    }
+    canvas { display: block; cursor: crosshair; }
+
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.3); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.7);
+      border-color: rgba(255,255,255,0.2);
+    }
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(10,21,32,0.95); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #152535; border: 1px solid #2a4a6a; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #8ab; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #cde; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #567; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #8ab; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #456; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #8ab; }
+    
+    #whisper {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(100, 150, 180, 0.3);
+      font-size: 12px;
+      letter-spacing: 3px;
+      pointer-events: none;
+    }
+    
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(100, 150, 180, 0.5);
+      font-size: 14px;
+      letter-spacing: 3px;
+      cursor: pointer;
+      padding: 20px 40px;
+      border: 1px solid rgba(100, 150, 180, 0.2);
+      background: rgba(0,0,0,0.3);
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #start:hover {
+      border-color: rgba(100, 150, 180, 0.4);
+      color: rgba(100, 150, 180, 0.8);
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>ripple</h2>
+      <h3>Concept</h3>
+      <p>Every action spreads outward. A stone dropped in still water. The circles expand, interfere, fade. Simple cause, complex effect.</p>
+      <h3>Interaction</h3>
+      <p>Click or tap to drop a stone. Watch the ripples spread and interact. Multiple drops create interference patterns — waves adding and canceling.</p>
+      <h3>Sound</h3>
+      <p>Each drop has its own pitch based on position. The continuous drone follows the total energy of all ripples. Stillness returns to silence.</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="whisper">click to disturb</div>
+  <div id="start">still water</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start');
+    const whisper = document.getElementById('whisper');
+    
+    let width, height;
+    let audioStarted = false;
+    
+    // Audio
+    let dropSynth, dropReverb;
+    let droneSynth, droneFilter, droneGain;
+    let masterGain;
+    
+    // Pentatonic scale for drops
+    const dropNotes = ['C3', 'D3', 'E3', 'G3', 'A3', 'C4', 'D4', 'E4', 'G4', 'A4'];
+    
+    // Ripples
+    const ripples = [];
+    
+    // Auto-drops (occasional rain)
+    let autoDropTimer = 0;
+    let autoDropInterval = 3000 + Math.random() * 5000;
+    
+    function initAudio() {
+      masterGain = new Tone.Gain(0.5).toDestination();
+      
+      // Drop sounds - bell-like synth
+      dropReverb = new Tone.Reverb({ decay: 4, wet: 0.6 }).connect(masterGain);
+      dropSynth = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: {
+          attack: 0.005,
+          decay: 1.5,
+          sustain: 0,
+          release: 2
+        },
+        volume: -15
+      }).connect(dropReverb);
+      
+      // Ambient drone - follows total ripple energy
+      const droneReverb = new Tone.Reverb({ decay: 6, wet: 0.7 }).connect(masterGain);
+      droneFilter = new Tone.Filter({
+        type: 'lowpass',
+        frequency: 200,
+        Q: 1
+      }).connect(droneReverb);
+      droneGain = new Tone.Gain(0).connect(droneFilter);
+      
+      droneSynth = new Tone.Oscillator({
+        frequency: 55, // A1
+        type: 'sine'
+      }).connect(droneGain);
+      
+      // Second oscillator for thickness
+      const drone2 = new Tone.Oscillator({
+        frequency: 82.5, // E2 (fifth)
+        type: 'sine',
+        volume: -6
+      }).connect(droneGain);
+      
+      droneSynth.start();
+      drone2.start();
+    }
+    
+    function playDrop(x, y, size) {
+      if (!audioStarted) return;
+      
+      // Map position to note
+      const noteIndex = Math.floor((x / width) * dropNotes.length);
+      const note = dropNotes[Math.min(noteIndex, dropNotes.length - 1)];
+      
+      // Louder for bigger drops
+      const velocity = 0.3 + (size / 100) * 0.4;
+      dropSynth.triggerAttackRelease(note, '8n', undefined, velocity);
+    }
+    
+    function updateDrone() {
+      if (!audioStarted) return;
+      
+      // Calculate total ripple energy
+      let totalEnergy = 0;
+      for (const ripple of ripples) {
+        totalEnergy += ripple.strength * (1 - ripple.progress);
+      }
+      
+      // Map to drone parameters
+      const targetGain = Math.min(0.3, totalEnergy * 0.02);
+      const targetFreq = 150 + totalEnergy * 50;
+      
+      droneGain.gain.rampTo(targetGain, 0.5);
+      droneFilter.frequency.rampTo(targetFreq, 0.3);
+    }
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    class Ripple {
+      constructor(x, y, size = 50) {
+        this.x = x;
+        this.y = y;
+        this.maxRadius = size + Math.random() * 50;
+        this.rings = 3 + Math.floor(Math.random() * 3); // Number of concentric circles
+        this.progress = 0;
+        this.speed = 0.008 + Math.random() * 0.004;
+        this.strength = size / 50; // For drone calculation
+      }
+      
+      update() {
+        this.progress += this.speed;
+        return this.progress < 1;
+      }
+      
+      draw() {
+        const alpha = 1 - this.progress;
+        const currentRadius = this.progress * this.maxRadius * 3;
+        
+        for (let i = 0; i < this.rings; i++) {
+          const ringOffset = i * 20;
+          const radius = Math.max(0, currentRadius - ringOffset);
+          
+          if (radius <= 0) continue;
+          
+          // Each ring fades at different rate
+          const ringAlpha = alpha * (1 - i * 0.2) * (1 - (ringOffset / (this.maxRadius * 3)));
+          
+          if (ringAlpha <= 0) continue;
+          
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(120, 180, 220, ${ringAlpha * 0.6})`;
+          ctx.lineWidth = 2 - i * 0.5;
+          ctx.stroke();
+          
+          // Inner glow
+          if (i === 0 && this.progress < 0.3) {
+            const glowAlpha = (1 - this.progress / 0.3) * 0.3;
+            const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, radius);
+            gradient.addColorStop(0, `rgba(150, 200, 240, ${glowAlpha})`);
+            gradient.addColorStop(0.5, `rgba(100, 160, 200, ${glowAlpha * 0.3})`);
+            gradient.addColorStop(1, 'rgba(100, 160, 200, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+          }
+        }
+      }
+    }
+    
+    function createRipple(x, y, size) {
+      const ripple = new Ripple(x, y, size);
+      ripples.push(ripple);
+      playDrop(x, y, size);
+    }
+    
+    function drawWaterSurface() {
+      // Subtle water texture
+      const time = Date.now() * 0.0003;
+      
+      // Very subtle caustic-like pattern
+      for (let i = 0; i < 3; i++) {
+        const offset = i * 1000;
+        const x = width * 0.3 + Math.sin(time + offset) * width * 0.2;
+        const y = height * 0.3 + Math.cos(time * 0.7 + offset) * height * 0.2;
+        
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, 300);
+        gradient.addColorStop(0, 'rgba(80, 140, 180, 0.02)');
+        gradient.addColorStop(1, 'rgba(80, 140, 180, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      }
+    }
+    
+    function draw() {
+      // Dark water background
+      ctx.fillStyle = '#0a1520';
+      ctx.fillRect(0, 0, width, height);
+      
+      drawWaterSurface();
+      
+      // Draw ripples
+      for (const ripple of ripples) {
+        ripple.draw();
+      }
+    }
+    
+    function update(dt) {
+      // Update ripples
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        if (!ripples[i].update()) {
+          ripples.splice(i, 1);
+        }
+      }
+      
+      // Update drone based on ripple energy
+      updateDrone();
+      
+      // Occasional auto-drop (rain)
+      if (audioStarted) {
+        autoDropTimer += dt;
+        if (autoDropTimer > autoDropInterval) {
+          autoDropTimer = 0;
+          autoDropInterval = 4000 + Math.random() * 8000;
+          
+          // Random position, smaller size
+          const x = Math.random() * width;
+          const y = Math.random() * height;
+          createRipple(x, y, 20 + Math.random() * 30);
+        }
+      }
+    }
+    
+    let lastTime = 0;
+    function animate(time) {
+      const dt = lastTime ? time - lastTime : 16;
+      lastTime = time;
+      
+      update(dt);
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Event handlers
+    canvas.addEventListener('click', (e) => {
+      if (!audioStarted) return;
+      createRipple(e.clientX, e.clientY, 50 + Math.random() * 50);
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      if (!audioStarted) return;
+      e.preventDefault();
+      for (const touch of e.touches) {
+        createRipple(touch.clientX, touch.clientY, 50 + Math.random() * 50);
+      }
+    });
+    
+    // Drag to create trail of ripples
+    let isDragging = false;
+    let lastDragTime = 0;
+    
+    canvas.addEventListener('mousedown', () => isDragging = true);
+    canvas.addEventListener('mouseup', () => isDragging = false);
+    canvas.addEventListener('mouseleave', () => isDragging = false);
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (!audioStarted || !isDragging) return;
+      
+      const now = Date.now();
+      if (now - lastDragTime > 100) {
+        lastDragTime = now;
+        createRipple(e.clientX, e.clientY, 20 + Math.random() * 20);
+      }
+    });
+    
+    // Start with audio
+    startBtn.addEventListener('click', async () => {
+      await Tone.start();
+      initAudio();
+      audioStarted = true;
+      startBtn.classList.add('hidden');
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
