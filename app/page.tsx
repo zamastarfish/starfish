@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === April 2, 2026 ===
+    {
+      name: "Bounce",
+      description: "Balls fall, bounce, make music. Simple physics, simple joy. Drag to throw. Position maps to pitch. Press G to flip gravity",
+      date: "Apr 2",
+      href: "/projects/bounce/"
+    },
     // === April 1, 2026 ===
     {
       name: "Null",
