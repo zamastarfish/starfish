@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>円相 (ensō) — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #f5f0e8;
+      overflow: hidden; 
+      font-family: 'Georgia', serif;
+    }
+    canvas { display: block; cursor: default; }
+
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1);
+      color: rgba(0,0,0,0.3); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s; font-family: system-ui, sans-serif;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(0,0,0,0.1); color: rgba(0,0,0,0.6);
+      border-color: rgba(0,0,0,0.2);
+    }
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(245,240,232,0.95); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #fff; border: 1px solid #ddd; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #333; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #111; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #888; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #555; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #999; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #333; }
+    
+    #whisper {
+      position: fixed;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(0, 0, 0, 0.2);
+      font-size: 13px;
+      font-style: italic;
+      pointer-events: none;
+      text-align: center;
+      letter-spacing: 2px;
+    }
+    
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(0, 0, 0, 0.4);
+      font-size: 14px;
+      letter-spacing: 3px;
+      cursor: pointer;
+      padding: 20px 40px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      background: rgba(255,255,255,0.5);
+      transition: all 0.3s;
+      z-index: 100;
+      text-transform: lowercase;
+    }
+    #start:hover {
+      border-color: rgba(0, 0, 0, 0.3);
+      color: rgba(0, 0, 0, 0.7);
+    }
+    .hidden { display: none !important; }
+    
+    /* Breath indicator */
+    #breath {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.1);
+      transition: transform 2s ease-in-out, opacity 0.5s;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>円相 (ensō)</h2>
+      <h3>Concept</h3>
+      <p>The ensō is a sacred symbol in Zen Buddhism — a circle drawn in one breath, one stroke. It represents enlightenment, the void, the universe. Each circle reveals the state of the artist's mind at the moment of creation. Imperfection is embraced; the gap in the circle (if present) allows for movement and development.</p>
+      <h3>Interaction</h3>
+      <p>Click or tap anywhere to draw a new circle. Each ensō is unique — the brush wobbles slightly, the ink bleeds differently, the gap varies. Watch. Breathe. Let go.</p>
+      <h3>Sound</h3>
+      <p>A breath in before the stroke. The soft sound of brush on paper. A singing bowl at completion. Then silence.</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="breath"></div>
+  <div id="whisper">click to draw</div>
+  <div id="start">breathe</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('start');
+    const whisper = document.getElementById('whisper');
+    const breathIndicator = document.getElementById('breath');
+    
+    let width, height;
+    let audioStarted = false;
+    
+    // Audio
+    let breathIn, breathOut, brushNoise, brushFilter, brushGain;
+    let bowlSynth, bowlReverb;
+    let masterGain;
+    
+    // State
+    let isDrawing = false;
+    let currentEnso = null;
+    let circles = []; // Previous ensō (faded)
+    const maxCircles = 5;
+    
+    // Paper texture (pre-rendered)
+    let paperTexture = null;
+    
+    function initAudio() {
+      masterGain = new Tone.Gain(0.6).toDestination();
+      
+      // Breath sounds (synthesized)
+      const breathReverb = new Tone.Reverb({ decay: 2, wet: 0.4 }).connect(masterGain);
+      
+      // Breath in - rising filtered noise
+      breathIn = new Tone.Noise('white');
+      const breathInFilter = new Tone.Filter({
+        type: 'bandpass',
+        frequency: 800,
+        Q: 2
+      });
+      const breathInEnv = new Tone.AmplitudeEnvelope({
+        attack: 0.8,
+        decay: 0.2,
+        sustain: 0.3,
+        release: 0.5
+      }).connect(breathReverb);
+      breathIn.connect(breathInFilter);
+      breathInFilter.connect(breathInEnv);
+      breathIn.breathEnv = breathInEnv;
+      
+      // Breath out - falling filtered noise
+      breathOut = new Tone.Noise('pink');
+      const breathOutFilter = new Tone.Filter({
+        type: 'lowpass',
+        frequency: 600,
+        Q: 1
+      });
+      const breathOutEnv = new Tone.AmplitudeEnvelope({
+        attack: 0.1,
+        decay: 1.5,
+        sustain: 0.2,
+        release: 1
+      }).connect(breathReverb);
+      breathOut.connect(breathOutFilter);
+      breathOutFilter.connect(breathOutEnv);
+      breathOut.breathEnv = breathOutEnv;
+      
+      // Brush on paper
+      brushNoise = new Tone.Noise('brown').start();
+      brushFilter = new Tone.Filter({
+        type: 'bandpass',
+        frequency: 1200,
+        Q: 0.5
+      });
+      brushGain = new Tone.Gain(0);
+      const brushReverb = new Tone.Reverb({ decay: 0.5, wet: 0.2 }).connect(masterGain);
+      brushNoise.connect(brushFilter);
+      brushFilter.connect(brushGain);
+      brushGain.connect(brushReverb);
+      
+      // Singing bowl
+      bowlReverb = new Tone.Reverb({ decay: 8, wet: 0.7 }).connect(masterGain);
+      bowlSynth = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: {
+          attack: 0.01,
+          decay: 4,
+          sustain: 0.1,
+          release: 6
+        },
+        volume: -12
+      }).connect(bowlReverb);
+    }
+    
+    function playBreathIn() {
+      if (!audioStarted) return;
+      breathIn.start();
+      breathIn.breathEnv.triggerAttack();
+      
+      // Animate breath indicator
+      breathIndicator.style.transform = 'translateX(-50%) scale(2)';
+      breathIndicator.style.opacity = '1';
+    }
+    
+    function stopBreathIn() {
+      if (!audioStarted) return;
+      breathIn.breathEnv.triggerRelease();
+      setTimeout(() => breathIn.stop(), 500);
+    }
+    
+    function playBreathOut() {
+      if (!audioStarted) return;
+      breathOut.start();
+      breathOut.breathEnv.triggerAttack();
+      
+      // Animate breath indicator
+      breathIndicator.style.transform = 'translateX(-50%) scale(1)';
+    }
+    
+    function stopBreathOut() {
+      if (!audioStarted) return;
+      breathOut.breathEnv.triggerRelease();
+      setTimeout(() => breathOut.stop(), 1500);
+      breathIndicator.style.opacity = '0';
+    }
+    
+    function startBrush() {
+      if (!audioStarted) return;
+      brushGain.gain.rampTo(0.15, 0.1);
+    }
+    
+    function updateBrush(speed) {
+      if (!audioStarted) return;
+      // Brush sound varies with speed
+      const freq = 800 + speed * 400;
+      const vol = 0.08 + speed * 0.1;
+      brushFilter.frequency.rampTo(freq, 0.1);
+      brushGain.gain.rampTo(Math.min(0.2, vol), 0.05);
+    }
+    
+    function stopBrush() {
+      if (!audioStarted) return;
+      brushGain.gain.rampTo(0, 0.3);
+    }
+    
+    function playBowl() {
+      if (!audioStarted) return;
+      // Singing bowl - F4 with harmonics
+      bowlSynth.triggerAttackRelease(['F4', 'C5', 'F5'], '4n', undefined, 0.4);
+    }
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      createPaperTexture();
+      redraw();
+    }
+    
+    function createPaperTexture() {
+      // Create subtle paper texture
+      const textureCanvas = document.createElement('canvas');
+      textureCanvas.width = width;
+      textureCanvas.height = height;
+      const tctx = textureCanvas.getContext('2d');
+      
+      // Base color
+      tctx.fillStyle = '#f5f0e8';
+      tctx.fillRect(0, 0, width, height);
+      
+      // Subtle noise
+      const imageData = tctx.getImageData(0, 0, width, height);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 8;
+        data[i] += noise;
+        data[i + 1] += noise;
+        data[i + 2] += noise;
+      }
+      tctx.putImageData(imageData, 0, 0);
+      
+      // Subtle fiber lines
+      tctx.strokeStyle = 'rgba(0, 0, 0, 0.02)';
+      tctx.lineWidth = 0.5;
+      for (let i = 0; i < 100; i++) {
+        const x = Math.random() * width;
+        const y = Math.random() * height;
+        const len = 20 + Math.random() * 40;
+        const angle = Math.random() * Math.PI * 2;
+        tctx.beginPath();
+        tctx.moveTo(x, y);
+        tctx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+        tctx.stroke();
+      }
+      
+      paperTexture = textureCanvas;
+    }
+    
+    class Enso {
+      constructor(x, y) {
+        // Center of the circle
+        this.cx = x || width / 2;
+        this.cy = y || height / 2;
+        
+        // Size variation
+        this.radius = Math.min(width, height) * (0.25 + Math.random() * 0.1);
+        
+        // Starting angle (random)
+        this.startAngle = Math.random() * Math.PI * 2;
+        
+        // Gap (open or closed ensō)
+        this.hasGap = Math.random() > 0.3;
+        this.gapSize = this.hasGap ? 0.1 + Math.random() * 0.15 : 0;
+        this.totalAngle = Math.PI * 2 * (1 - this.gapSize);
+        
+        // Drawing progress
+        this.progress = 0;
+        this.speed = 0.008 + Math.random() * 0.004;
+        
+        // Brush properties
+        this.baseWidth = 15 + Math.random() * 10;
+        this.points = [];
+        
+        // Wobble parameters
+        this.wobbleFreq = 3 + Math.random() * 4;
+        this.wobbleAmp = 2 + Math.random() * 3;
+        this.widthWobbleFreq = 5 + Math.random() * 3;
+        
+        // Ink properties
+        this.inkDensity = 0.85 + Math.random() * 0.1;
+        this.inkBleed = 0.5 + Math.random() * 0.5;
+        
+        // Generate the path
+        this.generatePath();
+      }
+      
+      generatePath() {
+        const steps = 200;
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const angle = this.startAngle + t * this.totalAngle;
+          
+          // Wobble in radius
+          const wobble = Math.sin(t * this.wobbleFreq * Math.PI * 2) * this.wobbleAmp;
+          const r = this.radius + wobble;
+          
+          // Width variation (thick at start/end, thin in middle for traditional look)
+          const widthCurve = Math.sin(t * Math.PI);
+          const widthNoise = Math.sin(t * this.widthWobbleFreq * Math.PI * 2) * 0.2;
+          const width = this.baseWidth * (0.6 + widthCurve * 0.5 + widthNoise);
+          
+          // Ink density variation
+          const density = this.inkDensity * (0.8 + Math.random() * 0.2);
+          
+          this.points.push({
+            x: this.cx + Math.cos(angle) * r,
+            y: this.cy + Math.sin(angle) * r,
+            width: width,
+            density: density,
+            t: t
+          });
+        }
+      }
+      
+      update() {
+        if (this.progress >= 1) return false;
+        
+        const prevProgress = this.progress;
+        this.progress = Math.min(1, this.progress + this.speed);
+        
+        // Update brush sound based on speed
+        const speed = this.progress - prevProgress;
+        updateBrush(speed * 50);
+        
+        return true;
+      }
+      
+      draw(alpha = 1) {
+        const drawTo = Math.floor(this.progress * (this.points.length - 1));
+        
+        if (drawTo < 1) return;
+        
+        // Draw ink with brush texture
+        for (let i = 1; i <= drawTo; i++) {
+          const p = this.points[i];
+          const prev = this.points[i - 1];
+          
+          // Main stroke
+          const gradient = ctx.createLinearGradient(prev.x, prev.y, p.x, p.y);
+          const baseAlpha = p.density * alpha;
+          gradient.addColorStop(0, `rgba(20, 18, 15, ${baseAlpha * 0.9})`);
+          gradient.addColorStop(1, `rgba(30, 28, 25, ${baseAlpha})`);
+          
+          ctx.beginPath();
+          ctx.strokeStyle = gradient;
+          ctx.lineWidth = p.width;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.moveTo(prev.x, prev.y);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+          
+          // Ink bleed effect (occasional splatter)
+          if (Math.random() < 0.02 * this.inkBleed) {
+            const bleedX = p.x + (Math.random() - 0.5) * p.width * 2;
+            const bleedY = p.y + (Math.random() - 0.5) * p.width * 2;
+            const bleedSize = 1 + Math.random() * 3;
+            ctx.beginPath();
+            ctx.fillStyle = `rgba(20, 18, 15, ${baseAlpha * 0.3})`;
+            ctx.arc(bleedX, bleedY, bleedSize, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          
+          // Edge texture (bristle marks)
+          if (i % 3 === 0) {
+            const angle = Math.atan2(p.y - prev.y, p.x - prev.x) + Math.PI / 2;
+            const edgeDist = p.width * 0.4;
+            for (let j = 0; j < 2; j++) {
+              const side = j === 0 ? 1 : -1;
+              const ex = p.x + Math.cos(angle) * edgeDist * side + (Math.random() - 0.5) * 3;
+              const ey = p.y + Math.sin(angle) * edgeDist * side + (Math.random() - 0.5) * 3;
+              ctx.beginPath();
+              ctx.strokeStyle = `rgba(20, 18, 15, ${baseAlpha * 0.2})`;
+              ctx.lineWidth = 0.5;
+              ctx.moveTo(ex, ey);
+              ctx.lineTo(ex + (Math.random() - 0.5) * 4, ey + (Math.random() - 0.5) * 4);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+      
+      isComplete() {
+        return this.progress >= 1;
+      }
+    }
+    
+    function redraw() {
+      // Draw paper texture
+      if (paperTexture) {
+        ctx.drawImage(paperTexture, 0, 0);
+      } else {
+        ctx.fillStyle = '#f5f0e8';
+        ctx.fillRect(0, 0, width, height);
+      }
+      
+      // Draw old circles (faded)
+      for (let i = 0; i < circles.length; i++) {
+        const age = circles.length - i;
+        const alpha = Math.max(0.05, 0.3 - age * 0.08);
+        circles[i].draw(alpha);
+      }
+      
+      // Draw current circle
+      if (currentEnso) {
+        currentEnso.draw(1);
+      }
+    }
+    
+    function startNewEnso(x, y) {
+      if (isDrawing) return;
+      
+      isDrawing = true;
+      whisper.textContent = '';
+      
+      // Breath in
+      playBreathIn();
+      
+      // After breath in, start drawing
+      setTimeout(() => {
+        stopBreathIn();
+        playBreathOut();
+        startBrush();
+        
+        // Add previous ensō to history
+        if (currentEnso && currentEnso.isComplete()) {
+          circles.push(currentEnso);
+          if (circles.length > maxCircles) {
+            circles.shift();
+          }
+        }
+        
+        // Create new ensō
+        currentEnso = new Enso(x, y);
+      }, 1200);
+    }
+    
+    function animate() {
+      if (currentEnso && !currentEnso.isComplete()) {
+        const stillDrawing = currentEnso.update();
+        redraw();
+        
+        if (!stillDrawing) {
+          // Finished drawing
+          stopBrush();
+          stopBreathOut();
+          
+          setTimeout(() => {
+            playBowl();
+          }, 300);
+          
+          setTimeout(() => {
+            whisper.textContent = 'click to draw';
+            isDrawing = false;
+          }, 2000);
+        }
+      }
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Event handlers
+    canvas.addEventListener('click', (e) => {
+      if (!audioStarted || isDrawing) return;
+      startNewEnso(e.clientX, e.clientY);
+    });
+    
+    canvas.addEventListener('touchend', (e) => {
+      if (!audioStarted || isDrawing) return;
+      e.preventDefault();
+      const touch = e.changedTouches[0];
+      startNewEnso(touch.clientX, touch.clientY);
+    });
+    
+    // Start with audio
+    startBtn.addEventListener('click', async () => {
+      await Tone.start();
+      initAudio();
+      audioStarted = true;
+      startBtn.classList.add('hidden');
+      whisper.textContent = 'click to draw';
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>

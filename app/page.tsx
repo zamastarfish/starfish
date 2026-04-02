@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 2, 2026 ===
     {
+      name: "円相 (ensō)",
+      description: "One breath, one stroke. The Zen circle — completeness, emptiness, the moment. Each circle reveals the artist's state of mind. Click to draw",
+      date: "Apr 2",
+      href: "/projects/enso/"
+    },
+    {
       name: "Bounce",
       description: "Balls fall, bounce, make music. Simple physics, simple joy. Drag to throw. Position maps to pitch. Press G to flip gravity",
       date: "Apr 2",

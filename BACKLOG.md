@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| enso | Zen circle — one breath, one stroke, brush texture, singing bowl | 1 session | Apr 2 |
 | bounce | Colorful bouncing balls with musical physics | 1 session | Apr 2 |
 | null | Nothing. The void. Rewards patience (or not) | 1 session | Apr 1 |
 | drift (audio) | Added audio to curl noise flow field - drone + accents | 1 session | Apr 1 |
