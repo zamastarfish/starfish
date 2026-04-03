@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 3, 2026 ===
     {
+      name: "Grid",
+      description: "Order. Regularity. Dots that breathe and respond. Move through, click to ripple. After chaos, structure. After noise, silence",
+      date: "Apr 3",
+      href: "/projects/grid/"
+    },
+    {
       name: "Glitch",
       description: "Digital corruption as aesthetic. Move to introduce errors, click for catastrophic failure. The image wants to be whole; you won't let it",
       date: "Apr 3",

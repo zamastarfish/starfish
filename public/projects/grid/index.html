@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>grid — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #fafafa; 
+      overflow: hidden; 
+      font-family: system-ui, sans-serif;
+    }
+    canvas { display: block; cursor: crosshair; }
+    
+    #info-btn, #nav-btn {
+      position: fixed;
+      bottom: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.05);
+      border: 1px solid rgba(0,0,0,0.1);
+      color: rgba(0,0,0,0.4);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #info-btn { right: 20px; }
+    #nav-btn { right: 66px; font-size: 14px; }
+    #info-btn:hover, #nav-btn:hover {
+      background: rgba(0,0,0,0.1);
+      color: rgba(0,0,0,0.7);
+    }
+    
+    #info-panel {
+      position: fixed;
+      bottom: 70px;
+      right: 20px;
+      width: 280px;
+      background: rgba(255,255,255,0.95);
+      border: 1px solid rgba(0,0,0,0.1);
+      border-radius: 8px;
+      padding: 16px;
+      color: rgba(0,0,0,0.7);
+      font-size: 13px;
+      line-height: 1.5;
+      opacity: 0;
+      transform: translateY(10px);
+      pointer-events: none;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #info-panel.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    #info-panel h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      color: #000;
+    }
+    #info-panel p { margin: 0 0 8px 0; }
+    #info-panel p:last-child { margin: 0; }
+    .info-muted { color: rgba(0,0,0,0.4); font-size: 11px; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <button id="nav-btn">↖</button>
+  <button id="info-btn">?</button>
+  <div id="info-panel">
+    <h3>grid</h3>
+    <p>Order. Regularity. The comfort of knowing where everything is.</p>
+    <p>Move through and watch it respond — subtle breathing, gentle acknowledgment. Click to ripple.</p>
+    <p class="info-muted">After chaos, structure. After noise, silence.</p>
+  </div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let mouseX = -1000, mouseY = -1000;
+    let dots = [];
+    let ripples = [];
+    const spacing = 40;
+    const baseRadius = 3;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      initDots();
+    }
+    
+    function initDots() {
+      dots = [];
+      const cols = Math.ceil(width / spacing) + 2;
+      const rows = Math.ceil(height / spacing) + 2;
+      const offsetX = (width - (cols - 1) * spacing) / 2;
+      const offsetY = (height - (rows - 1) * spacing) / 2;
+      
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          dots.push({
+            baseX: offsetX + col * spacing,
+            baseY: offsetY + row * spacing,
+            x: offsetX + col * spacing,
+            y: offsetY + row * spacing,
+            radius: baseRadius,
+            targetRadius: baseRadius,
+            phase: Math.random() * Math.PI * 2
+          });
+        }
+      }
+    }
+    
+    function addRipple(x, y) {
+      ripples.push({
+        x, y,
+        radius: 0,
+        maxRadius: Math.max(width, height),
+        speed: 4,
+        opacity: 1
+      });
+    }
+    
+    function update(time) {
+      const t = time * 0.001;
+      
+      // Update ripples
+      ripples = ripples.filter(r => {
+        r.radius += r.speed;
+        r.opacity = 1 - (r.radius / r.maxRadius);
+        return r.opacity > 0;
+      });
+      
+      // Update dots
+      dots.forEach(dot => {
+        // Distance from mouse
+        const dx = mouseX - dot.baseX;
+        const dy = mouseY - dot.baseY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const influence = Math.max(0, 1 - dist / 150);
+        
+        // Subtle displacement away from mouse
+        if (dist > 0 && dist < 150) {
+          dot.x = dot.baseX - (dx / dist) * influence * 15;
+          dot.y = dot.baseY - (dy / dist) * influence * 15;
+        } else {
+          dot.x += (dot.baseX - dot.x) * 0.1;
+          dot.y += (dot.baseY - dot.y) * 0.1;
+        }
+        
+        // Size based on mouse proximity
+        dot.targetRadius = baseRadius + influence * 4;
+        
+        // Ripple influence
+        ripples.forEach(r => {
+          const rippleDist = Math.abs(Math.sqrt(
+            Math.pow(dot.baseX - r.x, 2) + Math.pow(dot.baseY - r.y, 2)
+          ) - r.radius);
+          
+          if (rippleDist < 30) {
+            const rippleInfluence = (1 - rippleDist / 30) * r.opacity;
+            dot.targetRadius += rippleInfluence * 6;
+          }
+        });
+        
+        // Gentle breathing
+        dot.targetRadius += Math.sin(t + dot.phase) * 0.5;
+        
+        // Smooth radius transition
+        dot.radius += (dot.targetRadius - dot.radius) * 0.15;
+      });
+    }
+    
+    function draw() {
+      // Soft white background
+      ctx.fillStyle = '#fafafa';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw dots
+      dots.forEach(dot => {
+        const dx = mouseX - dot.baseX;
+        const dy = mouseY - dot.baseY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const influence = Math.max(0, 1 - dist / 150);
+        
+        // Color shifts slightly with proximity
+        const lightness = 75 - influence * 30;
+        ctx.fillStyle = `hsl(220, 10%, ${lightness}%)`;
+        
+        ctx.beginPath();
+        ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      // Draw subtle grid lines (very faint)
+      ctx.strokeStyle = 'rgba(0,0,0,0.03)';
+      ctx.lineWidth = 1;
+      
+      // Vertical lines
+      for (let x = spacing; x < width; x += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      
+      // Horizontal lines
+      for (let y = spacing; y < height; y += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+    }
+    
+    function animate(time) {
+      update(time);
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Interaction
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    canvas.addEventListener('click', (e) => {
+      addRipple(e.clientX, e.clientY);
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      mouseX = e.touches[0].clientX;
+      mouseY = e.touches[0].clientY;
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      mouseX = e.touches[0].clientX;
+      mouseY = e.touches[0].clientY;
+      addRipple(mouseX, mouseY);
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    // Info panel
+    document.getElementById('info-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('info-panel').classList.toggle('visible');
+    });
+    
+    document.getElementById('nav-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.location.href = '/';
+    });
+    
+    resize();
+    window.addEventListener('resize', resize);
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
