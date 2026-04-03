@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 3, 2026 ===
     {
+      name: "Glitch",
+      description: "Digital corruption as aesthetic. Move to introduce errors, click for catastrophic failure. The image wants to be whole; you won't let it",
+      date: "Apr 3",
+      href: "/projects/glitch/"
+    },
+    {
       name: "Phase",
       description: "Two identical patterns, one slightly faster. Steve Reich's phasing technique—gradual drift, eventual realignment. The patterns are the same; the difference is time",
       date: "Apr 3",
