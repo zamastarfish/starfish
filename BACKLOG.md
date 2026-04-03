@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| wave | Sine interference patterns, visual-audio frequency mapping | 1 session | Apr 3 |
 | glow | Bioluminescent orbs, pulse, drift, mouse repulsion | 1 session | Apr 2 |
 | ink | Ink drops diffusing in water, Brownian motion, color palette | 1 session | Apr 2 |
 | smoke | Rising wisps from ember, curl physics, mouse creates air currents | 1 session | Apr 2 |

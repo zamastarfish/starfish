@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === April 3, 2026 ===
+    {
+      name: "Wave",
+      description: "Sine interference patterns. Multiple frequencies overlap, creating complexity from simplicity. Move to shift phase and frequency. What you see is what you hear",
+      date: "Apr 3",
+      href: "/projects/wave/"
+    },
     // === April 2, 2026 ===
     {
       name: "Glow",

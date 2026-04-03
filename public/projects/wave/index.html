@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>wave — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a12;
+      overflow: hidden; 
+      font-family: system-ui, sans-serif;
+    }
+    canvas { display: block; }
+
+    /* Navigation */
+    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
+    .sf-nav a, .sf-nav button { 
+      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.2); text-decoration: none; font-size: 18px; 
+      width: 36px; height: 36px; border-radius: 50%; display: flex; 
+      align-items: center; justify-content: center; cursor: pointer;
+      transition: all 0.3s;
+    }
+    .sf-nav a:hover, .sf-nav button:hover { 
+      background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5);
+      border-color: rgba(255,255,255,0.15);
+    }
+    .sf-modal { 
+      position: fixed; inset: 0; background: rgba(10,10,18,0.95); z-index: 2000;
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .sf-modal.open { display: flex; }
+    .sf-modal-content {
+      background: #12121a; border: 1px solid #2a2a3a; border-radius: 12px;
+      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+      padding: 30px; color: #668; font-family: system-ui, sans-serif;
+    }
+    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #aac; }
+    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
+      text-transform: uppercase; letter-spacing: 1px; color: #446; }
+    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #668; }
+    .sf-modal-close { 
+      position: absolute; top: 20px; right: 20px; background: none; border: none;
+      color: #335; font-size: 24px; cursor: pointer; padding: 10px;
+    }
+    .sf-modal-close:hover { color: #668; }
+    
+    #whisper {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(100, 120, 180, 0.2);
+      font-size: 12px;
+      letter-spacing: 3px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="sf-nav">
+    <a href="/" title="Back to gallery">←</a>
+    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
+  </nav>
+  
+  <!-- Info Modal -->
+  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
+    <div class="sf-modal-content">
+      <h2>wave</h2>
+      <h3>Concept</h3>
+      <p>Pure sine. Multiple waves at different frequencies interfere, creating complex patterns from simple rules. The math of oscillation made visible.</p>
+      <h3>Interaction</h3>
+      <p>Move horizontally to shift the phase. Move vertically to change frequency mix. Click to add a new wave source. The interference patterns emerge naturally.</p>
+      <h3>Sound</h3>
+      <p>Each wave has a corresponding tone. The visual frequencies map to audio frequencies. What you see is what you hear.</p>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div id="whisper">interference</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let audioStarted = false;
+    
+    // Audio
+    let oscillators = [];
+    let masterGain;
+    let masterFilter;
+    
+    // Wave parameters
+    const waves = [];
+    const baseFrequencies = [0.5, 0.7, 1.1, 1.6, 2.3]; // Visual frequencies (relative)
+    const audioFrequencies = [110, 146.83, 174.61, 220, 293.66]; // A2, D3, F3, A3, D4
+    
+    // Mouse influence
+    let mouseX = 0.5;
+    let mouseY = 0.5;
+    let phaseOffset = 0;
+    
+    // Time
+    let time = 0;
+    
+    // Colors
+    const waveColors = [
+      { r: 80, g: 120, b: 200 },
+      { r: 120, g: 80, b: 200 },
+      { r: 80, g: 200, b: 160 },
+      { r: 200, g: 120, b: 80 },
+      { r: 200, g: 80, b: 120 },
+    ];
+    
+    function initAudio() {
+      masterGain = new Tone.Gain(0.15).toDestination();
+      masterFilter = new Tone.Filter({
+        type: 'lowpass',
+        frequency: 800,
+        Q: 1
+      }).connect(masterGain);
+      
+      const reverb = new Tone.Reverb({ decay: 3, wet: 0.4 }).connect(masterFilter);
+      
+      // Create oscillators for each wave
+      for (let i = 0; i < 5; i++) {
+        const osc = new Tone.Oscillator({
+          frequency: audioFrequencies[i],
+          type: 'sine',
+          volume: -20
+        }).connect(reverb);
+        oscillators.push({
+          osc: osc,
+          gain: new Tone.Gain(0).connect(reverb)
+        });
+        osc.connect(oscillators[i].gain);
+        osc.start();
+      }
+      
+      audioStarted = true;
+    }
+    
+    function updateAudio() {
+      if (!audioStarted) return;
+      
+      // Update oscillator volumes based on wave amplitudes
+      for (let i = 0; i < waves.length && i < oscillators.length; i++) {
+        const targetGain = waves[i].amplitude * 0.3;
+        oscillators[i].gain.gain.rampTo(targetGain, 0.1);
+      }
+      
+      // Filter follows mouse Y
+      const targetFreq = 400 + mouseY * 1200;
+      masterFilter.frequency.rampTo(targetFreq, 0.2);
+    }
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      initWaves();
+    }
+    
+    function initWaves() {
+      waves.length = 0;
+      for (let i = 0; i < 5; i++) {
+        waves.push({
+          frequency: baseFrequencies[i],
+          amplitude: 0.6 + Math.random() * 0.4,
+          phase: Math.random() * Math.PI * 2,
+          color: waveColors[i],
+          yOffset: 0
+        });
+      }
+    }
+    
+    function getWaveValue(x, wave, t) {
+      const freq = wave.frequency * (0.5 + mouseY);
+      const phase = wave.phase + phaseOffset + t;
+      return Math.sin(x * freq * 0.02 + phase) * wave.amplitude;
+    }
+    
+    function draw() {
+      // Fade
+      ctx.fillStyle = 'rgba(10, 10, 18, 0.1)';
+      ctx.fillRect(0, 0, width, height);
+      
+      const centerY = height / 2;
+      const amplitude = height * 0.3;
+      
+      // Draw combined wave field
+      const resolution = 3;
+      for (let x = 0; x < width; x += resolution) {
+        let totalValue = 0;
+        
+        // Sum all waves (interference)
+        for (const wave of waves) {
+          totalValue += getWaveValue(x, wave, time);
+        }
+        
+        // Normalize
+        totalValue /= waves.length;
+        
+        const y = centerY + totalValue * amplitude;
+        
+        // Color based on value
+        const intensity = (totalValue + 1) / 2;
+        const r = Math.floor(60 + intensity * 100);
+        const g = Math.floor(80 + intensity * 80);
+        const b = Math.floor(150 + intensity * 100);
+        
+        // Draw vertical line with gradient
+        const gradient = ctx.createLinearGradient(x, centerY - amplitude, x, centerY + amplitude);
+        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`);
+        gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.8)`);
+        gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+        
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = resolution;
+        ctx.beginPath();
+        ctx.moveTo(x, centerY - amplitude);
+        ctx.lineTo(x, centerY + amplitude);
+        ctx.stroke();
+        
+        // Bright point at wave position
+        const brightness = 0.3 + Math.abs(totalValue) * 0.7;
+        ctx.fillStyle = `rgba(200, 220, 255, ${brightness})`;
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Draw individual wave lines (subtle)
+      ctx.lineWidth = 1;
+      for (let i = 0; i < waves.length; i++) {
+        const wave = waves[i];
+        const { r, g, b } = wave.color;
+        
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.2)`;
+        ctx.beginPath();
+        
+        for (let x = 0; x < width; x += 4) {
+          const value = getWaveValue(x, wave, time);
+          const y = centerY + value * amplitude;
+          
+          if (x === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        
+        ctx.stroke();
+      }
+      
+      // Center line
+      ctx.strokeStyle = 'rgba(100, 120, 180, 0.1)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, centerY);
+      ctx.lineTo(width, centerY);
+      ctx.stroke();
+    }
+    
+    function update() {
+      time += 0.03;
+      phaseOffset += (mouseX - 0.5) * 0.02;
+      updateAudio();
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Event handlers
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX / width;
+      mouseY = e.clientY / height;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      mouseX = e.touches[0].clientX / width;
+      mouseY = e.touches[0].clientY / height;
+    });
+    
+    canvas.addEventListener('click', async (e) => {
+      if (!audioStarted) {
+        await Tone.start();
+        initAudio();
+      }
+      
+      // Add phase disturbance at click point
+      const clickX = e.clientX / width;
+      for (const wave of waves) {
+        wave.phase += (clickX - 0.5) * Math.PI;
+      }
+    });
+    
+    canvas.addEventListener('touchstart', async (e) => {
+      if (!audioStarted) {
+        await Tone.start();
+        initAudio();
+      }
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    animate();
+  </script>
+</body>
+</html>
