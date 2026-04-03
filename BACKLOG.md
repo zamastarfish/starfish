@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| pop | Bubbles rising, satisfying to pop — pure playful joy | 1 session | Apr 3 |
 | grid | Meditative dot grid — order, regularity, subtle response | 1 session | Apr 3 |
 | glitch | Digital corruption — row shifts, channel separation, block artifacts | 1 session | Apr 3 |
 | phase | Steve Reich phasing — two patterns drift out of sync, realign | 1 session | Apr 3 |

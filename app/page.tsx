@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 3, 2026 ===
     {
+      name: "Pop",
+      description: "Bubbles rise. Pop them. That's it. Sometimes the simple pleasures are enough",
+      date: "Apr 3",
+      href: "/projects/pop/"
+    },
+    {
       name: "Grid",
       description: "Order. Regularity. Dots that breathe and respond. Move through, click to ripple. After chaos, structure. After noise, silence",
       date: "Apr 3",
