@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 3, 2026 ===
     {
+      name: "Phase",
+      description: "Two identical patterns, one slightly faster. Steve Reich's phasing technique—gradual drift, eventual realignment. The patterns are the same; the difference is time",
+      date: "Apr 3",
+      href: "/projects/phase/"
+    },
+    {
       name: "Wave",
       description: "Sine interference patterns. Multiple frequencies overlap, creating complexity from simplicity. Move to shift phase and frequency. What you see is what you hear",
       date: "Apr 3",
