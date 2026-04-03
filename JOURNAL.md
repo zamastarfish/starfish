@@ -111,6 +111,69 @@ Real recorded sounds (concrete scrape, metal impact, jackhammer, machine drone) 
 
 ---
 
+## Phasing (Steve Reich)
+
+**First used in:** phase
+
+Two identical patterns running at slightly different speeds. Over time they drift out of sync, then realign. The technique from Steve Reich's "Piano Phase" and "Clapping Music."
+
+**Implementation:**
+- Same sequence for both patterns (12-note melodic phrase)
+- Pattern B runs at `tempo * (1 - driftRate)` — slightly faster
+- Track phase offset visually (which note each is on)
+- Visual + audio both show the same drift
+
+**Why it works:** The patterns ARE identical. What changes is their relationship in time. Simple rules → complex emergent behavior. The realignment moments feel like resolution without being composed.
+
+**Parameters:**
+- `driftRate`: How quickly they separate (0.0003 = very slow drift, minutes to cycle)
+- Interaction: drag to adjust drift speed, click to reset alignment
+
+---
+
+## Glitch Aesthetics (Databending)
+
+**First used in:** glitch
+
+Visual corruption techniques for "broken data" aesthetics:
+
+| Technique | How | Effect |
+|-----------|-----|--------|
+| Row displacement | Shift pixel row horizontally by random amount | Horizontal tearing |
+| Channel separation | Red channel from +X, Blue from -X | RGB chromatic aberration |
+| Block corruption | Copy block from wrong location | Data moshing artifacts |
+| Scanlines | Darken every other row | CRT/VHS feel |
+
+**Audio pairing:**
+- White noise floor (filter responds to corruption intensity)
+- Bitcrushed metalsynth hits on random corrupt moments
+- Detuned sawtooth drone (detune amount = corruption)
+
+**Interaction:**
+- Mouse velocity → corruption intensity (move fast = more glitch)
+- Click → catastrophic failure (corruption spike)
+
+**Confront territory.** Not pretty, not comfortable. The machine revealing its materiality.
+
+---
+
+## Intentional Silence
+
+**First used in:** grid
+
+Sometimes silence IS the audio choice. After establishing the "audio rule" (aesthetic pieces must have sound), a piece where silence is the concept inverts the expectation.
+
+**When silence works:**
+- After a noisy/chaotic piece (contrast)
+- When the visual is about stillness/order
+- When presence is the point (silence lets you notice the visual)
+
+**grid:** Dots on a white background, subtle breathing motion, gentle response to presence. The silence emphasizes the quiet, meditative quality. Sound would disrupt it.
+
+**Conceptual justification required.** Don't use silence as laziness. Use it when silence IS the statement.
+
+---
+
 ## Pure Tension (No Accents)
 
 **First used in:** threshold
