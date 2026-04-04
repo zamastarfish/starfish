@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| mitosis | Cell division — phases, chromosomes, spindle fibers, cytokinesis | 1 session | Apr 4 |
 | crystal | 6-fold crystalline growth, branching fractals, bell-like tones | 1 session | Apr 4 |
 | echo | Draw gesture, watch it repeat and degrade — memory/impermanence | 1 session | Apr 4 |
 | pop | Bubbles rising, satisfying to pop — pure playful joy | 1 session | Apr 3 |

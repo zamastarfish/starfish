@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 4, 2026 ===
     {
+      name: "Mitosis",
+      description: "One becomes two. Click a cell to trigger division — watch chromosomes condense, align, pull apart. The ancient choreography encoded in every living thing",
+      date: "Apr 4",
+      href: "/projects/mitosis/"
+    },
+    {
       name: "Crystal",
       description: "Crystalline structures emerge from supersaturated solutions. 6-fold symmetry, branching fractals, the mathematics of mineral growth. Click to seed, move to warm and slow the process",
       date: "Apr 4",
