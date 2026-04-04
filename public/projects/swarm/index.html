@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>swarm — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a10; 
+      overflow: hidden; 
+      touch-action: none;
+      font-family: system-ui, sans-serif;
+    }
+    canvas { display: block; }
+    
+    .info-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 16px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .info-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    
+    .nav-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 16px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    
+    .info-panel {
+      position: fixed;
+      inset: 0;
+      background: rgba(10,10,16,0.95);
+      z-index: 99;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .info-panel.open { display: flex; }
+    .info-content {
+      max-width: 400px;
+      color: rgba(255,255,255,0.8);
+      line-height: 1.6;
+    }
+    .info-content h1 {
+      font-size: 24px;
+      margin-bottom: 16px;
+      color: #88aaff;
+    }
+    .info-content p { margin-bottom: 12px; }
+    .info-content .hint {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="nav-btn">←</a>
+  <button class="info-btn">?</button>
+  <div class="info-panel">
+    <div class="info-content">
+      <h1>swarm</h1>
+      <p>Hundreds of agents, three simple rules: stay close, align direction, avoid collision. From these constraints, murmurations emerge.</p>
+      <p>No leader. No plan. Just neighbors watching neighbors. Complexity from simplicity — the signature of emergence.</p>
+      <p class="hint">You are a predator. Move through the swarm and watch them scatter. Stay still to let them settle.</p>
+    </div>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    const boids = [];
+    const NUM_BOIDS = 300;
+    let mouseX = -1000, mouseY = -1000;
+    let audioStarted = false;
+    
+    // Audio
+    let drone, filter, chorus, scatter;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    async function initAudio() {
+      if (audioStarted) return;
+      await Tone.start();
+      audioStarted = true;
+      
+      // Swarm drone - follows swarm density/movement
+      const reverb = new Tone.Reverb({ decay: 4, wet: 0.4 }).toDestination();
+      chorus = new Tone.Chorus({ frequency: 0.5, depth: 0.5, wet: 0.3 }).connect(reverb);
+      filter = new Tone.Filter({ frequency: 400, type: 'lowpass', Q: 2 }).connect(chorus);
+      
+      drone = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 2, decay: 0.5, sustain: 0.8, release: 3 }
+      }).connect(new Tone.Gain(0.08).connect(filter));
+      
+      // Play drone chord
+      drone.triggerAttack(['C2', 'G2', 'C3'], Tone.now());
+      
+      // Scatter sound
+      scatter = new Tone.NoiseSynth({
+        noise: { type: 'pink' },
+        envelope: { attack: 0.02, decay: 0.3, sustain: 0, release: 0.2 }
+      }).connect(new Tone.Gain(0.1).connect(reverb));
+    }
+    
+    class Boid {
+      constructor() {
+        this.x = Math.random() * width;
+        this.y = Math.random() * height;
+        this.vx = (Math.random() - 0.5) * 4;
+        this.vy = (Math.random() - 0.5) * 4;
+        this.history = [];
+        this.maxHistory = 5;
+      }
+      
+      update(boids) {
+        // Store history for trail
+        this.history.push({ x: this.x, y: this.y });
+        if (this.history.length > this.maxHistory) this.history.shift();
+        
+        // Boid rules
+        let sepX = 0, sepY = 0, sepCount = 0;
+        let alignX = 0, alignY = 0, alignCount = 0;
+        let cohX = 0, cohY = 0, cohCount = 0;
+        
+        const sepDist = 25;
+        const alignDist = 50;
+        const cohDist = 80;
+        
+        for (const other of boids) {
+          if (other === this) continue;
+          
+          const dx = other.x - this.x;
+          const dy = other.y - this.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < sepDist && dist > 0) {
+            sepX -= dx / dist;
+            sepY -= dy / dist;
+            sepCount++;
+          }
+          
+          if (dist < alignDist) {
+            alignX += other.vx;
+            alignY += other.vy;
+            alignCount++;
+          }
+          
+          if (dist < cohDist) {
+            cohX += other.x;
+            cohY += other.y;
+            cohCount++;
+          }
+        }
+        
+        // Apply separation
+        if (sepCount > 0) {
+          this.vx += sepX * 0.15;
+          this.vy += sepY * 0.15;
+        }
+        
+        // Apply alignment
+        if (alignCount > 0) {
+          alignX /= alignCount;
+          alignY /= alignCount;
+          this.vx += (alignX - this.vx) * 0.05;
+          this.vy += (alignY - this.vy) * 0.05;
+        }
+        
+        // Apply cohesion
+        if (cohCount > 0) {
+          cohX /= cohCount;
+          cohY /= cohCount;
+          this.vx += (cohX - this.x) * 0.003;
+          this.vy += (cohY - this.y) * 0.003;
+        }
+        
+        // Flee from mouse (predator)
+        const mdx = this.x - mouseX;
+        const mdy = this.y - mouseY;
+        const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
+        const fleeDist = 120;
+        
+        if (mDist < fleeDist && mDist > 0) {
+          const force = (fleeDist - mDist) / fleeDist;
+          this.vx += (mdx / mDist) * force * 2;
+          this.vy += (mdy / mDist) * force * 2;
+        }
+        
+        // Speed limit
+        const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+        const maxSpeed = 4;
+        const minSpeed = 1;
+        
+        if (speed > maxSpeed) {
+          this.vx = (this.vx / speed) * maxSpeed;
+          this.vy = (this.vy / speed) * maxSpeed;
+        } else if (speed < minSpeed) {
+          this.vx = (this.vx / speed) * minSpeed;
+          this.vy = (this.vy / speed) * minSpeed;
+        }
+        
+        // Move
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // Wrap edges
+        if (this.x < 0) this.x += width;
+        if (this.x > width) this.x -= width;
+        if (this.y < 0) this.y += height;
+        if (this.y > height) this.y -= height;
+      }
+      
+      draw() {
+        const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+        const angle = Math.atan2(this.vy, this.vx);
+        
+        // Trail
+        ctx.beginPath();
+        for (let i = 0; i < this.history.length; i++) {
+          const p = this.history[i];
+          const alpha = i / this.history.length * 0.3;
+          if (i === 0) {
+            ctx.moveTo(p.x, p.y);
+          } else {
+            ctx.lineTo(p.x, p.y);
+          }
+        }
+        ctx.lineTo(this.x, this.y);
+        ctx.strokeStyle = `rgba(120, 160, 255, 0.2)`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        
+        // Body - triangle pointing in direction
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(angle);
+        
+        const brightness = 50 + speed * 10;
+        ctx.fillStyle = `hsl(220, 70%, ${brightness}%)`;
+        
+        ctx.beginPath();
+        ctx.moveTo(6, 0);
+        ctx.lineTo(-3, 3);
+        ctx.lineTo(-3, -3);
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.restore();
+      }
+    }
+    
+    // Calculate swarm metrics for audio
+    function getSwarmMetrics() {
+      let totalSpeed = 0;
+      let centerX = 0, centerY = 0;
+      let nearMouse = 0;
+      
+      for (const boid of boids) {
+        const speed = Math.sqrt(boid.vx * boid.vx + boid.vy * boid.vy);
+        totalSpeed += speed;
+        centerX += boid.x;
+        centerY += boid.y;
+        
+        const dx = boid.x - mouseX;
+        const dy = boid.y - mouseY;
+        if (Math.sqrt(dx * dx + dy * dy) < 150) nearMouse++;
+      }
+      
+      return {
+        avgSpeed: totalSpeed / boids.length,
+        centerX: centerX / boids.length,
+        centerY: centerY / boids.length,
+        nearMouse: nearMouse
+      };
+    }
+    
+    let lastNearMouse = 0;
+    
+    function updateAudio() {
+      if (!audioStarted || !filter) return;
+      
+      const metrics = getSwarmMetrics();
+      
+      // Filter follows average speed
+      const targetFreq = 200 + metrics.avgSpeed * 100;
+      filter.frequency.rampTo(targetFreq, 0.1);
+      
+      // Scatter sound when mouse disrupts
+      if (metrics.nearMouse < lastNearMouse - 10) {
+        scatter.triggerAttackRelease('16n');
+      }
+      lastNearMouse = metrics.nearMouse;
+    }
+    
+    function draw() {
+      // Fade
+      ctx.fillStyle = 'rgba(10, 10, 16, 0.2)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Update and draw boids
+      for (const boid of boids) {
+        boid.update(boids);
+      }
+      for (const boid of boids) {
+        boid.draw();
+      }
+      
+      // Draw predator indicator if mouse active
+      if (mouseX > 0 && mouseX < width) {
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, 120, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 100, 100, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      
+      updateAudio();
+      
+      requestAnimationFrame(draw);
+    }
+    
+    function handleMove(x, y) {
+      mouseX = x;
+      mouseY = y;
+    }
+    
+    canvas.addEventListener('click', () => initAudio());
+    canvas.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+    canvas.addEventListener('mouseleave', () => { mouseX = -1000; mouseY = -1000; });
+    
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      initAudio();
+      const touch = e.touches[0];
+      handleMove(touch.clientX, touch.clientY);
+    });
+    
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      handleMove(touch.clientX, touch.clientY);
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    // Info panel
+    const infoBtn = document.querySelector('.info-btn');
+    const infoPanel = document.querySelector('.info-panel');
+    
+    infoBtn.addEventListener('click', () => infoPanel.classList.toggle('open'));
+    infoPanel.addEventListener('click', e => {
+      if (e.target === infoPanel) infoPanel.classList.remove('open');
+    });
+    
+    // Init
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Create boids
+    for (let i = 0; i < NUM_BOIDS; i++) {
+      boids.push(new Boid());
+    }
+    
+    draw();
+  </script>
+</body>
+</html>

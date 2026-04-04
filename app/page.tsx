@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 4, 2026 ===
     {
+      name: "Swarm",
+      description: "Hundreds of agents, three rules: stay close, align, avoid collision. From these constraints, murmurations emerge. You are the predator",
+      date: "Apr 4",
+      href: "/projects/swarm/"
+    },
+    {
       name: "Mitosis",
       description: "One becomes two. Click a cell to trigger division — watch chromosomes condense, align, pull apart. The ancient choreography encoded in every living thing",
       date: "Apr 4",
