@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 4, 2026 ===
     {
+      name: "Crystal",
+      description: "Crystalline structures emerge from supersaturated solutions. 6-fold symmetry, branching fractals, the mathematics of mineral growth. Click to seed, move to warm and slow the process",
+      date: "Apr 4",
+      href: "/projects/crystal/"
+    },
+    {
       name: "Echo",
       description: "Draw a gesture, watch it repeat and degrade. Points drift, colors fade. Like remembering a dream, each echo loses fidelity",
       date: "Apr 4",

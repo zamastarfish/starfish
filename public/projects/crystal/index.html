@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>crystal — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a12; 
+      overflow: hidden; 
+      touch-action: none;
+      font-family: system-ui, sans-serif;
+    }
+    canvas { display: block; }
+    
+    /* Info overlay */
+    .info-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 16px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .info-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    
+    .nav-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 16px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    
+    .info-panel {
+      position: fixed;
+      inset: 0;
+      background: rgba(10,10,18,0.95);
+      z-index: 99;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .info-panel.open { display: flex; }
+    .info-content {
+      max-width: 400px;
+      color: rgba(255,255,255,0.8);
+      line-height: 1.6;
+    }
+    .info-content h1 {
+      font-size: 24px;
+      margin-bottom: 16px;
+      color: #88ccff;
+    }
+    .info-content p { margin-bottom: 12px; }
+    .info-content .hint {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="nav-btn">←</a>
+  <button class="info-btn">?</button>
+  <div class="info-panel">
+    <div class="info-content">
+      <h1>crystal</h1>
+      <p>Crystalline structures emerge from supersaturated solutions. Order from chaos at the molecular level.</p>
+      <p>Each branch follows mathematical rules — angles constrained by atomic geometry, lengths dictated by available energy. Yet randomness shapes every crystal uniquely.</p>
+      <p class="hint">Click to seed a new crystal. Move to warm the solution and slow growth.</p>
+    </div>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let crystals = [];
+    let mouseX = 0, mouseY = 0;
+    let audioStarted = false;
+    
+    // Audio components
+    let synth, reverb, delay, filter;
+    
+    // Crystal colors - ice blues, purples, whites
+    const palettes = [
+      ['#88ccff', '#aaddff', '#cceeff', '#ffffff'], // Ice blue
+      ['#cc88ff', '#ddaaff', '#eeccff', '#ffffff'], // Amethyst
+      ['#88ffcc', '#aaffdd', '#ccffee', '#ffffff'], // Emerald
+      ['#ffcc88', '#ffddaa', '#ffeecc', '#ffffff'], // Citrine
+    ];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    async function initAudio() {
+      if (audioStarted) return;
+      await Tone.start();
+      audioStarted = true;
+      
+      // Crystalline bell-like sounds
+      reverb = new Tone.Reverb({ decay: 4, wet: 0.6 }).toDestination();
+      delay = new Tone.FeedbackDelay({ delayTime: '8n', feedback: 0.3, wet: 0.2 }).connect(reverb);
+      filter = new Tone.Filter({ frequency: 2000, type: 'lowpass' }).connect(delay);
+      
+      synth = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: {
+          attack: 0.01,
+          decay: 1.5,
+          sustain: 0.1,
+          release: 2
+        },
+        volume: -12
+      }).connect(filter);
+    }
+    
+    function playTone(freq, velocity = 0.5) {
+      if (!audioStarted || !synth) return;
+      synth.triggerAttackRelease(freq, '8n', Tone.now(), velocity);
+    }
+    
+    // Crystal branch class
+    class Branch {
+      constructor(x, y, angle, length, depth, crystal) {
+        this.x = x;
+        this.y = y;
+        this.angle = angle;
+        this.targetLength = length;
+        this.currentLength = 0;
+        this.depth = depth;
+        this.crystal = crystal;
+        this.growing = true;
+        this.children = [];
+        this.hasSpawned = false;
+        this.growthSpeed = 0.5 + Math.random() * 0.5;
+      }
+      
+      get endX() {
+        return this.x + Math.cos(this.angle) * this.currentLength;
+      }
+      
+      get endY() {
+        return this.y + Math.sin(this.angle) * this.currentLength;
+      }
+      
+      update(warmth) {
+        if (!this.growing) return;
+        
+        // Warmth slows growth (0-1, higher = slower)
+        const speed = this.growthSpeed * (1 - warmth * 0.8);
+        this.currentLength += speed;
+        
+        if (this.currentLength >= this.targetLength) {
+          this.currentLength = this.targetLength;
+          this.growing = false;
+          
+          // Play tone when branch completes
+          const freq = 200 + (this.crystal.palette[0].charCodeAt(1) * 3) + this.depth * 100;
+          playTone(freq, 0.3 - this.depth * 0.05);
+        }
+        
+        // Spawn children at certain growth points
+        if (!this.hasSpawned && this.currentLength > this.targetLength * 0.6 && this.depth < this.crystal.maxDepth) {
+          this.spawn();
+          this.hasSpawned = true;
+        }
+        
+        this.children.forEach(c => c.update(warmth));
+      }
+      
+      spawn() {
+        // Crystalline angles - 60 degree symmetry like snowflakes
+        const baseAngle = Math.PI / 3; // 60 degrees
+        const variance = 0.15;
+        
+        const numBranches = Math.random() < 0.7 ? 2 : (Math.random() < 0.5 ? 1 : 3);
+        const newLength = this.targetLength * (0.5 + Math.random() * 0.3);
+        
+        if (numBranches >= 1) {
+          this.children.push(new Branch(
+            this.endX, this.endY,
+            this.angle + baseAngle + (Math.random() - 0.5) * variance,
+            newLength,
+            this.depth + 1,
+            this.crystal
+          ));
+        }
+        if (numBranches >= 2) {
+          this.children.push(new Branch(
+            this.endX, this.endY,
+            this.angle - baseAngle + (Math.random() - 0.5) * variance,
+            newLength,
+            this.depth + 1,
+            this.crystal
+          ));
+        }
+        if (numBranches >= 3) {
+          this.children.push(new Branch(
+            this.endX, this.endY,
+            this.angle + (Math.random() - 0.5) * variance,
+            newLength * 0.8,
+            this.depth + 1,
+            this.crystal
+          ));
+        }
+      }
+      
+      draw() {
+        if (this.currentLength < 1) return;
+        
+        const colorIdx = Math.min(this.depth, this.crystal.palette.length - 1);
+        const alpha = 1 - this.depth * 0.15;
+        const lineWidth = Math.max(1, 3 - this.depth * 0.5);
+        
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.endX, this.endY);
+        ctx.strokeStyle = this.crystal.palette[colorIdx];
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = lineWidth;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        
+        this.children.forEach(c => c.draw());
+      }
+      
+      isComplete() {
+        if (this.growing) return false;
+        return this.children.every(c => c.isComplete());
+      }
+    }
+    
+    // Crystal class - 6-fold symmetry
+    class Crystal {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.palette = palettes[Math.floor(Math.random() * palettes.length)];
+        this.maxDepth = 4 + Math.floor(Math.random() * 2);
+        this.branches = [];
+        this.complete = false;
+        
+        // Create 6-fold symmetric initial branches
+        const initialLength = 40 + Math.random() * 30;
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
+          this.branches.push(new Branch(x, y, angle, initialLength, 0, this));
+        }
+        
+        // Play seed tone
+        playTone(300, 0.5);
+      }
+      
+      update(warmth) {
+        this.branches.forEach(b => b.update(warmth));
+        this.complete = this.branches.every(b => b.isComplete());
+      }
+      
+      draw() {
+        // Subtle glow at center
+        const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 20);
+        gradient.addColorStop(0, this.palette[0] + '40');
+        gradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 20, 0, Math.PI * 2);
+        ctx.fill();
+        
+        this.branches.forEach(b => b.draw());
+      }
+    }
+    
+    function seedCrystal(x, y) {
+      crystals.push(new Crystal(x, y));
+      
+      // Limit number of crystals
+      if (crystals.length > 8) {
+        crystals.shift();
+      }
+    }
+    
+    function getWarmth(x, y) {
+      // Warmth based on distance from mouse - closer = warmer
+      const dx = x - mouseX;
+      const dy = y - mouseY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const maxDist = 200;
+      return Math.max(0, 1 - dist / maxDist);
+    }
+    
+    function draw() {
+      // Slight fade for trails
+      ctx.fillStyle = 'rgba(10, 10, 18, 0.05)';
+      ctx.fillRect(0, 0, width, height);
+      
+      crystals.forEach(crystal => {
+        const warmth = getWarmth(crystal.x, crystal.y);
+        crystal.update(warmth);
+        crystal.draw();
+      });
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Event handlers
+    function handleInteraction(x, y, isNew = false) {
+      mouseX = x;
+      mouseY = y;
+      if (isNew) {
+        initAudio();
+        seedCrystal(x, y);
+      }
+    }
+    
+    canvas.addEventListener('click', e => {
+      handleInteraction(e.clientX, e.clientY, true);
+    });
+    
+    canvas.addEventListener('mousemove', e => {
+      handleInteraction(e.clientX, e.clientY, false);
+    });
+    
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      handleInteraction(touch.clientX, touch.clientY, true);
+    });
+    
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      handleInteraction(touch.clientX, touch.clientY, false);
+    });
+    
+    // Info panel
+    const infoBtn = document.querySelector('.info-btn');
+    const infoPanel = document.querySelector('.info-panel');
+    
+    infoBtn.addEventListener('click', () => {
+      infoPanel.classList.toggle('open');
+    });
+    
+    infoPanel.addEventListener('click', (e) => {
+      if (e.target === infoPanel) {
+        infoPanel.classList.remove('open');
+      }
+    });
+    
+    // Init
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Start with a crystal in center
+    setTimeout(() => {
+      seedCrystal(width / 2, height / 2);
+    }, 500);
+    
+    draw();
+  </script>
+</body>
+</html>
