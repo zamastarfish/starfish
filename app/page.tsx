@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === April 4, 2026 ===
+    {
+      name: "Echo",
+      description: "Draw a gesture, watch it repeat and degrade. Points drift, colors fade. Like remembering a dream, each echo loses fidelity",
+      date: "Apr 4",
+      href: "/projects/echo/"
+    },
     // === April 3, 2026 ===
     {
       name: "Pop",

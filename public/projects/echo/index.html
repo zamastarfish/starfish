@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>echo — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0d0d0d; 
+      overflow: hidden; 
+      font-family: system-ui, sans-serif;
+    }
+    canvas { display: block; cursor: crosshair; }
+    
+    #info-btn, #nav-btn {
+      position: fixed;
+      bottom: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #info-btn { right: 20px; }
+    #nav-btn { right: 66px; font-size: 14px; }
+    #info-btn:hover, #nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    
+    #info-panel {
+      position: fixed;
+      bottom: 70px;
+      right: 20px;
+      width: 280px;
+      background: rgba(0,0,0,0.85);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 16px;
+      color: rgba(255,255,255,0.8);
+      font-size: 13px;
+      line-height: 1.5;
+      opacity: 0;
+      transform: translateY(10px);
+      pointer-events: none;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #info-panel.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    #info-panel h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      color: #fff;
+    }
+    #info-panel p { margin: 0 0 8px 0; }
+    #info-panel p:last-child { margin: 0; }
+    .info-muted { color: rgba(255,255,255,0.5); font-size: 11px; }
+    
+    #start-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      cursor: pointer;
+    }
+    #start-overlay span {
+      color: rgba(255,255,255,0.6);
+      font-size: 14px;
+      letter-spacing: 0.1em;
+    }
+    
+    #echo-count {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.3);
+      font-size: 12px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div id="start-overlay"><span>draw to begin</span></div>
+  <div id="echo-count"></div>
+  <canvas id="canvas"></canvas>
+  <button id="nav-btn">↖</button>
+  <button id="info-btn">?</button>
+  <div id="info-panel">
+    <h3>echo</h3>
+    <p>Draw a gesture. Watch it repeat, each time losing fidelity. Points drift, colors fade, the memory degrades.</p>
+    <p>Like telling a story through generations. Like copying a copy. Like remembering a dream.</p>
+    <p class="info-muted">Click and drag to draw • Each echo decays further</p>
+  </div>
+  
+  <script src="https://unpkg.com/tone@14.7.77/build/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const echoCountEl = document.getElementById('echo-count');
+    
+    let width, height;
+    let audioStarted = false;
+    let isDrawing = false;
+    let currentPath = [];
+    let echoes = []; // Array of paths, each degraded from the last
+    let echoCount = 0;
+    const maxEchoes = 12;
+    const echoDelay = 800; // ms between echoes
+    
+    // Audio
+    let synth, reverb, delay;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    async function initAudio() {
+      await Tone.start();
+      
+      // Ethereal pad sound
+      reverb = new Tone.Reverb({ decay: 4, wet: 0.6 }).toDestination();
+      delay = new Tone.FeedbackDelay({ delayTime: 0.3, feedback: 0.4, wet: 0.3 }).connect(reverb);
+      
+      synth = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: {
+          attack: 0.1,
+          decay: 0.3,
+          sustain: 0.4,
+          release: 1.5
+        }
+      }).connect(delay);
+      synth.volume.value = -15;
+      
+      audioStarted = true;
+    }
+    
+    function degradePath(path, generation) {
+      // Each generation: points drift, some are lost, color fades
+      const degradeFactor = 0.15 * generation;
+      const lossChance = 0.05 * generation;
+      
+      return path
+        .filter(() => Math.random() > lossChance) // Lose some points
+        .map(p => ({
+          x: p.x + (Math.random() - 0.5) * degradeFactor * 30,
+          y: p.y + (Math.random() - 0.5) * degradeFactor * 30,
+          hue: p.hue + (Math.random() - 0.5) * degradeFactor * 30,
+          opacity: Math.max(0.05, p.opacity * (1 - degradeFactor * 0.3)),
+          size: Math.max(1, p.size * (1 - degradeFactor * 0.1))
+        }));
+    }
+    
+    function playEchoSound(generation) {
+      if (!audioStarted) return;
+      
+      // Higher generation = quieter, more filtered
+      const baseFreq = 220;
+      const freq = baseFreq * (1 + (maxEchoes - generation) / maxEchoes);
+      const volume = -15 - generation * 2;
+      
+      synth.volume.value = volume;
+      
+      // Play a chord that gets simpler with each echo
+      const notes = [freq];
+      if (generation < 8) notes.push(freq * 1.5); // Fifth
+      if (generation < 4) notes.push(freq * 2); // Octave
+      
+      notes.forEach(f => {
+        synth.triggerAttackRelease(f, '4n');
+      });
+    }
+    
+    function startEchoing() {
+      if (currentPath.length < 5) return;
+      
+      echoCount = 0;
+      echoes = [currentPath.map(p => ({...p}))];
+      
+      // Schedule echoes
+      function scheduleNextEcho() {
+        echoCount++;
+        if (echoCount >= maxEchoes) return;
+        
+        const lastPath = echoes[echoes.length - 1];
+        const degradedPath = degradePath(lastPath, echoCount);
+        
+        if (degradedPath.length < 3) return; // Too degraded
+        
+        echoes.push(degradedPath);
+        playEchoSound(echoCount);
+        
+        setTimeout(scheduleNextEcho, echoDelay);
+      }
+      
+      playEchoSound(0);
+      setTimeout(scheduleNextEcho, echoDelay);
+    }
+    
+    function drawPath(path, isOriginal = false) {
+      if (path.length < 2) return;
+      
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      for (let i = 1; i < path.length; i++) {
+        const p0 = path[i - 1];
+        const p1 = path[i];
+        
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.strokeStyle = `hsla(${p1.hue}, 70%, 65%, ${p1.opacity})`;
+        ctx.lineWidth = p1.size;
+        ctx.stroke();
+      }
+    }
+    
+    function draw() {
+      // Fade background
+      ctx.fillStyle = 'rgba(13, 13, 13, 0.08)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw all echoes (oldest first, so newest is on top)
+      echoes.forEach((path, i) => {
+        drawPath(path, i === 0);
+      });
+      
+      // Draw current path being drawn
+      if (isDrawing && currentPath.length > 0) {
+        drawPath(currentPath, true);
+      }
+      
+      // Update echo count display
+      if (echoes.length > 0) {
+        echoCountEl.textContent = `echo ${echoCount}/${maxEchoes}`;
+      } else {
+        echoCountEl.textContent = '';
+      }
+    }
+    
+    function animate() {
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    function addPoint(x, y) {
+      const hue = (Date.now() * 0.05) % 360;
+      currentPath.push({
+        x, y,
+        hue,
+        opacity: 0.9,
+        size: 4 + Math.random() * 2
+      });
+    }
+    
+    // Mouse events
+    canvas.addEventListener('mousedown', (e) => {
+      isDrawing = true;
+      currentPath = [];
+      echoes = [];
+      addPoint(e.clientX, e.clientY);
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDrawing) {
+        addPoint(e.clientX, e.clientY);
+      }
+    });
+    
+    canvas.addEventListener('mouseup', () => {
+      if (isDrawing) {
+        isDrawing = false;
+        startEchoing();
+      }
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      if (isDrawing) {
+        isDrawing = false;
+        startEchoing();
+      }
+    });
+    
+    // Touch events
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      isDrawing = true;
+      currentPath = [];
+      echoes = [];
+      addPoint(e.touches[0].clientX, e.touches[0].clientY);
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (isDrawing) {
+        addPoint(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    });
+    
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      if (isDrawing) {
+        isDrawing = false;
+        startEchoing();
+      }
+    });
+    
+    // Info panel
+    document.getElementById('info-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('info-panel').classList.toggle('visible');
+    });
+    
+    document.getElementById('nav-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.location.href = '/';
+    });
+    
+    // Start overlay
+    document.getElementById('start-overlay').addEventListener('click', async function() {
+      this.style.display = 'none';
+      await initAudio();
+    });
+    
+    resize();
+    window.addEventListener('resize', resize);
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
