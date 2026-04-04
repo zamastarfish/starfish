@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| gamelan | Javanese bronze percussion — kotekan interlocking, colotomic gongs, FM synthesis | 1 session | Apr 4 |
 | swarm | Boid flocking — separation, alignment, cohesion. Viewer as predator | 1 session | Apr 4 |
 | mitosis | Cell division — phases, chromosomes, spindle fibers, cytokinesis | 1 session | Apr 4 |
 | crystal | 6-fold crystalline growth, branching fractals, bell-like tones | 1 session | Apr 4 |

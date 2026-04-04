@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>gamelan — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0806; 
+      overflow: hidden; 
+      touch-action: none;
+      font-family: system-ui, sans-serif;
+    }
+    canvas { display: block; }
+    
+    .info-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 16px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .info-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    
+    .nav-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 16px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    
+    .info-panel {
+      position: fixed;
+      inset: 0;
+      background: rgba(10,8,6,0.95);
+      z-index: 99;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .info-panel.open { display: flex; }
+    .info-content {
+      max-width: 420px;
+      color: rgba(255,255,255,0.8);
+      line-height: 1.6;
+    }
+    .info-content h1 {
+      font-size: 24px;
+      margin-bottom: 16px;
+      color: #d4a574;
+    }
+    .info-content p { margin-bottom: 12px; }
+    .info-content .hint {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="nav-btn">←</a>
+  <button class="info-btn">?</button>
+  <div class="info-panel">
+    <div class="info-content">
+      <h1>gamelan</h1>
+      <p>Bronze percussion from Java and Bali. Interlocking patterns called <em>kotekan</em> — two incomplete melodies that weave together to form a whole.</p>
+      <p>Time is cyclical. Large gongs mark the turning of the cycle. Smaller instruments fill the space between. Nothing progresses; everything deepens.</p>
+      <p class="hint">Click to strike. Your notes join the pattern. Or simply watch the cycles turn.</p>
+    </div>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height, centerX, centerY;
+    let audioStarted = false;
+    let cycle = 0;
+    const CYCLE_LENGTH = 16; // beats per cycle
+    const BEAT_MS = 280; // tempo
+    let lastBeat = 0;
+    let currentBeat = 0;
+    
+    // Visual elements
+    const ripples = [];
+    const particles = [];
+    
+    // Audio
+    let gong, metalophone1, metalophone2, kenong, reverb;
+    
+    // Slendro scale (approximate) - pentatonic
+    const SCALE = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25];
+    // C4, D4, E4, G4, A4, C5, D5, E5
+    
+    // Interlocking patterns (kotekan) - two parts that complete each other
+    // Pattern A plays on even subdivisions, Pattern B on odd
+    const PATTERN_A = [0, null, 2, null, 1, null, 3, null, 2, null, 0, null, 1, null, 2, null];
+    const PATTERN_B = [null, 4, null, 3, null, 2, null, 4, null, 3, null, 2, null, 4, null, 3];
+    
+    // Colotomic structure - gong hits
+    const GONG_PATTERN = [true, false, false, false, false, false, false, false, 
+                          false, false, false, false, false, false, false, false]; // gong on beat 0
+    const KENONG_PATTERN = [false, false, false, false, true, false, false, false,
+                            false, false, false, false, true, false, false, false]; // kenong on 4 and 12
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      centerX = width / 2;
+      centerY = height / 2;
+    }
+    
+    async function initAudio() {
+      if (audioStarted) return;
+      await Tone.start();
+      audioStarted = true;
+      
+      // Rich reverb for the hanging overtones
+      reverb = new Tone.Reverb({ decay: 4, wet: 0.4 }).toDestination();
+      const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.15, wet: 0.2 }).connect(reverb);
+      
+      // Deep gong - FM synthesis for metallic quality
+      gong = new Tone.FMSynth({
+        harmonicity: 3.01,
+        modulationIndex: 14,
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.01, decay: 3, sustain: 0.2, release: 4 },
+        modulation: { type: 'sine' },
+        modulationEnvelope: { attack: 0.01, decay: 0.5, sustain: 0.3, release: 2 }
+      }).connect(new Tone.Gain(0.35).connect(reverb));
+      
+      // Metalophone 1 - higher register, pattern A
+      metalophone1 = new Tone.FMSynth({
+        harmonicity: 2.5,
+        modulationIndex: 8,
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.005, decay: 1.2, sustain: 0.1, release: 1.5 },
+        modulation: { type: 'sine' },
+        modulationEnvelope: { attack: 0.01, decay: 0.3, sustain: 0.2, release: 0.5 }
+      }).connect(new Tone.Gain(0.18).connect(delay));
+      
+      // Metalophone 2 - pattern B, slightly different timbre
+      metalophone2 = new Tone.FMSynth({
+        harmonicity: 2.8,
+        modulationIndex: 6,
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.005, decay: 1.0, sustain: 0.1, release: 1.2 },
+        modulation: { type: 'sine' },
+        modulationEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.2, release: 0.4 }
+      }).connect(new Tone.Gain(0.15).connect(delay));
+      
+      // Kenong - medium gong
+      kenong = new Tone.FMSynth({
+        harmonicity: 2.2,
+        modulationIndex: 10,
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.01, decay: 2, sustain: 0.15, release: 2 },
+        modulation: { type: 'sine' },
+        modulationEnvelope: { attack: 0.01, decay: 0.4, sustain: 0.2, release: 1 }
+      }).connect(new Tone.Gain(0.25).connect(reverb));
+      
+      lastBeat = performance.now();
+    }
+    
+    function playBeat(beat) {
+      if (!audioStarted) return;
+      
+      const now = Tone.now();
+      
+      // Gong on cycle start
+      if (GONG_PATTERN[beat]) {
+        gong.triggerAttackRelease(65.41, '2n', now); // C2
+        addRipple(centerX, centerY, 'gong');
+        addParticleBurst(centerX, centerY, 30, '#d4a574');
+      }
+      
+      // Kenong
+      if (KENONG_PATTERN[beat]) {
+        kenong.triggerAttackRelease(130.81, '4n', now); // C3
+        const angle = beat === 4 ? -Math.PI/3 : Math.PI/3;
+        const x = centerX + Math.cos(angle) * 150;
+        const y = centerY + Math.sin(angle) * 150;
+        addRipple(x, y, 'kenong');
+        addParticleBurst(x, y, 15, '#c9956c');
+      }
+      
+      // Metalophone patterns (kotekan)
+      const noteA = PATTERN_A[beat];
+      const noteB = PATTERN_B[beat];
+      
+      if (noteA !== null) {
+        const freq = SCALE[noteA + 2]; // higher register
+        metalophone1.triggerAttackRelease(freq, '8n', now);
+        const angle = (beat / CYCLE_LENGTH) * Math.PI * 2 - Math.PI/2;
+        const x = centerX + Math.cos(angle) * 100;
+        const y = centerY + Math.sin(angle) * 100;
+        addRipple(x, y, 'metal1');
+      }
+      
+      if (noteB !== null) {
+        const freq = SCALE[noteB + 1];
+        metalophone2.triggerAttackRelease(freq, '8n', now);
+        const angle = (beat / CYCLE_LENGTH) * Math.PI * 2 - Math.PI/2 + Math.PI/CYCLE_LENGTH;
+        const x = centerX + Math.cos(angle) * 130;
+        const y = centerY + Math.sin(angle) * 130;
+        addRipple(x, y, 'metal2');
+      }
+    }
+    
+    function addRipple(x, y, type) {
+      const colors = {
+        gong: { r: 212, g: 165, b: 116 },      // warm bronze
+        kenong: { r: 201, g: 149, b: 108 },    // copper
+        metal1: { r: 230, g: 190, b: 138 },    // bright gold
+        metal2: { r: 194, g: 154, b: 108 },    // darker bronze
+        user: { r: 255, g: 215, b: 140 }       // bright gold for user
+      };
+      
+      const maxRadius = type === 'gong' ? 400 : (type === 'kenong' ? 250 : 150);
+      const speed = type === 'gong' ? 2 : (type === 'kenong' ? 2.5 : 3);
+      
+      ripples.push({
+        x, y,
+        radius: 0,
+        maxRadius,
+        speed,
+        color: colors[type] || colors.user,
+        alpha: 1,
+        lineWidth: type === 'gong' ? 3 : (type === 'kenong' ? 2 : 1.5)
+      });
+    }
+    
+    function addParticleBurst(x, y, count, color) {
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+        const speed = 1 + Math.random() * 2;
+        particles.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1,
+          decay: 0.015 + Math.random() * 0.01,
+          size: 2 + Math.random() * 3,
+          color
+        });
+      }
+    }
+    
+    function userStrike(x, y) {
+      if (!audioStarted) {
+        initAudio();
+        return;
+      }
+      
+      // Find nearest scale degree based on position
+      const angle = Math.atan2(y - centerY, x - centerX);
+      const noteIndex = Math.floor(((angle + Math.PI) / (Math.PI * 2)) * SCALE.length);
+      const freq = SCALE[noteIndex % SCALE.length];
+      
+      // Play with slight variation
+      metalophone1.triggerAttackRelease(freq, '8n');
+      
+      addRipple(x, y, 'user');
+      addParticleBurst(x, y, 12, '#ffd78c');
+    }
+    
+    function update(time) {
+      // Beat timing
+      if (audioStarted && time - lastBeat >= BEAT_MS) {
+        playBeat(currentBeat);
+        currentBeat = (currentBeat + 1) % CYCLE_LENGTH;
+        cycle = currentBeat === 0 ? cycle + 1 : cycle;
+        lastBeat = time;
+      }
+      
+      // Update ripples
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const r = ripples[i];
+        r.radius += r.speed;
+        r.alpha = 1 - (r.radius / r.maxRadius);
+        
+        if (r.radius >= r.maxRadius) {
+          ripples.splice(i, 1);
+        }
+      }
+      
+      // Update particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.98;
+        p.vy *= 0.98;
+        p.life -= p.decay;
+        
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+    }
+    
+    function draw() {
+      // Deep warm black background with slight fade
+      ctx.fillStyle = 'rgba(10, 8, 6, 0.15)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw cycle indicator - subtle ring
+      const cycleProgress = currentBeat / CYCLE_LENGTH;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 200, -Math.PI/2, -Math.PI/2 + cycleProgress * Math.PI * 2);
+      ctx.strokeStyle = 'rgba(212, 165, 116, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      
+      // Static cycle ring
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 200, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(212, 165, 116, 0.08)';
+      ctx.stroke();
+      
+      // Beat markers
+      for (let i = 0; i < CYCLE_LENGTH; i++) {
+        const angle = (i / CYCLE_LENGTH) * Math.PI * 2 - Math.PI/2;
+        const r = 200;
+        const x = centerX + Math.cos(angle) * r;
+        const y = centerY + Math.sin(angle) * r;
+        
+        const isGong = GONG_PATTERN[i];
+        const isKenong = KENONG_PATTERN[i];
+        const isCurrent = i === currentBeat;
+        
+        ctx.beginPath();
+        const size = isGong ? 8 : (isKenong ? 5 : 3);
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        
+        let alpha = isCurrent ? 1 : 0.3;
+        let color = isGong ? '212, 165, 116' : (isKenong ? '201, 149, 108' : '150, 130, 100');
+        ctx.fillStyle = `rgba(${color}, ${alpha})`;
+        ctx.fill();
+      }
+      
+      // Draw ripples
+      for (const r of ripples) {
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${r.color.r}, ${r.color.g}, ${r.color.b}, ${r.alpha * 0.6})`;
+        ctx.lineWidth = r.lineWidth;
+        ctx.stroke();
+        
+        // Inner ripple
+        if (r.radius > 20) {
+          ctx.beginPath();
+          ctx.arc(r.x, r.y, r.radius * 0.7, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${r.color.r}, ${r.color.g}, ${r.color.b}, ${r.alpha * 0.3})`;
+          ctx.lineWidth = r.lineWidth * 0.5;
+          ctx.stroke();
+        }
+      }
+      
+      // Draw particles
+      for (const p of particles) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life * 0.8;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      
+      // Center glow
+      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 80);
+      gradient.addColorStop(0, 'rgba(212, 165, 116, 0.1)');
+      gradient.addColorStop(1, 'transparent');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 80, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    function loop(time) {
+      update(time);
+      draw();
+      requestAnimationFrame(loop);
+    }
+    
+    // Event handlers
+    canvas.addEventListener('click', e => {
+      userStrike(e.clientX, e.clientY);
+    });
+    
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      userStrike(touch.clientX, touch.clientY);
+    });
+    
+    // Info panel
+    const infoBtn = document.querySelector('.info-btn');
+    const infoPanel = document.querySelector('.info-panel');
+    
+    infoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      infoPanel.classList.toggle('open');
+    });
+    
+    infoPanel.addEventListener('click', (e) => {
+      if (e.target === infoPanel) {
+        infoPanel.classList.remove('open');
+      }
+    });
+    
+    // Init
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Start with a prompt to click
+    const startPrompt = document.createElement('div');
+    startPrompt.style.cssText = `
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(212, 165, 116, 0.6);
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      z-index: 50;
+    `;
+    startPrompt.textContent = 'click to begin';
+    document.body.appendChild(startPrompt);
+    
+    startPrompt.addEventListener('click', () => {
+      initAudio();
+      startPrompt.style.opacity = '0';
+      startPrompt.style.transition = 'opacity 1s';
+      setTimeout(() => startPrompt.remove(), 1000);
+    });
+    
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 4, 2026 ===
     {
+      name: "Gamelan",
+      description: "Bronze percussion from Java. Interlocking patterns called kotekan — two incomplete melodies that weave together. Time is cyclical. Click to strike; your notes join the pattern",
+      date: "Apr 4",
+      href: "/projects/gamelan/"
+    },
+    {
       name: "Swarm",
       description: "Hundreds of agents, three rules: stay close, align, avoid collision. From these constraints, murmurations emerge. You are the predator",
       date: "Apr 4",
