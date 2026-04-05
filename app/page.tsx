@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 5, 2026 ===
     {
+      name: "Breath",
+      description: "An invitation to slow down. The shape breathes in 4-7-8 rhythm — four seconds in, seven hold, eight out. No interaction required. Just watch. Just breathe",
+      date: "Apr 5",
+      href: "/projects/breath/"
+    },
+    {
       name: "Pulse",
       description: "The rhythm you carry inside. Sixty to a hundred beats per minute, unnoticed until you stop to feel it. Move to elevate the heart rate. Rest to let it calm. We are percussion instruments",
       date: "Apr 5",

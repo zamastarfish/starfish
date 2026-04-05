@@ -3,270 +3,484 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Breath — zama.starfish</title>
+  <title>breath — starfish</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      background: #0a0a0f; 
-      overflow: hidden;
-      min-height: 100vh;
-      cursor: none;
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #0a0d10;
+      font-family: system-ui, sans-serif;
     }
-    canvas { 
-      display: block;
-    }
+    canvas { display: block; }
+    
     #info {
       position: fixed;
       bottom: 20px;
       left: 20px;
-      color: rgba(255,255,255,0.2);
-      font-family: monospace;
-      font-size: 12px;
+      right: 20px;
+      color: rgba(120, 150, 180, 0.5);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
       opacity: 0;
-      transition: opacity 1s;
+      transition: opacity 0.5s;
     }
+    
     body:hover #info { opacity: 1; }
-    #info a { color: rgba(255,255,255,0.3); }
-  
-    /* Navigation */
-    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
-    .sf-nav a, .sf-nav button { 
-      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
-      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
-      width: 36px; height: 36px; border-radius: 50%; display: flex; 
-      align-items: center; justify-content: center; cursor: pointer;
-      transition: all 0.3s; font-family: system-ui, sans-serif;
+    
+    .nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(120, 150, 180, 0.3);
+      background: rgba(10, 13, 16, 0.8);
+      color: rgba(120, 150, 180, 0.6);
+      font-size: 18px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.3s, border-color 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
     }
-    .sf-nav a:hover, .sf-nav button:hover { 
-      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
-      border-color: rgba(255,255,255,0.3);
+    
+    body:hover .nav-btn { opacity: 1; }
+    .nav-btn:hover { border-color: rgba(120, 150, 180, 0.8); }
+    
+    #home-btn { left: 20px; }
+    #info-btn { right: 20px; }
+    
+    #info-panel {
+      position: fixed;
+      top: 0;
+      right: -320px;
+      width: 300px;
+      height: 100%;
+      background: rgba(10, 13, 16, 0.95);
+      border-left: 1px solid rgba(120, 150, 180, 0.2);
+      padding: 60px 24px 24px;
+      transition: right 0.3s ease;
+      color: rgba(120, 150, 180, 0.8);
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-y: auto;
+      z-index: 100;
     }
-    /* Modal */
-    .sf-modal { 
-      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
-      display: none; align-items: center; justify-content: center; padding: 20px;
+    
+    #info-panel.open { right: 0; }
+    #info-panel h2 { font-size: 20px; margin-bottom: 16px; font-weight: 400; }
+    #info-panel p { margin-bottom: 12px; }
+    #info-panel .tag { 
+      display: inline-block; 
+      padding: 2px 8px; 
+      background: rgba(120, 150, 180, 0.15);
+      border-radius: 3px;
+      font-size: 11px;
+      margin-right: 6px;
+      margin-bottom: 6px;
     }
-    .sf-modal.open { display: flex; }
-    .sf-modal-content {
-      background: #111; border: 1px solid #333; border-radius: 12px;
-      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
-      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    
+    #close-panel {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      color: rgba(120, 150, 180, 0.6);
+      font-size: 24px;
+      cursor: pointer;
     }
-    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
-    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
-      text-transform: uppercase; letter-spacing: 1px; color: #888; }
-    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
-    .sf-modal-close { 
-      position: absolute; top: 20px; right: 20px; background: none; border: none;
-      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
+    
+    #start-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(10, 13, 16, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 200;
     }
-    .sf-modal-close:hover { color: #fff; }
-
+    
+    #start-overlay span {
+      color: rgba(120, 150, 180, 0.6);
+      font-size: 14px;
+      letter-spacing: 2px;
+    }
+    
+    #guide {
+      position: fixed;
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(120, 150, 180, 0.4);
+      font-size: 14px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      pointer-events: none;
+      transition: opacity 0.8s;
+    }
   </style>
 </head>
 <body>
-
-  <!-- Navigation -->
-  <nav class="sf-nav">
-    <a href="/" title="Back to gallery">←</a>
-    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
-  </nav>
+  <div id="start-overlay"><span>click to begin</span></div>
+  <a href="/" class="nav-btn" id="home-btn">←</a>
+  <button class="nav-btn" id="info-btn">i</button>
   
-  <!-- Info Modal -->
-  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
-    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
-    <div class="sf-modal-content">
-      <h2>Breath</h2>
-      <h3>Concept</h3>
-      <p>An organic shape that breathes. Gradually slows to encourage deeper breathing.</p>
-      <h3>Interaction</h3>
-      <p>Breathe with the shape. It will slow down over time.</p>
+  <div id="info-panel">
+    <button id="close-panel">×</button>
+    <h2>breath</h2>
+    <p>An invitation to slow down. The shape breathes with you — or rather, you're invited to breathe with it.</p>
+    <p>Four seconds in. Seven seconds hold. Eight seconds out. The 4-7-8 pattern activates the parasympathetic nervous system. Your body wants to relax; sometimes it just needs permission.</p>
+    <p>No interaction required. Just watch. Just breathe.</p>
+    <div style="margin-top: 20px;">
+      <span class="tag">audio</span>
+      <span class="tag">ambient</span>
+      <span class="tag">escape</span>
     </div>
   </div>
-
-<canvas id="canvas"></canvas>
-  <div id="info">
-    breath — <a href="https://starfish.zama.space">zama.starfish</a>
-  </div>
   
-  <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+  <canvas id="canvas"></canvas>
+  <div id="guide">inhale</div>
+  <div id="info">4-7-8 breathing • follow the rhythm</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const guide = document.getElementById('guide');
+
+let W, H, cx, cy;
+let audioCtx, mainGain;
+let started = false;
+
+// Breath cycle: 4-7-8 pattern (scaled to feel natural)
+// 4 counts in, 7 counts hold, 8 counts out = 19 counts total
+// At ~1 second per count = 19 second cycle
+const INHALE_DURATION = 4000;
+const HOLD_DURATION = 7000;
+const EXHALE_DURATION = 8000;
+const CYCLE_DURATION = INHALE_DURATION + HOLD_DURATION + EXHALE_DURATION;
+
+let cycleStart = 0;
+let breathPhase = 0; // 0-1 through breath cycle
+let breathValue = 0; // 0 = empty, 1 = full
+
+// Visual particles (floating dust motes)
+let particles = [];
+
+// Audio nodes
+let droneOscs = [];
+let droneGains = [];
+let breathNoise = null;
+let breathNoiseGain = null;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W / 2;
+  cy = H / 2;
+}
+
+function initParticles() {
+  particles = [];
+  const count = Math.floor((W * H) / 15000);
+  
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      size: 1 + Math.random() * 2,
+      speed: 0.1 + Math.random() * 0.2,
+      angle: Math.random() * Math.PI * 2,
+      wobble: Math.random() * Math.PI * 2,
+      wobbleSpeed: 0.001 + Math.random() * 0.002,
+      alpha: 0.1 + Math.random() * 0.3
+    });
+  }
+}
+
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  mainGain = audioCtx.createGain();
+  mainGain.gain.value = 0.3;
+  mainGain.connect(audioCtx.destination);
+  
+  // Soft drone chord (major 7th, very gentle)
+  const frequencies = [
+    130.81, // C3
+    164.81, // E3
+    196.00, // G3
+    246.94  // B3
+  ];
+  
+  frequencies.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
     
-    let width, height, centerX, centerY;
-    let time = 0;
-    let breathPhase = 0;
-    let cycleCount = 0;
+    osc.type = 'sine';
+    osc.frequency.value = freq;
     
-    // Breath timing (in frames at 60fps)
-    // Starts faster, gradually slows to encourage slower breathing
-    const getBreathDuration = () => {
-      const baseDuration = 240; // 4 seconds per breath
-      const slowdown = Math.min(cycleCount * 10, 180); // up to 3 more seconds
-      return baseDuration + slowdown;
-    };
+    filter.type = 'lowpass';
+    filter.frequency.value = 400;
+    filter.Q.value = 1;
     
-    // Organic blob parameters
-    const blobPoints = 64;
-    let noiseOffsets = [];
+    gain.gain.value = 0;
     
-    function resize() {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-      centerX = width / 2;
-      centerY = height / 2;
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(mainGain);
+    
+    osc.start();
+    
+    droneOscs.push(osc);
+    droneGains.push(gain);
+  });
+  
+  // Breath noise (filtered white noise for exhale)
+  const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < noiseData.length; i++) {
+    noiseData[i] = Math.random() * 2 - 1;
+  }
+  
+  breathNoise = audioCtx.createBufferSource();
+  breathNoise.buffer = noiseBuffer;
+  breathNoise.loop = true;
+  
+  const noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = 'bandpass';
+  noiseFilter.frequency.value = 500;
+  noiseFilter.Q.value = 0.5;
+  
+  breathNoiseGain = audioCtx.createGain();
+  breathNoiseGain.gain.value = 0;
+  
+  breathNoise.connect(noiseFilter);
+  noiseFilter.connect(breathNoiseGain);
+  breathNoiseGain.connect(mainGain);
+  
+  breathNoise.start();
+}
+
+function updateAudio() {
+  if (!audioCtx) return;
+  
+  const now = audioCtx.currentTime;
+  
+  // Drone volume follows breath (louder when full)
+  const targetDroneVol = 0.03 + breathValue * 0.05;
+  droneGains.forEach((gain, i) => {
+    // Slight variation per voice
+    const variation = 1 + Math.sin(now * 0.1 + i) * 0.1;
+    gain.gain.setTargetAtTime(targetDroneVol * variation, now, 0.5);
+  });
+  
+  // Breath noise during exhale
+  const exhaleStart = (INHALE_DURATION + HOLD_DURATION) / CYCLE_DURATION;
+  const inExhale = breathPhase > exhaleStart;
+  const exhaleProgress = inExhale ? (breathPhase - exhaleStart) / (1 - exhaleStart) : 0;
+  
+  // Envelope: fade in, sustain, fade out
+  let noiseVol = 0;
+  if (inExhale) {
+    if (exhaleProgress < 0.1) {
+      noiseVol = exhaleProgress / 0.1;
+    } else if (exhaleProgress > 0.85) {
+      noiseVol = (1 - exhaleProgress) / 0.15;
+    } else {
+      noiseVol = 1;
+    }
+    noiseVol *= 0.08;
+  }
+  
+  breathNoiseGain.gain.setTargetAtTime(noiseVol, now, 0.1);
+}
+
+function update(time) {
+  if (!started) return;
+  
+  // Calculate breath phase
+  const cycleTime = (time - cycleStart) % CYCLE_DURATION;
+  breathPhase = cycleTime / CYCLE_DURATION;
+  
+  // Calculate breath value (0 = empty, 1 = full)
+  const inhaleEnd = INHALE_DURATION / CYCLE_DURATION;
+  const holdEnd = (INHALE_DURATION + HOLD_DURATION) / CYCLE_DURATION;
+  
+  if (breathPhase < inhaleEnd) {
+    // Inhale: ease in
+    const t = breathPhase / inhaleEnd;
+    breathValue = easeInOutSine(t);
+    guide.textContent = 'inhale';
+    guide.style.opacity = 0.4 + t * 0.3;
+  } else if (breathPhase < holdEnd) {
+    // Hold
+    breathValue = 1;
+    guide.textContent = 'hold';
+    guide.style.opacity = 0.5;
+  } else {
+    // Exhale: ease out
+    const t = (breathPhase - holdEnd) / (1 - holdEnd);
+    breathValue = 1 - easeInOutSine(t);
+    guide.textContent = 'exhale';
+    guide.style.opacity = 0.4 + (1 - t) * 0.3;
+  }
+  
+  // Update particles
+  particles.forEach(p => {
+    p.wobble += p.wobbleSpeed;
+    
+    // Gentle drift toward center when inhaling, away when exhaling
+    const toCenterX = cx - p.x;
+    const toCenterY = cy - p.y;
+    const dist = Math.sqrt(toCenterX * toCenterX + toCenterY * toCenterY);
+    
+    if (dist > 10) {
+      const breathForce = (breathValue - 0.5) * 0.0003;
+      p.x += (toCenterX / dist) * breathForce * dist;
+      p.y += (toCenterY / dist) * breathForce * dist;
     }
     
-    function init() {
-      // Initialize noise offsets for organic shape
-      noiseOffsets = [];
-      for (let i = 0; i < blobPoints; i++) {
-        noiseOffsets.push(Math.random() * 1000);
-      }
-    }
+    // Natural drift
+    p.x += Math.cos(p.angle + Math.sin(p.wobble) * 0.5) * p.speed;
+    p.y += Math.sin(p.angle + Math.cos(p.wobble) * 0.5) * p.speed;
     
-    // Simple smooth noise
-    function noise(x) {
-      const i = Math.floor(x);
-      const f = x - i;
-      const smooth = f * f * (3 - 2 * f);
-      
-      const a = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
-      const b = Math.sin((i + 1) * 12.9898 + 78.233) * 43758.5453;
-      
-      return (a - Math.floor(a)) * (1 - smooth) + (b - Math.floor(b)) * smooth;
-    }
+    // Wrap
+    if (p.x < -10) p.x = W + 10;
+    if (p.x > W + 10) p.x = -10;
+    if (p.y < -10) p.y = H + 10;
+    if (p.y > H + 10) p.y = -10;
+  });
+  
+  updateAudio();
+}
+
+function easeInOutSine(t) {
+  return -(Math.cos(Math.PI * t) - 1) / 2;
+}
+
+function draw() {
+  // Background gradient based on breath
+  const bgLight = Math.floor(10 + breathValue * 5);
+  ctx.fillStyle = `rgb(${bgLight}, ${bgLight + 3}, ${bgLight + 6})`;
+  ctx.fillRect(0, 0, W, H);
+  
+  // Central organic shape
+  const baseRadius = Math.min(W, H) * 0.15;
+  const radius = baseRadius * (0.8 + breathValue * 0.4);
+  
+  // Draw soft glow
+  const glowRadius = radius * 2.5;
+  const glow = ctx.createRadialGradient(cx, cy, radius * 0.5, cx, cy, glowRadius);
+  glow.addColorStop(0, `rgba(100, 140, 180, ${0.1 + breathValue * 0.1})`);
+  glow.addColorStop(0.5, `rgba(80, 120, 160, ${0.05 + breathValue * 0.05})`);
+  glow.addColorStop(1, 'rgba(60, 100, 140, 0)');
+  
+  ctx.beginPath();
+  ctx.arc(cx, cy, glowRadius, 0, Math.PI * 2);
+  ctx.fillStyle = glow;
+  ctx.fill();
+  
+  // Draw organic blob shape
+  ctx.beginPath();
+  const points = 60;
+  const time = performance.now() * 0.0003;
+  
+  for (let i = 0; i <= points; i++) {
+    const angle = (i / points) * Math.PI * 2;
     
-    function getBreathScale() {
-      const duration = getBreathDuration();
-      const phase = (breathPhase % duration) / duration;
-      
-      // Smooth breathing curve - inhale slightly faster than exhale
-      // Using sin with easing for natural feel
-      const inhaleRatio = 0.4;
-      
-      let scale;
-      if (phase < inhaleRatio) {
-        // Inhale
-        const t = phase / inhaleRatio;
-        scale = easeOutQuad(t);
-      } else {
-        // Exhale
-        const t = (phase - inhaleRatio) / (1 - inhaleRatio);
-        scale = 1 - easeInOutQuad(t);
-      }
-      
-      // Map to size range
-      return 0.4 + scale * 0.6;
-    }
+    // Organic wobble
+    const wobble1 = Math.sin(angle * 3 + time) * 0.08;
+    const wobble2 = Math.sin(angle * 5 - time * 1.3) * 0.05;
+    const wobble3 = Math.sin(angle * 7 + time * 0.7) * 0.03;
     
-    function easeOutQuad(t) {
-      return 1 - (1 - t) * (1 - t);
-    }
+    const r = radius * (1 + wobble1 + wobble2 + wobble3);
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
     
-    function easeInOutQuad(t) {
-      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-    }
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  
+  ctx.closePath();
+  
+  // Fill with gradient
+  const shapeGrad = ctx.createRadialGradient(cx, cy - radius * 0.3, 0, cx, cy, radius);
+  const alpha = 0.6 + breathValue * 0.3;
+  shapeGrad.addColorStop(0, `rgba(140, 180, 220, ${alpha})`);
+  shapeGrad.addColorStop(0.6, `rgba(100, 140, 180, ${alpha * 0.8})`);
+  shapeGrad.addColorStop(1, `rgba(70, 110, 150, ${alpha * 0.6})`);
+  
+  ctx.fillStyle = shapeGrad;
+  ctx.fill();
+  
+  // Subtle inner highlight
+  ctx.beginPath();
+  const innerRadius = radius * 0.4;
+  for (let i = 0; i <= points; i++) {
+    const angle = (i / points) * Math.PI * 2;
+    const wobble = Math.sin(angle * 4 + time * 1.2) * 0.1;
+    const r = innerRadius * (1 + wobble);
+    const x = cx + Math.cos(angle) * r;
+    const y = cy - radius * 0.15 + Math.sin(angle) * r * 0.8;
     
-    function drawBreath() {
-      const scale = getBreathScale();
-      const baseRadius = Math.min(width, height) * 0.25;
-      const radius = baseRadius * scale;
-      
-      // Multiple layers for depth
-      const layers = 5;
-      
-      for (let layer = layers - 1; layer >= 0; layer--) {
-        const layerScale = 1 - layer * 0.15;
-        const layerRadius = radius * layerScale;
-        const alpha = 0.1 + (1 - layer / layers) * 0.2;
-        
-        // Color shifts slightly with breath
-        const hue = 200 + scale * 20; // blue to cyan
-        const sat = 30 + layer * 10;
-        const light = 50 + scale * 20;
-        
-        // Organic blob shape
-        ctx.beginPath();
-        
-        for (let i = 0; i <= blobPoints; i++) {
-          const angle = (i / blobPoints) * Math.PI * 2;
-          
-          // Noise-based variation for organic feel
-          const noiseVal = noise(noiseOffsets[i % blobPoints] + time * 0.005);
-          const variation = 1 + (noiseVal - 0.5) * 0.1 * scale;
-          
-          const r = layerRadius * variation;
-          const x = centerX + Math.cos(angle) * r;
-          const y = centerY + Math.sin(angle) * r;
-          
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        
-        ctx.closePath();
-        
-        // Gradient fill
-        const gradient = ctx.createRadialGradient(
-          centerX, centerY, 0,
-          centerX, centerY, layerRadius
-        );
-        gradient.addColorStop(0, `hsla(${hue}, ${sat}%, ${light + 20}%, ${alpha})`);
-        gradient.addColorStop(1, `hsla(${hue}, ${sat}%, ${light}%, ${alpha * 0.5})`);
-        
-        ctx.fillStyle = gradient;
-        ctx.fill();
-      }
-      
-      // Soft glow
-      const glowGradient = ctx.createRadialGradient(
-        centerX, centerY, radius * 0.5,
-        centerX, centerY, radius * 2
-      );
-      glowGradient.addColorStop(0, `hsla(210, 40%, 60%, ${0.1 * scale})`);
-      glowGradient.addColorStop(1, 'hsla(210, 40%, 60%, 0)');
-      
-      ctx.fillStyle = glowGradient;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius * 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = `rgba(180, 210, 240, ${0.15 + breathValue * 0.1})`;
+  ctx.fill();
+  
+  // Draw particles
+  particles.forEach(p => {
+    const distToCenter = Math.sqrt(
+      Math.pow(p.x - cx, 2) + Math.pow(p.y - cy, 2)
+    );
+    const nearCenter = Math.max(0, 1 - distToCenter / (Math.min(W, H) * 0.5));
+    const particleAlpha = p.alpha * (0.5 + nearCenter * 0.5 + breathValue * 0.3);
     
-    function update() {
-      time++;
-      breathPhase++;
-      
-      const duration = getBreathDuration();
-      if (breathPhase >= duration) {
-        breathPhase = 0;
-        cycleCount++;
-      }
-      
-      // Slowly drift noise offsets
-      for (let i = 0; i < noiseOffsets.length; i++) {
-        noiseOffsets[i] += 0.001;
-      }
-    }
-    
-    function draw() {
-      // Clear with slight fade for smoothness
-      ctx.fillStyle = 'rgba(10, 10, 15, 0.3)';
-      ctx.fillRect(0, 0, width, height);
-      
-      drawBreath();
-    }
-    
-    function animate() {
-      update();
-      draw();
-      requestAnimationFrame(animate);
-    }
-    
-    window.addEventListener('resize', resize);
-    
-    resize();
-    init();
-    animate();
-  </script>
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(150, 180, 210, ${particleAlpha})`;
+    ctx.fill();
+  });
+}
+
+function animate(time) {
+  update(time);
+  draw();
+  requestAnimationFrame(animate);
+}
+
+// Events
+window.addEventListener('resize', () => {
+  resize();
+  initParticles();
+});
+
+document.getElementById('start-overlay').addEventListener('click', () => {
+  document.getElementById('start-overlay').style.display = 'none';
+  initAudio();
+  started = true;
+  cycleStart = performance.now();
+});
+
+document.getElementById('info-btn').addEventListener('click', () => {
+  document.getElementById('info-panel').classList.add('open');
+});
+
+document.getElementById('close-panel').addEventListener('click', () => {
+  document.getElementById('info-panel').classList.remove('open');
+});
+
+// Init
+resize();
+initParticles();
+requestAnimationFrame(animate);
+</script>
 </body>
 </html>

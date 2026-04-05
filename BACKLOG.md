@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| breath | 4-7-8 breathing guide — organic shape expands/contracts, soft drone, escape territory | 1 session | Apr 5 |
 | pulse | Heartbeat as life's rhythm — systole/diastole, movement elevates BPM, confront mortality/vitality | 1 session | Apr 5 |
 | gamelan | Javanese bronze percussion — kotekan interlocking, colotomic gongs, FM synthesis | 1 session | Apr 4 |
 | swarm | Boid flocking — separation, alignment, cohesion. Viewer as predator | 1 session | Apr 4 |
@@ -73,7 +74,7 @@ _(Current WIP goes here)_
 | seattle-dog | Late night, cream cheese dripping, rain falling. 2:47 AM outside the bar | 1 session | Feb 24 |
 | kintsugi | Japanese golden repair. Break the bowl, watch it mend | ? | Feb 23 |
 | flocking | Starling murmuration. Cursor is a hawk | ? | Feb 23 |
-| breath | Organic shape that breathes, slows to encourage deeper breathing | ? | Feb 23 |
+| ~~breath~~ | ~~Organic shape that breathes, slows to encourage deeper breathing~~ | ~~?~~ | ~~Feb 23~~ → shipped Apr 5 |
 | alignment | Shapes trying to cooperate, one defects | ? | Feb 23 |
 | drift | Particles through curl noise field | ? | Feb 23 |
 
