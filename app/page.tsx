@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === April 5, 2026 ===
+    {
+      name: "Pulse",
+      description: "The rhythm you carry inside. Sixty to a hundred beats per minute, unnoticed until you stop to feel it. Move to elevate the heart rate. Rest to let it calm. We are percussion instruments",
+      date: "Apr 5",
+      href: "/projects/pulse/"
+    },
     // === April 4, 2026 ===
     {
       name: "Gamelan",

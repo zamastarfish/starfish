@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pulse — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #0a0506;
+      font-family: system-ui, sans-serif;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      color: rgba(180, 120, 130, 0.6);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    
+    body:hover #info { opacity: 1; }
+    
+    .nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(180, 120, 130, 0.3);
+      background: rgba(10, 5, 6, 0.8);
+      color: rgba(180, 120, 130, 0.6);
+      font-size: 18px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.3s, border-color 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+    }
+    
+    body:hover .nav-btn { opacity: 1; }
+    .nav-btn:hover { border-color: rgba(180, 120, 130, 0.8); }
+    
+    #home-btn { left: 20px; }
+    #info-btn { right: 20px; }
+    
+    #info-panel {
+      position: fixed;
+      top: 0;
+      right: -320px;
+      width: 300px;
+      height: 100%;
+      background: rgba(10, 5, 6, 0.95);
+      border-left: 1px solid rgba(180, 120, 130, 0.2);
+      padding: 60px 24px 24px;
+      transition: right 0.3s ease;
+      color: rgba(180, 120, 130, 0.8);
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-y: auto;
+      z-index: 100;
+    }
+    
+    #info-panel.open { right: 0; }
+    #info-panel h2 { font-size: 20px; margin-bottom: 16px; font-weight: 400; }
+    #info-panel p { margin-bottom: 12px; }
+    #info-panel .tag { 
+      display: inline-block; 
+      padding: 2px 8px; 
+      background: rgba(180, 120, 130, 0.15);
+      border-radius: 3px;
+      font-size: 11px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    
+    #close-panel {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      color: rgba(180, 120, 130, 0.6);
+      font-size: 24px;
+      cursor: pointer;
+    }
+    
+    #start-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(10, 5, 6, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 200;
+    }
+    
+    #start-overlay span {
+      color: rgba(180, 120, 130, 0.6);
+      font-size: 14px;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="start-overlay"><span>click to begin</span></div>
+  <a href="/" class="nav-btn" id="home-btn">←</a>
+  <button class="nav-btn" id="info-btn">i</button>
+  
+  <div id="info-panel">
+    <button id="close-panel">×</button>
+    <h2>pulse</h2>
+    <p>The rhythm you carry inside every moment. Sixty to a hundred times a minute, unnoticed until you stop to feel it.</p>
+    <p>Move closer to disturb the rhythm. Stay still to let it rest. The heart responds to presence — excitement, calm, the awareness of being watched.</p>
+    <p>We are percussion instruments, keeping time from birth until we stop.</p>
+    <div style="margin-top: 20px;">
+      <span class="tag">audio</span>
+      <span class="tag">interactive</span>
+      <span class="tag">confront</span>
+    </div>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  <div id="info">move to elevate • rest to calm</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let W, H, cx, cy;
+let audioCtx, gainNode;
+let started = false;
+
+// Heart state
+let bpm = 65; // resting heart rate
+let targetBpm = 65;
+let phase = 0; // 0-1 through beat cycle
+let lastBeat = 0;
+let beatIntensity = 0;
+
+// Mouse state
+let mouseX = 0, mouseY = 0;
+let mouseVelocity = 0;
+let lastMouseX = 0, lastMouseY = 0;
+let mouseActive = false;
+let lastMouseMove = 0;
+
+// Visual elements
+let vessels = [];
+let pulseWaves = [];
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W / 2;
+  cy = H / 2;
+}
+
+// Organic heart shape
+function heartShape(t, scale) {
+  // Parametric heart
+  const x = 16 * Math.pow(Math.sin(t), 3);
+  const y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+  return { x: x * scale, y: y * scale };
+}
+
+// Generate vessel paths (arteries branching out)
+function generateVessels() {
+  vessels = [];
+  const numMajor = 6;
+  
+  for (let i = 0; i < numMajor; i++) {
+    const angle = (i / numMajor) * Math.PI * 2 + Math.random() * 0.3;
+    const length = 80 + Math.random() * 120;
+    
+    const vessel = {
+      points: [],
+      width: 3 + Math.random() * 2,
+      phase: Math.random() * Math.PI * 2
+    };
+    
+    // Generate branching path
+    let x = 0, y = 0;
+    let dir = angle;
+    const steps = 20;
+    
+    for (let j = 0; j <= steps; j++) {
+      vessel.points.push({ x, y });
+      const stepLen = length / steps;
+      x += Math.cos(dir) * stepLen;
+      y += Math.sin(dir) * stepLen;
+      dir += (Math.random() - 0.5) * 0.3;
+    }
+    
+    vessels.push(vessel);
+    
+    // Add branches
+    if (Math.random() > 0.3) {
+      const branchPoint = Math.floor(steps * 0.4 + Math.random() * steps * 0.3);
+      const branchAngle = angle + (Math.random() > 0.5 ? 1 : -1) * (0.3 + Math.random() * 0.5);
+      
+      const branch = {
+        points: [],
+        width: vessel.width * 0.6,
+        phase: Math.random() * Math.PI * 2,
+        startFrom: branchPoint
+      };
+      
+      x = vessel.points[branchPoint].x;
+      y = vessel.points[branchPoint].y;
+      dir = branchAngle;
+      
+      for (let j = 0; j <= steps - branchPoint; j++) {
+        branch.points.push({ x, y });
+        const stepLen = (length * 0.6) / (steps - branchPoint);
+        x += Math.cos(dir) * stepLen;
+        y += Math.sin(dir) * stepLen;
+        dir += (Math.random() - 0.5) * 0.4;
+      }
+      
+      vessels.push(branch);
+    }
+  }
+}
+
+// Audio setup
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0.4;
+  gainNode.connect(audioCtx.destination);
+}
+
+function playHeartbeat() {
+  const now = audioCtx.currentTime;
+  
+  // Lub (S1) - lower, longer
+  const lubOsc = audioCtx.createOscillator();
+  const lubGain = audioCtx.createGain();
+  const lubFilter = audioCtx.createBiquadFilter();
+  
+  lubFilter.type = 'lowpass';
+  lubFilter.frequency.value = 80 + beatIntensity * 40;
+  
+  lubOsc.type = 'sine';
+  lubOsc.frequency.setValueAtTime(55 + beatIntensity * 15, now);
+  lubOsc.frequency.exponentialRampToValueAtTime(35, now + 0.1);
+  
+  lubGain.gain.setValueAtTime(0.6 + beatIntensity * 0.3, now);
+  lubGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+  
+  lubOsc.connect(lubFilter);
+  lubFilter.connect(lubGain);
+  lubGain.connect(gainNode);
+  
+  lubOsc.start(now);
+  lubOsc.stop(now + 0.15);
+  
+  // Dub (S2) - higher, shorter, slight delay
+  const dubDelay = 0.08 + (1 - beatIntensity * 0.3) * 0.05;
+  
+  const dubOsc = audioCtx.createOscillator();
+  const dubGain = audioCtx.createGain();
+  const dubFilter = audioCtx.createBiquadFilter();
+  
+  dubFilter.type = 'lowpass';
+  dubFilter.frequency.value = 100 + beatIntensity * 50;
+  
+  dubOsc.type = 'sine';
+  dubOsc.frequency.setValueAtTime(70 + beatIntensity * 20, now + dubDelay);
+  dubOsc.frequency.exponentialRampToValueAtTime(45, now + dubDelay + 0.08);
+  
+  dubGain.gain.setValueAtTime(0, now);
+  dubGain.gain.setValueAtTime(0.4 + beatIntensity * 0.2, now + dubDelay);
+  dubGain.gain.exponentialRampToValueAtTime(0.01, now + dubDelay + 0.1);
+  
+  dubOsc.connect(dubFilter);
+  dubFilter.connect(dubGain);
+  dubGain.connect(gainNode);
+  
+  dubOsc.start(now + dubDelay);
+  dubOsc.stop(now + dubDelay + 0.12);
+  
+  // Add subtle noise for realism
+  const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < noiseData.length; i++) {
+    noiseData[i] = (Math.random() * 2 - 1) * 0.3;
+  }
+  
+  const noise = audioCtx.createBufferSource();
+  const noiseGain = audioCtx.createGain();
+  const noiseFilter = audioCtx.createBiquadFilter();
+  
+  noise.buffer = noiseBuffer;
+  noiseFilter.type = 'bandpass';
+  noiseFilter.frequency.value = 60;
+  noiseFilter.Q.value = 2;
+  
+  noiseGain.gain.setValueAtTime(0.15, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+  
+  noise.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(gainNode);
+  
+  noise.start(now);
+}
+
+function update(time) {
+  // Calculate mouse velocity
+  const dx = mouseX - lastMouseX;
+  const dy = mouseY - lastMouseY;
+  const velocity = Math.sqrt(dx * dx + dy * dy);
+  mouseVelocity = mouseVelocity * 0.9 + velocity * 0.1;
+  lastMouseX = mouseX;
+  lastMouseY = mouseY;
+  
+  // Check if mouse is active
+  const timeSinceMove = time - lastMouseMove;
+  mouseActive = timeSinceMove < 2000;
+  
+  // Adjust target BPM based on activity
+  if (mouseActive && mouseVelocity > 2) {
+    // Excitement - faster heart rate
+    targetBpm = Math.min(140, 65 + mouseVelocity * 3);
+  } else {
+    // Resting
+    targetBpm = 65;
+  }
+  
+  // Smooth BPM transition
+  bpm += (targetBpm - bpm) * 0.02;
+  
+  // Calculate beat timing
+  const beatInterval = 60000 / bpm; // ms per beat
+  const timeSinceBeat = time - lastBeat;
+  phase = timeSinceBeat / beatInterval;
+  
+  // Trigger beat
+  if (phase >= 1) {
+    lastBeat = time;
+    phase = 0;
+    beatIntensity = Math.min(1, (bpm - 65) / 75); // 0 at 65bpm, 1 at 140bpm
+    
+    if (started) {
+      playHeartbeat();
+      
+      // Add pulse wave
+      pulseWaves.push({
+        radius: 60,
+        alpha: 0.8,
+        born: time
+      });
+    }
+  }
+  
+  // Update pulse waves
+  pulseWaves = pulseWaves.filter(wave => {
+    const age = time - wave.born;
+    wave.radius = 60 + age * 0.15;
+    wave.alpha = 0.8 * (1 - age / 2000);
+    return wave.alpha > 0.01;
+  });
+}
+
+function draw(time) {
+  // Dark background with subtle red
+  ctx.fillStyle = '#0a0506';
+  ctx.fillRect(0, 0, W, H);
+  
+  // Systole/diastole animation
+  const beatCurve = phase < 0.15 
+    ? Math.sin(phase / 0.15 * Math.PI) // Systole - quick contraction
+    : phase < 0.3 
+      ? Math.sin((phase - 0.15) / 0.15 * Math.PI) * 0.5 // Second beat
+      : 0; // Diastole - relaxation
+  
+  const scale = 8 + beatCurve * (1.5 + beatIntensity * 0.8);
+  
+  ctx.save();
+  ctx.translate(cx, cy);
+  
+  // Draw pulse waves
+  pulseWaves.forEach(wave => {
+    const gradient = ctx.createRadialGradient(0, 0, wave.radius * 0.8, 0, 0, wave.radius);
+    gradient.addColorStop(0, `rgba(140, 40, 50, 0)`);
+    gradient.addColorStop(0.7, `rgba(140, 40, 50, ${wave.alpha * 0.3})`);
+    gradient.addColorStop(1, `rgba(140, 40, 50, 0)`);
+    
+    ctx.beginPath();
+    ctx.arc(0, 0, wave.radius, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  });
+  
+  // Draw vessels with pulse propagation
+  vessels.forEach((vessel, vi) => {
+    const pulseOffset = vi * 0.1;
+    
+    ctx.beginPath();
+    vessel.points.forEach((p, i) => {
+      // Pulse travels along vessel
+      const vesselPhase = (phase * 2 - pulseOffset - i * 0.05) % 1;
+      const vesselPulse = vesselPhase > 0 && vesselPhase < 0.2 
+        ? Math.sin(vesselPhase / 0.2 * Math.PI) * 0.5 
+        : 0;
+      
+      const px = p.x * (1 + vesselPulse * 0.1);
+      const py = p.y * (1 + vesselPulse * 0.1);
+      
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    
+    const alpha = 0.4 + beatCurve * 0.3;
+    ctx.strokeStyle = `rgba(120, 30, 40, ${alpha})`;
+    ctx.lineWidth = vessel.width * (1 + beatCurve * 0.2);
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  });
+  
+  // Draw heart shape
+  ctx.beginPath();
+  for (let t = 0; t <= Math.PI * 2; t += 0.05) {
+    const p = heartShape(t, scale);
+    if (t === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.closePath();
+  
+  // Heart gradient
+  const heartGrad = ctx.createRadialGradient(0, -10, 0, 0, 0, scale * 18);
+  const intensity = 0.7 + beatCurve * 0.3;
+  heartGrad.addColorStop(0, `rgba(180, 50, 60, ${intensity})`);
+  heartGrad.addColorStop(0.5, `rgba(120, 30, 40, ${intensity * 0.8})`);
+  heartGrad.addColorStop(1, `rgba(60, 15, 20, ${intensity * 0.5})`);
+  
+  ctx.fillStyle = heartGrad;
+  ctx.fill();
+  
+  // Inner glow during beat
+  if (beatCurve > 0.1) {
+    const innerGrad = ctx.createRadialGradient(0, -10, 0, 0, 0, scale * 10);
+    innerGrad.addColorStop(0, `rgba(255, 100, 100, ${beatCurve * 0.4})`);
+    innerGrad.addColorStop(0.5, `rgba(200, 50, 60, ${beatCurve * 0.2})`);
+    innerGrad.addColorStop(1, `rgba(150, 30, 40, 0)`);
+    
+    ctx.fillStyle = innerGrad;
+    ctx.fill();
+  }
+  
+  // Subtle outline
+  ctx.strokeStyle = `rgba(200, 80, 90, ${0.3 + beatCurve * 0.3})`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  
+  ctx.restore();
+  
+  // BPM display (subtle)
+  ctx.fillStyle = `rgba(180, 120, 130, ${0.2 + beatCurve * 0.2})`;
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${Math.round(bpm)} bpm`, W - 20, H - 20);
+}
+
+function animate(time) {
+  update(time);
+  draw(time);
+  requestAnimationFrame(animate);
+}
+
+// Event listeners
+window.addEventListener('resize', resize);
+
+document.addEventListener('mousemove', e => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  lastMouseMove = performance.now();
+});
+
+document.addEventListener('touchmove', e => {
+  mouseX = e.touches[0].clientX;
+  mouseY = e.touches[0].clientY;
+  lastMouseMove = performance.now();
+});
+
+// Start overlay
+document.getElementById('start-overlay').addEventListener('click', () => {
+  document.getElementById('start-overlay').style.display = 'none';
+  initAudio();
+  started = true;
+});
+
+// Info panel
+document.getElementById('info-btn').addEventListener('click', () => {
+  document.getElementById('info-panel').classList.add('open');
+});
+
+document.getElementById('close-panel').addEventListener('click', () => {
+  document.getElementById('info-panel').classList.remove('open');
+});
+
+// Init
+resize();
+generateVessels();
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
