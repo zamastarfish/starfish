@@ -2,180 +2,595 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <base href="/projects/kintsugi/">
-  <title>Kintsugi</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>kintsugi — starfish</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #1a1918;
-      touch-action: none;
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #1a1816;
+      font-family: system-ui, sans-serif;
     }
-    canvas {
-      display: block;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
+    canvas { display: block; cursor: pointer; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      color: rgba(180, 160, 120, 0.5);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s;
     }
     
-    /* Test results styling (only shown with ?test) */
-    #test-results {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.95);
-      color: #e0e0e0;
-      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-      font-size: 13px;
-      padding: 20px;
-      overflow: auto;
-      z-index: 1000;
-    }
-    #test-results.visible { display: block; }
-    #test-results h2 { 
-      color: #fff; 
-      margin-bottom: 20px;
-      font-size: 18px;
-    }
-    #test-results .module { 
-      margin-bottom: 16px;
-      padding: 12px;
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 6px;
-    }
-    #test-results .module h3 { 
-      margin-bottom: 8px;
-      font-size: 14px;
-    }
-    #test-results .module.pass h3 { color: #4ade80; }
-    #test-results .module.fail h3 { color: #fbbf24; }
-    #test-results .module.error h3 { color: #f87171; }
-    #test-results ul { 
-      list-style: none; 
-      margin-left: 20px;
-    }
-    #test-results li { 
-      padding: 2px 0;
-      color: #a0a0a0;
-    }
-    #test-results li.pass { color: #86efac; }
-    #test-results li.fail { color: #fcd34d; }
-    #test-results .summary {
-      margin-top: 20px;
-      padding: 12px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    #test-results .close-btn {
+    body:hover #info { opacity: 1; }
+    
+    .nav-btn {
       position: fixed;
       top: 20px;
-      right: 20px;
-      background: rgba(255, 255, 255, 0.1);
-      border: none;
-      color: #fff;
-      padding: 8px 16px;
-      border-radius: 4px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(180, 160, 120, 0.3);
+      background: rgba(26, 24, 22, 0.8);
+      color: rgba(180, 160, 120, 0.6);
+      font-size: 18px;
       cursor: pointer;
-      font-family: inherit;
+      opacity: 0;
+      transition: opacity 0.3s, border-color 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
     }
-    #test-results .close-btn:hover {
-      background: rgba(255, 255, 255, 0.2);
+    
+    body:hover .nav-btn { opacity: 1; }
+    .nav-btn:hover { border-color: rgba(180, 160, 120, 0.8); }
+    
+    #home-btn { left: 20px; }
+    #info-btn { right: 20px; }
+    
+    #info-panel {
+      position: fixed;
+      top: 0;
+      right: -320px;
+      width: 300px;
+      height: 100%;
+      background: rgba(26, 24, 22, 0.95);
+      border-left: 1px solid rgba(180, 160, 120, 0.2);
+      padding: 60px 24px 24px;
+      transition: right 0.3s ease;
+      color: rgba(180, 160, 120, 0.8);
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-y: auto;
+      z-index: 100;
     }
-  
-    /* Navigation */
-    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
-    .sf-nav a, .sf-nav button { 
-      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
-      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
-      width: 36px; height: 36px; border-radius: 50%; display: flex; 
-      align-items: center; justify-content: center; cursor: pointer;
-      transition: all 0.3s; font-family: system-ui, sans-serif;
+    
+    #info-panel.open { right: 0; }
+    #info-panel h2 { font-size: 20px; margin-bottom: 16px; font-weight: 400; }
+    #info-panel p { margin-bottom: 12px; }
+    #info-panel .tag { 
+      display: inline-block; 
+      padding: 2px 8px; 
+      background: rgba(180, 160, 120, 0.15);
+      border-radius: 3px;
+      font-size: 11px;
+      margin-right: 6px;
+      margin-bottom: 6px;
     }
-    .sf-nav a:hover, .sf-nav button:hover { 
-      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
-      border-color: rgba(255,255,255,0.3);
+    
+    #close-panel {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      color: rgba(180, 160, 120, 0.6);
+      font-size: 24px;
+      cursor: pointer;
     }
-    /* Modal */
-    .sf-modal { 
-      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
-      display: none; align-items: center; justify-content: center; padding: 20px;
+    
+    #start-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(26, 24, 22, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 200;
     }
-    .sf-modal.open { display: flex; }
-    .sf-modal-content {
-      background: #111; border: 1px solid #333; border-radius: 12px;
-      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
-      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
+    
+    #start-overlay span {
+      color: rgba(180, 160, 120, 0.6);
+      font-size: 14px;
+      letter-spacing: 2px;
     }
-    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
-    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
-      text-transform: uppercase; letter-spacing: 1px; color: #888; }
-    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
-    .sf-modal-close { 
-      position: absolute; top: 20px; right: 20px; background: none; border: none;
-      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
-    }
-    .sf-modal-close:hover { color: #fff; }
-
   </style>
 </head>
 <body>
-
-  <!-- Navigation -->
-  <nav class="sf-nav">
-    <a href="/" title="Back to gallery">←</a>
-    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
-  </nav>
+  <div id="start-overlay"><span>click to begin</span></div>
+  <a href="/" class="nav-btn" id="home-btn">←</a>
+  <button class="nav-btn" id="info-btn">i</button>
   
-  <!-- Info Modal -->
-  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
-    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
-    <div class="sf-modal-content">
-      <h2>Kintsugi</h2>
-      <h3>Concept</h3>
-      <p>The Japanese art of golden repair. The scars become the beauty — breakage as transformation.</p>
-      <h3>Interaction</h3>
-      <p>Click to break the bowl. Watch it mend with gold. Repeat.</p>
+  <div id="info-panel">
+    <button id="close-panel">×</button>
+    <h2>金継ぎ kintsugi</h2>
+    <p>The Japanese art of golden repair. When a bowl breaks, fill the cracks with gold. The damage becomes part of the object's history — not something to hide, but to illuminate.</p>
+    <p>Click to break. The gold will come. What was shattered becomes more beautiful for having been broken.</p>
+    <p>This is not repair in the Western sense. This is transformation.</p>
+    <div style="margin-top: 20px;">
+      <span class="tag">audio</span>
+      <span class="tag">interactive</span>
+      <span class="tag">inspire</span>
     </div>
   </div>
-
-<canvas id="canvas"></canvas>
-  <div id="test-results"></div>
   
-  <script type="module">
-    import { init } from './js/main.js';
+  <canvas id="canvas"></canvas>
+  <div id="info">click to break • watch the gold mend</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let W, H, cx, cy;
+let audioCtx, mainGain;
+let started = false;
+
+// Bowl state
+const bowl = {
+  radius: 0,
+  fragments: [],
+  cracks: [],
+  intact: true,
+  healingProgress: 0,
+  healed: false
+};
+
+// Colors
+const ceramicBase = '#e8dcc8';
+const ceramicDark = '#c4b8a4';
+const ceramicShadow = '#8a7e6c';
+const goldBright = '#d4a84b';
+const goldMid = '#b8942f';
+const goldDark = '#8a6d1f';
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W / 2;
+  cy = H / 2;
+  bowl.radius = Math.min(W, H) * 0.3;
+  
+  if (bowl.intact) {
+    initBowl();
+  }
+}
+
+function initBowl() {
+  bowl.fragments = [];
+  bowl.cracks = [];
+  bowl.intact = true;
+  bowl.healingProgress = 0;
+  bowl.healed = false;
+}
+
+function breakBowl(clickX, clickY) {
+  if (!bowl.intact) return;
+  
+  bowl.intact = false;
+  
+  // Create fragments using Voronoi-like subdivision
+  const numFragments = 8 + Math.floor(Math.random() * 5);
+  const points = [{x: clickX - cx, y: clickY - cy}]; // Impact point
+  
+  // Generate random points for fragment centers
+  for (let i = 0; i < numFragments - 1; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.random() * bowl.radius * 0.8;
+    points.push({
+      x: Math.cos(angle) * r,
+      y: Math.sin(angle) * r
+    });
+  }
+  
+  // Create fragments as polygons
+  // Simplified: radial slices from center
+  const angles = points.map(p => Math.atan2(p.y, p.x)).sort((a, b) => a - b);
+  
+  for (let i = 0; i < angles.length; i++) {
+    const startAngle = angles[i];
+    const endAngle = angles[(i + 1) % angles.length] || (angles[0] + Math.PI * 2);
     
-    // Initialize the application
-    const canvasEl = document.getElementById('canvas');
-    init(canvasEl);
+    // Handle wrap-around
+    let actualEnd = endAngle;
+    if (actualEnd <= startAngle) actualEnd += Math.PI * 2;
     
-    // Run tests if ?test query param is present
-    if (window.location.search.includes('test')) {
-      import('./tests/tests.js').then(tests => {
-        const container = document.getElementById('test-results');
-        container.classList.add('visible');
-        
-        // Add close button
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'close-btn';
-        closeBtn.textContent = 'Close Tests';
-        closeBtn.onclick = () => container.classList.remove('visible');
-        container.appendChild(closeBtn);
-        
-        // Run and display tests
-        tests.runAndDisplay('test-results');
-        
-        // Also log to console
-        tests.runAndLog();
-      });
+    const fragment = {
+      startAngle,
+      endAngle: actualEnd,
+      offsetX: 0,
+      offsetY: 0,
+      targetOffsetX: (Math.random() - 0.5) * 30,
+      targetOffsetY: (Math.random() - 0.5) * 30,
+      rotation: 0,
+      targetRotation: (Math.random() - 0.5) * 0.15,
+      color: Math.random() > 0.5 ? ceramicBase : ceramicDark
+    };
+    
+    bowl.fragments.push(fragment);
+    
+    // Create crack line for this edge
+    const crackAngle = startAngle;
+    bowl.cracks.push({
+      angle: crackAngle,
+      length: bowl.radius,
+      goldProgress: 0,
+      width: 2 + Math.random() * 3
+    });
+  }
+  
+  // Play break sound
+  playBreakSound();
+  
+  // Start healing after delay
+  setTimeout(() => {
+    bowl.healingProgress = 0.001; // Start healing
+    playHealSound();
+  }, 1500);
+}
+
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  mainGain = audioCtx.createGain();
+  mainGain.gain.value = 0.4;
+  mainGain.connect(audioCtx.destination);
+}
+
+function playBreakSound() {
+  const now = audioCtx.currentTime;
+  
+  // Sharp crack
+  const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.3, audioCtx.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < noiseData.length; i++) {
+    const env = Math.exp(-i / (audioCtx.sampleRate * 0.05));
+    noiseData[i] = (Math.random() * 2 - 1) * env;
+  }
+  
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuffer;
+  
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'highpass';
+  filter.frequency.value = 2000;
+  
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.6, now);
+  
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(mainGain);
+  
+  noise.start(now);
+  
+  // Ceramic resonance
+  [800, 1200, 1800].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const oscGain = audioCtx.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.value = freq + Math.random() * 100;
+    
+    oscGain.gain.setValueAtTime(0.15, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    
+    osc.connect(oscGain);
+    oscGain.connect(mainGain);
+    
+    osc.start(now);
+    osc.stop(now + 0.4);
+  });
+}
+
+function playHealSound() {
+  const now = audioCtx.currentTime;
+  const duration = 8;
+  
+  // Warm, golden drone
+  const fundamentals = [220, 277.18, 329.63]; // A3, C#4, E4 (A major)
+  
+  fundamentals.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+    
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    
+    filter.type = 'lowpass';
+    filter.frequency.value = 800;
+    
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.08, now + 2);
+    gain.gain.linearRampToValueAtTime(0.08, now + duration - 2);
+    gain.gain.linearRampToValueAtTime(0, now + duration);
+    
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(mainGain);
+    
+    osc.start(now);
+    osc.stop(now + duration);
+  });
+  
+  // Shimmering harmonics (gold glinting)
+  for (let i = 0; i < 8; i++) {
+    const startTime = now + 1 + Math.random() * 5;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.value = 880 + Math.random() * 880;
+    
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(0.05, startTime + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.5);
+    
+    osc.connect(gain);
+    gain.connect(mainGain);
+    
+    osc.start(startTime);
+    osc.stop(startTime + 0.6);
+  }
+}
+
+function update() {
+  // Animate fragments
+  bowl.fragments.forEach(frag => {
+    if (bowl.healingProgress > 0 && bowl.healingProgress < 1) {
+      // Move back together
+      const returnSpeed = 0.03;
+      frag.offsetX += (0 - frag.offsetX) * returnSpeed;
+      frag.offsetY += (0 - frag.offsetY) * returnSpeed;
+      frag.rotation += (0 - frag.rotation) * returnSpeed;
+    } else if (!bowl.healed) {
+      // Move apart
+      const moveSpeed = 0.1;
+      frag.offsetX += (frag.targetOffsetX - frag.offsetX) * moveSpeed;
+      frag.offsetY += (frag.targetOffsetY - frag.offsetY) * moveSpeed;
+      frag.rotation += (frag.targetRotation - frag.rotation) * moveSpeed;
     }
-  </script>
+  });
+  
+  // Healing progress
+  if (bowl.healingProgress > 0 && bowl.healingProgress < 1) {
+    bowl.healingProgress += 0.003;
+    
+    // Update crack gold progress
+    bowl.cracks.forEach((crack, i) => {
+      const crackDelay = i * 0.1;
+      const adjustedProgress = Math.max(0, (bowl.healingProgress - crackDelay) / (1 - crackDelay));
+      crack.goldProgress = Math.min(1, adjustedProgress * 1.5);
+    });
+    
+    if (bowl.healingProgress >= 1) {
+      bowl.healed = true;
+    }
+  }
+}
+
+function draw() {
+  // Background
+  ctx.fillStyle = '#1a1816';
+  ctx.fillRect(0, 0, W, H);
+  
+  ctx.save();
+  ctx.translate(cx, cy);
+  
+  if (bowl.intact) {
+    // Draw intact bowl
+    drawIntactBowl();
+  } else {
+    // Draw fragments
+    drawFragments();
+    
+    // Draw gold in cracks
+    if (bowl.healingProgress > 0) {
+      drawGoldCracks();
+    }
+  }
+  
+  ctx.restore();
+}
+
+function drawIntactBowl() {
+  // Bowl shadow
+  ctx.beginPath();
+  ctx.ellipse(10, 15, bowl.radius * 0.9, bowl.radius * 0.3, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fill();
+  
+  // Bowl body - ellipse for 3D effect
+  ctx.beginPath();
+  ctx.ellipse(0, 0, bowl.radius, bowl.radius * 0.9, 0, 0, Math.PI * 2);
+  
+  const grad = ctx.createRadialGradient(-bowl.radius * 0.3, -bowl.radius * 0.3, 0, 0, 0, bowl.radius);
+  grad.addColorStop(0, ceramicBase);
+  grad.addColorStop(0.7, ceramicDark);
+  grad.addColorStop(1, ceramicShadow);
+  
+  ctx.fillStyle = grad;
+  ctx.fill();
+  
+  // Rim highlight
+  ctx.beginPath();
+  ctx.ellipse(0, -bowl.radius * 0.1, bowl.radius * 0.95, bowl.radius * 0.2, 0, Math.PI, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  
+  // Inner shadow
+  ctx.beginPath();
+  ctx.ellipse(0, bowl.radius * 0.1, bowl.radius * 0.7, bowl.radius * 0.25, 0, 0, Math.PI);
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fill();
+}
+
+function drawFragments() {
+  bowl.fragments.forEach((frag, i) => {
+    ctx.save();
+    ctx.translate(frag.offsetX, frag.offsetY);
+    ctx.rotate(frag.rotation);
+    
+    // Draw fragment as pie slice
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, bowl.radius, frag.startAngle, frag.endAngle);
+    ctx.closePath();
+    
+    // Gradient for each fragment
+    const midAngle = (frag.startAngle + frag.endAngle) / 2;
+    const gradX = Math.cos(midAngle) * bowl.radius * 0.5;
+    const gradY = Math.sin(midAngle) * bowl.radius * 0.5;
+    
+    const grad = ctx.createRadialGradient(
+      gradX - bowl.radius * 0.2, 
+      gradY - bowl.radius * 0.2, 
+      0, 
+      gradX, 
+      gradY, 
+      bowl.radius * 0.8
+    );
+    grad.addColorStop(0, ceramicBase);
+    grad.addColorStop(0.7, frag.color);
+    grad.addColorStop(1, ceramicShadow);
+    
+    ctx.fillStyle = grad;
+    ctx.fill();
+    
+    // Fragment edge
+    ctx.strokeStyle = ceramicShadow;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    ctx.restore();
+  });
+}
+
+function drawGoldCracks() {
+  bowl.cracks.forEach(crack => {
+    if (crack.goldProgress <= 0) return;
+    
+    const length = crack.length * crack.goldProgress;
+    
+    // Gold glow
+    ctx.save();
+    ctx.rotate(crack.angle);
+    
+    // Outer glow
+    const glowGrad = ctx.createLinearGradient(0, 0, length, 0);
+    glowGrad.addColorStop(0, 'rgba(212, 168, 75, 0.4)');
+    glowGrad.addColorStop(1, 'rgba(212, 168, 75, 0)');
+    
+    ctx.beginPath();
+    ctx.moveTo(0, -crack.width * 2);
+    ctx.lineTo(length, -crack.width);
+    ctx.lineTo(length, crack.width);
+    ctx.lineTo(0, crack.width * 2);
+    ctx.closePath();
+    ctx.fillStyle = glowGrad;
+    ctx.fill();
+    
+    // Core gold line
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    
+    // Slightly jagged line
+    const steps = 10;
+    for (let i = 1; i <= steps; i++) {
+      const x = (i / steps) * length;
+      const y = (Math.random() - 0.5) * crack.width * 0.5;
+      ctx.lineTo(x, y);
+    }
+    
+    const goldGrad = ctx.createLinearGradient(0, 0, length, 0);
+    goldGrad.addColorStop(0, goldBright);
+    goldGrad.addColorStop(0.5, goldMid);
+    goldGrad.addColorStop(1, goldDark);
+    
+    ctx.strokeStyle = goldGrad;
+    ctx.lineWidth = crack.width;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    
+    // Highlight
+    ctx.beginPath();
+    ctx.moveTo(length * 0.1, -crack.width * 0.3);
+    ctx.lineTo(length * 0.4, -crack.width * 0.3);
+    ctx.strokeStyle = 'rgba(255, 240, 180, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    ctx.restore();
+  });
+  
+  // Center gold pool
+  if (bowl.healingProgress > 0.3) {
+    const poolSize = Math.min(1, (bowl.healingProgress - 0.3) / 0.7) * 15;
+    const poolGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, poolSize);
+    poolGrad.addColorStop(0, goldBright);
+    poolGrad.addColorStop(0.6, goldMid);
+    poolGrad.addColorStop(1, 'rgba(184, 148, 47, 0)');
+    
+    ctx.beginPath();
+    ctx.arc(0, 0, poolSize, 0, Math.PI * 2);
+    ctx.fillStyle = poolGrad;
+    ctx.fill();
+  }
+}
+
+function animate() {
+  update();
+  draw();
+  requestAnimationFrame(animate);
+}
+
+// Events
+window.addEventListener('resize', resize);
+
+canvas.addEventListener('click', (e) => {
+  if (!started) return;
+  
+  if (bowl.intact) {
+    breakBowl(e.clientX, e.clientY);
+  } else if (bowl.healed) {
+    // Reset for another break
+    initBowl();
+  }
+});
+
+document.getElementById('start-overlay').addEventListener('click', () => {
+  document.getElementById('start-overlay').style.display = 'none';
+  initAudio();
+  started = true;
+});
+
+document.getElementById('info-btn').addEventListener('click', () => {
+  document.getElementById('info-panel').classList.add('open');
+});
+
+document.getElementById('close-panel').addEventListener('click', () => {
+  document.getElementById('info-panel').classList.remove('open');
+});
+
+// Init
+resize();
+requestAnimationFrame(animate);
+</script>
 </body>
 </html>

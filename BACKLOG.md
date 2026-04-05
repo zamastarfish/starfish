@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| kintsugi | Japanese golden repair — break the bowl, watch gold fill cracks, wabi-sabi philosophy | 1 session | Apr 5 |
 | breath | 4-7-8 breathing guide — organic shape expands/contracts, soft drone, escape territory | 1 session | Apr 5 |
 | pulse | Heartbeat as life's rhythm — systole/diastole, movement elevates BPM, confront mortality/vitality | 1 session | Apr 5 |
 | gamelan | Javanese bronze percussion — kotekan interlocking, colotomic gongs, FM synthesis | 1 session | Apr 4 |
@@ -72,7 +73,7 @@ _(Current WIP goes here)_
 | rain | Droplets on glass, merging, racing down. Cozy window vibes | 1 session | Feb 25 |
 | oscillator | Analog oscilloscope. Waveforms, mouse control, optional audio | 1 session | Feb 25 |
 | seattle-dog | Late night, cream cheese dripping, rain falling. 2:47 AM outside the bar | 1 session | Feb 24 |
-| kintsugi | Japanese golden repair. Break the bowl, watch it mend | ? | Feb 23 |
+| ~~kintsugi~~ | ~~Japanese golden repair. Break the bowl, watch it mend~~ | ~~?~~ | ~~Feb 23~~ → shipped Apr 5 |
 | flocking | Starling murmuration. Cursor is a hawk | ? | Feb 23 |
 | ~~breath~~ | ~~Organic shape that breathes, slows to encourage deeper breathing~~ | ~~?~~ | ~~Feb 23~~ → shipped Apr 5 |
 | alignment | Shapes trying to cooperate, one defects | ? | Feb 23 |

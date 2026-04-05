@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 5, 2026 ===
     {
+      name: "Kintsugi",
+      description: "金継ぎ — the Japanese art of golden repair. Click to break the bowl. Watch the gold fill the cracks. What was shattered becomes more beautiful for having been broken",
+      date: "Apr 5",
+      href: "/projects/kintsugi/"
+    },
+    {
       name: "Breath",
       description: "An invitation to slow down. The shape breathes in 4-7-8 rhythm — four seconds in, seven hold, eight out. No interaction required. Just watch. Just breathe",
       date: "Apr 5",
