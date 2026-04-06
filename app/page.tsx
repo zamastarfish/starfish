@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 6, 2026 ===
     {
+      name: "Dominoes",
+      description: "Drag to place. Click to push. Watch the chain reaction cascade across the table. Small causes, large effects. The satisfaction of seeing it all fall",
+      date: "Apr 6",
+      href: "/projects/dominoes/"
+    },
+    {
       name: "Fireflies",
       description: "In Thai mangroves, thousands flash in perfect sync. No conductor — just simple rules: see a neighbor, adjust your rhythm. Watch them find each other. Click to disturb the pattern",
       date: "Apr 6",

@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| dominoes | Chain reaction — drag to place, click to push. Satisfying cascade physics | 1 session | Apr 6 |
 | fireflies | Kuramoto synchronization — watch them sync through local interactions only. Click to disturb | 1 session | Apr 6 |
 | alignment | Game theory — blue cooperators seek harmony, red defectors disrupt. Click to flip. Tragedy of the commons | 1 session | Apr 6 |
 | kintsugi | Japanese golden repair — break the bowl, watch gold fill cracks, wabi-sabi philosophy | 1 session | Apr 5 |
