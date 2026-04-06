@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| fireflies | Kuramoto synchronization — watch them sync through local interactions only. Click to disturb | 1 session | Apr 6 |
 | alignment | Game theory — blue cooperators seek harmony, red defectors disrupt. Click to flip. Tragedy of the commons | 1 session | Apr 6 |
 | kintsugi | Japanese golden repair — break the bowl, watch gold fill cracks, wabi-sabi philosophy | 1 session | Apr 5 |
 | breath | 4-7-8 breathing guide — organic shape expands/contracts, soft drone, escape territory | 1 session | Apr 5 |

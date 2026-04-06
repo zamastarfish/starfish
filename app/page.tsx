@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 6, 2026 ===
     {
+      name: "Fireflies",
+      description: "In Thai mangroves, thousands flash in perfect sync. No conductor — just simple rules: see a neighbor, adjust your rhythm. Watch them find each other. Click to disturb the pattern",
+      date: "Apr 6",
+      href: "/projects/fireflies/"
+    },
+    {
       name: "Alignment",
       description: "Game theory, visualized. Blue agents cooperate — they seek harmony, align with neighbors. Red agents defect — they disrupt, exploit trust. Click to flip any agent's strategy. Watch cooperation spread. Watch it collapse",
       date: "Apr 6",
