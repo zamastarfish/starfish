@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 6, 2026 ===
     {
+      name: "Horizon",
+      description: "Where sky meets sea. Colors shift slowly through dawn, day, dusk, night. Nothing to do. Nowhere to go. Just light changing over water",
+      date: "Apr 6",
+      href: "/projects/horizon/"
+    },
+    {
       name: "Dominoes",
       description: "Drag to place. Click to push. Watch the chain reaction cascade across the table. Small causes, large effects. The satisfaction of seeing it all fall",
       date: "Apr 6",

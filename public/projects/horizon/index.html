@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>horizon — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #1a1a2e; 
+      overflow: hidden; 
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      max-width: 280px;
+      line-height: 1.5;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    
+    #info.visible { opacity: 1; }
+    
+    .nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.2);
+      color: rgba(255,255,255,0.4);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.3);
+      color: rgba(255,255,255,0.7);
+    }
+    
+    #home-btn { left: 20px; }
+    #info-btn { right: 20px; }
+  </style>
+</head>
+<body>
+  <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+  <button class="nav-btn" id="info-btn" title="About this piece">?</button>
+  
+  <div id="info">
+    <strong>horizon</strong><br><br>
+    Where sky meets sea. Nothing to do here. Just colors shifting, 
+    light changing, time passing.<br><br>
+    The horizon is always the same distance away, no matter how far you travel.<br><br>
+    <em>Stay as long as you like.</em>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script>
+    // Navigation
+    document.getElementById('home-btn').onclick = () => window.location.href = '/';
+    document.getElementById('info-btn').onclick = () => {
+      document.getElementById('info').classList.toggle('visible');
+    };
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let time = Math.random() * 10000;
+    let audioStarted = false;
+    let audioCtx, masterGain;
+    let oscillators = [];
+    let noiseNode, noiseGain;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    // Smooth noise function
+    function noise(x) {
+      const i = Math.floor(x);
+      const f = x - i;
+      const smooth = f * f * (3 - 2 * f);
+      
+      // Simple hash
+      const hash = (n) => {
+        const sin = Math.sin(n * 12.9898) * 43758.5453;
+        return sin - Math.floor(sin);
+      };
+      
+      return hash(i) * (1 - smooth) + hash(i + 1) * smooth;
+    }
+    
+    // Multi-octave noise
+    function fbm(x, octaves = 4) {
+      let value = 0;
+      let amplitude = 0.5;
+      let frequency = 1;
+      
+      for (let i = 0; i < octaves; i++) {
+        value += amplitude * noise(x * frequency);
+        amplitude *= 0.5;
+        frequency *= 2;
+      }
+      
+      return value;
+    }
+    
+    // Color interpolation
+    function lerpColor(c1, c2, t) {
+      return {
+        r: c1.r + (c2.r - c1.r) * t,
+        g: c1.g + (c2.g - c1.g) * t,
+        b: c1.b + (c2.b - c1.b) * t
+      };
+    }
+    
+    // Time of day colors
+    function getTimeColors(t) {
+      // Cycle through: dawn -> day -> dusk -> night
+      const cycle = (t * 0.00002) % 1;
+      
+      const dawn = {
+        skyTop: { r: 25, g: 20, b: 60 },
+        skyHorizon: { r: 255, g: 150, b: 100 },
+        seaTop: { r: 40, g: 50, b: 80 },
+        seaBottom: { r: 15, g: 20, b: 40 }
+      };
+      
+      const day = {
+        skyTop: { r: 70, g: 130, b: 200 },
+        skyHorizon: { r: 180, g: 210, b: 240 },
+        seaTop: { r: 30, g: 90, b: 140 },
+        seaBottom: { r: 10, g: 40, b: 70 }
+      };
+      
+      const dusk = {
+        skyTop: { r: 40, g: 30, b: 80 },
+        skyHorizon: { r: 255, g: 120, b: 80 },
+        seaTop: { r: 50, g: 40, b: 70 },
+        seaBottom: { r: 20, g: 15, b: 35 }
+      };
+      
+      const night = {
+        skyTop: { r: 5, g: 5, b: 20 },
+        skyHorizon: { r: 20, g: 25, b: 50 },
+        seaTop: { r: 10, g: 15, b: 30 },
+        seaBottom: { r: 5, g: 5, b: 15 }
+      };
+      
+      // Smooth transitions between phases
+      let colors;
+      if (cycle < 0.2) {
+        // Night to dawn
+        const t = cycle / 0.2;
+        colors = {
+          skyTop: lerpColor(night.skyTop, dawn.skyTop, t),
+          skyHorizon: lerpColor(night.skyHorizon, dawn.skyHorizon, t),
+          seaTop: lerpColor(night.seaTop, dawn.seaTop, t),
+          seaBottom: lerpColor(night.seaBottom, dawn.seaBottom, t)
+        };
+      } else if (cycle < 0.4) {
+        // Dawn to day
+        const t = (cycle - 0.2) / 0.2;
+        colors = {
+          skyTop: lerpColor(dawn.skyTop, day.skyTop, t),
+          skyHorizon: lerpColor(dawn.skyHorizon, day.skyHorizon, t),
+          seaTop: lerpColor(dawn.seaTop, day.seaTop, t),
+          seaBottom: lerpColor(dawn.seaBottom, day.seaBottom, t)
+        };
+      } else if (cycle < 0.6) {
+        // Day
+        colors = day;
+      } else if (cycle < 0.75) {
+        // Day to dusk
+        const t = (cycle - 0.6) / 0.15;
+        colors = {
+          skyTop: lerpColor(day.skyTop, dusk.skyTop, t),
+          skyHorizon: lerpColor(day.skyHorizon, dusk.skyHorizon, t),
+          seaTop: lerpColor(day.seaTop, dusk.seaTop, t),
+          seaBottom: lerpColor(day.seaBottom, dusk.seaBottom, t)
+        };
+      } else if (cycle < 0.9) {
+        // Dusk to night
+        const t = (cycle - 0.75) / 0.15;
+        colors = {
+          skyTop: lerpColor(dusk.skyTop, night.skyTop, t),
+          skyHorizon: lerpColor(dusk.skyHorizon, night.skyHorizon, t),
+          seaTop: lerpColor(dusk.seaTop, night.seaTop, t),
+          seaBottom: lerpColor(dusk.seaBottom, night.seaBottom, t)
+        };
+      } else {
+        // Night
+        colors = night;
+      }
+      
+      return colors;
+    }
+    
+    function colorToString(c, alpha = 1) {
+      return `rgba(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)}, ${alpha})`;
+    }
+    
+    function draw() {
+      time += 16;
+      
+      const colors = getTimeColors(time);
+      const horizonY = height * 0.45;
+      
+      // Sky gradient
+      const skyGradient = ctx.createLinearGradient(0, 0, 0, horizonY);
+      skyGradient.addColorStop(0, colorToString(colors.skyTop));
+      skyGradient.addColorStop(1, colorToString(colors.skyHorizon));
+      ctx.fillStyle = skyGradient;
+      ctx.fillRect(0, 0, width, horizonY);
+      
+      // Stars (only at night)
+      const cycle = (time * 0.00002) % 1;
+      if (cycle > 0.8 || cycle < 0.15) {
+        const starAlpha = cycle > 0.8 ? (cycle - 0.8) / 0.2 : (0.15 - cycle) / 0.15;
+        ctx.fillStyle = `rgba(255, 255, 255, ${starAlpha * 0.8})`;
+        
+        // Deterministic stars based on position
+        for (let i = 0; i < 100; i++) {
+          const sx = noise(i * 100) * width;
+          const sy = noise(i * 100 + 50) * horizonY * 0.8;
+          const size = noise(i * 100 + 100) * 1.5 + 0.5;
+          const twinkle = Math.sin(time * 0.002 + i) * 0.3 + 0.7;
+          
+          ctx.globalAlpha = starAlpha * twinkle;
+          ctx.beginPath();
+          ctx.arc(sx, sy, size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+      
+      // Sun/moon glow
+      const sunY = horizonY - 20 + Math.sin(cycle * Math.PI * 2) * (horizonY * 0.6);
+      const sunX = width * 0.7;
+      
+      if (cycle > 0.15 && cycle < 0.75) {
+        // Sun
+        const sunGradient = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 150);
+        sunGradient.addColorStop(0, 'rgba(255, 250, 200, 0.8)');
+        sunGradient.addColorStop(0.1, 'rgba(255, 200, 100, 0.3)');
+        sunGradient.addColorStop(0.5, 'rgba(255, 150, 50, 0.1)');
+        sunGradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = sunGradient;
+        ctx.fillRect(0, 0, width, horizonY + 50);
+        
+        // Sun disc
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, 25, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 250, 220, 0.9)';
+        ctx.fill();
+      }
+      
+      // Sea
+      const seaGradient = ctx.createLinearGradient(0, horizonY, 0, height);
+      seaGradient.addColorStop(0, colorToString(colors.seaTop));
+      seaGradient.addColorStop(1, colorToString(colors.seaBottom));
+      ctx.fillStyle = seaGradient;
+      ctx.fillRect(0, horizonY, width, height - horizonY);
+      
+      // Gentle waves
+      for (let layer = 0; layer < 5; layer++) {
+        const layerY = horizonY + layer * ((height - horizonY) / 5);
+        const waveHeight = 2 + layer * 0.5;
+        const waveSpeed = 0.0003 - layer * 0.00005;
+        const alpha = 0.1 - layer * 0.015;
+        
+        ctx.beginPath();
+        ctx.moveTo(0, layerY);
+        
+        for (let x = 0; x <= width; x += 5) {
+          const y = layerY + 
+            Math.sin(x * 0.01 + time * waveSpeed) * waveHeight +
+            Math.sin(x * 0.02 - time * waveSpeed * 0.7) * waveHeight * 0.5;
+          ctx.lineTo(x, y);
+        }
+        
+        ctx.lineTo(width, height);
+        ctx.lineTo(0, height);
+        ctx.closePath();
+        
+        const waveColor = lerpColor(colors.seaTop, colors.seaBottom, layer / 5);
+        ctx.fillStyle = colorToString(waveColor, 0.3 + layer * 0.1);
+        ctx.fill();
+      }
+      
+      // Light reflection on water (during day/dusk/dawn)
+      if (cycle > 0.15 && cycle < 0.85) {
+        const reflectionAlpha = cycle < 0.4 ? (cycle - 0.15) / 0.25 : 
+                                cycle > 0.7 ? (0.85 - cycle) / 0.15 : 1;
+        
+        const reflectGradient = ctx.createLinearGradient(sunX, horizonY, sunX, height);
+        reflectGradient.addColorStop(0, `rgba(255, 220, 150, ${reflectionAlpha * 0.3})`);
+        reflectGradient.addColorStop(0.3, `rgba(255, 200, 100, ${reflectionAlpha * 0.1})`);
+        reflectGradient.addColorStop(1, 'transparent');
+        
+        // Shimmering reflection
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(sunX - 100, horizonY);
+        
+        for (let y = horizonY; y < height; y += 3) {
+          const shimmer = Math.sin(y * 0.1 + time * 0.003) * 20 * ((y - horizonY) / (height - horizonY));
+          ctx.lineTo(sunX - 40 + shimmer, y);
+        }
+        
+        ctx.lineTo(sunX + 100, height);
+        
+        for (let y = height; y > horizonY; y -= 3) {
+          const shimmer = Math.sin(y * 0.1 + time * 0.003 + 1) * 20 * ((y - horizonY) / (height - horizonY));
+          ctx.lineTo(sunX + 40 + shimmer, y);
+        }
+        
+        ctx.closePath();
+        ctx.fillStyle = reflectGradient;
+        ctx.fill();
+        ctx.restore();
+      }
+      
+      // Horizon line - subtle
+      ctx.strokeStyle = colorToString(colors.skyHorizon, 0.3);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, horizonY);
+      ctx.lineTo(width, horizonY);
+      ctx.stroke();
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Audio - ambient ocean drone
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.2;
+      masterGain.connect(audioCtx.destination);
+      
+      // Deep drone
+      const droneFreqs = [55, 82.5, 110]; // A1, E2, A2
+      droneFreqs.forEach(freq => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const filter = audioCtx.createBiquadFilter();
+        
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        
+        filter.type = 'lowpass';
+        filter.frequency.value = 200;
+        
+        gain.gain.value = 0.15;
+        
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGain);
+        
+        osc.start();
+        oscillators.push({ osc, gain, filter });
+      });
+      
+      // Ocean noise
+      const bufferSize = audioCtx.sampleRate * 2;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      // Brown noise (ocean-like)
+      let lastOut = 0;
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        lastOut = (lastOut + (0.02 * white)) / 1.02;
+        data[i] = lastOut * 3.5;
+      }
+      
+      noiseNode = audioCtx.createBufferSource();
+      noiseNode.buffer = buffer;
+      noiseNode.loop = true;
+      
+      noiseGain = audioCtx.createGain();
+      noiseGain.gain.value = 0.3;
+      
+      const noiseFilter = audioCtx.createBiquadFilter();
+      noiseFilter.type = 'lowpass';
+      noiseFilter.frequency.value = 400;
+      
+      noiseNode.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      
+      noiseNode.start();
+    }
+    
+    // Start audio on first interaction
+    canvas.addEventListener('click', initAudio);
+    canvas.addEventListener('touchstart', initAudio);
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    draw();
+  </script>
+</body>
+</html>
