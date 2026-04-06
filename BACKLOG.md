@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| alignment | Game theory — blue cooperators seek harmony, red defectors disrupt. Click to flip. Tragedy of the commons | 1 session | Apr 6 |
 | kintsugi | Japanese golden repair — break the bowl, watch gold fill cracks, wabi-sabi philosophy | 1 session | Apr 5 |
 | breath | 4-7-8 breathing guide — organic shape expands/contracts, soft drone, escape territory | 1 session | Apr 5 |
 | pulse | Heartbeat as life's rhythm — systole/diastole, movement elevates BPM, confront mortality/vitality | 1 session | Apr 5 |
@@ -76,7 +77,7 @@ _(Current WIP goes here)_
 | ~~kintsugi~~ | ~~Japanese golden repair. Break the bowl, watch it mend~~ | ~~?~~ | ~~Feb 23~~ → shipped Apr 5 |
 | flocking | Starling murmuration. Cursor is a hawk | ? | Feb 23 |
 | ~~breath~~ | ~~Organic shape that breathes, slows to encourage deeper breathing~~ | ~~?~~ | ~~Feb 23~~ → shipped Apr 5 |
-| alignment | Shapes trying to cooperate, one defects | ? | Feb 23 |
+| ~~alignment~~ | ~~Shapes trying to cooperate, one defects~~ | ~~?~~ | ~~Feb 23~~ → shipped Apr 6 |
 | drift | Particles through curl noise field | ? | Feb 23 |
 
 ---

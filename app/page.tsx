@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === April 6, 2026 ===
+    {
+      name: "Alignment",
+      description: "Game theory, visualized. Blue agents cooperate — they seek harmony, align with neighbors. Red agents defect — they disrupt, exploit trust. Click to flip any agent's strategy. Watch cooperation spread. Watch it collapse",
+      date: "Apr 6",
+      href: "/projects/alignment/"
+    },
     // === April 5, 2026 ===
     {
       name: "Kintsugi",
@@ -594,12 +601,6 @@ export default function Home() {
       description: "An organic shape that breathes. Gradually slows to encourage deeper breathing",
       date: "Feb 23",
       href: "/projects/breath/"
-    },
-    {
-      name: "Alignment",
-      description: "Shapes trying to cooperate. They almost reach consensus, then one defects",
-      date: "Feb 23",
-      href: "/projects/alignment/"
     }
   ];
 

@@ -3,442 +3,525 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Alignment — zama.starfish</title>
+  <title>alignment — starfish</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
       background: #0a0a0f; 
-      overflow: hidden;
-      min-height: 100vh;
+      overflow: hidden; 
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     }
-    canvas { 
-      display: block;
-    }
+    canvas { display: block; }
+    
     #info {
       position: fixed;
       bottom: 20px;
       left: 20px;
-      color: rgba(255,255,255,0.3);
-      font-family: monospace;
+      color: rgba(255,255,255,0.5);
       font-size: 12px;
+      max-width: 300px;
+      line-height: 1.5;
+      opacity: 0;
+      transition: opacity 0.5s;
     }
-    #info a { color: rgba(255,255,255,0.5); }
-    #status {
+    
+    #info.visible { opacity: 1; }
+    
+    .nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(0,0,0,0.3);
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.4);
+      color: rgba(255,255,255,0.9);
+    }
+    
+    #home-btn { left: 20px; }
+    #info-btn { right: 20px; }
+    
+    #stats {
       position: fixed;
       top: 20px;
       left: 50%;
       transform: translateX(-50%);
-      color: rgba(255,255,255,0.4);
-      font-family: monospace;
+      color: rgba(255,255,255,0.7);
       font-size: 14px;
       text-align: center;
-      transition: opacity 0.5s;
     }
-  
-    /* Navigation */
-    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
-    .sf-nav a, .sf-nav button { 
-      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
-      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
-      width: 36px; height: 36px; border-radius: 50%; display: flex; 
-      align-items: center; justify-content: center; cursor: pointer;
-      transition: all 0.3s; font-family: system-ui, sans-serif;
-    }
-    .sf-nav a:hover, .sf-nav button:hover { 
-      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
-      border-color: rgba(255,255,255,0.3);
-    }
-    /* Modal */
-    .sf-modal { 
-      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
-      display: none; align-items: center; justify-content: center; padding: 20px;
-    }
-    .sf-modal.open { display: flex; }
-    .sf-modal-content {
-      background: #111; border: 1px solid #333; border-radius: 12px;
-      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
-      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
-    }
-    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
-    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
-      text-transform: uppercase; letter-spacing: 1px; color: #888; }
-    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
-    .sf-modal-close { 
-      position: absolute; top: 20px; right: 20px; background: none; border: none;
-      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
-    }
-    .sf-modal-close:hover { color: #fff; }
-
+    
+    #stats span { margin: 0 15px; }
+    .cooperate { color: #4a9eff; }
+    .defect { color: #ff4a6a; }
   </style>
 </head>
 <body>
-
-  <!-- Navigation -->
-  <nav class="sf-nav">
-    <a href="/" title="Back to gallery">←</a>
-    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
-  </nav>
+  <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+  <button class="nav-btn" id="info-btn" title="About this piece">?</button>
   
-  <!-- Info Modal -->
-  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
-    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
-    <div class="sf-modal-content">
-      <h2>Alignment</h2>
-      <h3>Concept</h3>
-      <p>Shapes trying to cooperate. They almost reach consensus, then one defects.</p>
-      <h3>Interaction</h3>
-      <p>Watch the shapes try to align. Cooperation is fragile.</p>
-    </div>
+  <div id="stats">
+    <span class="cooperate">Cooperators: <span id="coop-count">0</span></span>
+    <span class="defect">Defectors: <span id="defect-count">0</span></span>
   </div>
-
-<canvas id="canvas"></canvas>
-  <div id="status">converging...</div>
+  
   <div id="info">
-    alignment — <a href="https://starfish.zama.space">zama.starfish</a>
+    <strong>alignment</strong><br><br>
+    A game theory simulation. Blue agents cooperate — they seek harmony, 
+    align with neighbors. Red agents defect — they disrupt, exploit trust.<br><br>
+    Cooperation spreads through proximity. But so does defection.<br><br>
+    Click to flip any agent's strategy. Watch the system find (or lose) equilibrium.<br><br>
+    <em>The tragedy of the commons, visualized.</em>
   </div>
+  
+  <canvas id="canvas"></canvas>
   
   <script>
+    // Navigation
+    document.getElementById('home-btn').onclick = () => window.location.href = '/';
+    document.getElementById('info-btn').onclick = () => {
+      document.getElementById('info').classList.toggle('visible');
+    };
+    
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const status = document.getElementById('status');
     
-    let width, height, centerX, centerY;
+    let width, height;
     let agents = [];
-    let time = 0;
-    let phase = 'converging'; // converging, aligned, defecting, chaos
-    let phaseTime = 0;
-    let alignmentScore = 0;
-    let defector = null;
-    let cycleCount = 0;
+    let audioStarted = false;
+    let audioCtx, masterGain, cooperateDrone, defectDrone, coopGain, defectGainNode;
     
-    const CONFIG = {
-      agentCount: 7,
-      baseRadius: 80,
-      orbitRadius: 180,
-      alignmentThreshold: 0.92,
-      chaosTime: 180,
-      alignedTime: 60,
-      convergenceRate: 0.015,
-      defectionSpeed: 0.08,
-      recoveryRate: 0.008
-    };
-    
-    const COLORS = [
-      '#4a9eff', // blue
-      '#ff6b6b', // red
-      '#4ecdc4', // teal
-      '#ffe66d', // yellow
-      '#95e1d3', // mint
-      '#dda0dd', // plum
-      '#f8b500', // gold
-    ];
-    
-    const STATUSES = {
-      converging: ['converging...', 'seeking consensus...', 'almost there...', 'approaching agreement...'],
-      aligned: ['aligned.', 'equilibrium.', 'consensus reached.', 'stable.'],
-      defecting: ['defection.', 'betrayal.', 'one departs.', 'broken.'],
-      chaos: ['chaos.', 'scattered.', 'disorder.', 'seeking...']
-    };
+    const AGENT_COUNT = 80;
+    const AGENT_RADIUS = 8;
+    const INFLUENCE_RADIUS = 100;
+    const DEFECT_PROBABILITY = 0.15; // Starting proportion of defectors
     
     function resize() {
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
-      centerX = width / 2;
-      centerY = height / 2;
     }
     
-    function createAgent(index) {
-      const angle = (index / CONFIG.agentCount) * Math.PI * 2;
-      return {
-        index,
-        // Current state
-        angle: angle + (Math.random() - 0.5) * 2,
-        radius: CONFIG.orbitRadius + (Math.random() - 0.5) * 100,
-        rotation: Math.random() * Math.PI * 2,
-        size: CONFIG.baseRadius * (0.8 + Math.random() * 0.4),
-        // Target state (consensus)
-        targetAngle: angle,
-        targetRadius: CONFIG.orbitRadius,
-        targetRotation: 0,
-        // Velocity
-        angleVel: 0,
-        radiusVel: 0,
-        rotationVel: (Math.random() - 0.5) * 0.02,
-        // Visual
-        color: COLORS[index % COLORS.length],
-        opacity: 0.7,
-        sides: 3 + Math.floor(Math.random() * 4), // triangle to hexagon
-        // Behavior
-        isDefector: false,
-        defectionAngle: 0
-      };
+    class Agent {
+      constructor(x, y, cooperates = true) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 2;
+        this.vy = (Math.random() - 0.5) * 2;
+        this.cooperates = cooperates;
+        this.targetAngle = Math.random() * Math.PI * 2;
+        this.angle = this.targetAngle;
+        this.pulsePhase = Math.random() * Math.PI * 2;
+        this.neighbors = [];
+        this.alignmentStrength = 0;
+        this.switchCooldown = 0;
+      }
+      
+      findNeighbors(agents) {
+        this.neighbors = [];
+        for (const other of agents) {
+          if (other === this) continue;
+          const dx = other.x - this.x;
+          const dy = other.y - this.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < INFLUENCE_RADIUS) {
+            this.neighbors.push({ agent: other, dist, dx, dy });
+          }
+        }
+      }
+      
+      update(agents) {
+        this.pulsePhase += 0.05;
+        if (this.switchCooldown > 0) this.switchCooldown--;
+        
+        // Movement based on strategy
+        if (this.cooperates) {
+          // Cooperators seek alignment — move toward center of neighbors
+          if (this.neighbors.length > 0) {
+            let avgX = 0, avgY = 0, avgVx = 0, avgVy = 0;
+            let coopCount = 0;
+            
+            for (const n of this.neighbors) {
+              if (n.agent.cooperates) {
+                avgX += n.agent.x;
+                avgY += n.agent.y;
+                avgVx += n.agent.vx;
+                avgVy += n.agent.vy;
+                coopCount++;
+              }
+            }
+            
+            if (coopCount > 0) {
+              avgX /= coopCount;
+              avgY /= coopCount;
+              avgVx /= coopCount;
+              avgVy /= coopCount;
+              
+              // Cohesion: move toward center
+              this.vx += (avgX - this.x) * 0.002;
+              this.vy += (avgY - this.y) * 0.002;
+              
+              // Alignment: match velocity
+              this.vx += (avgVx - this.vx) * 0.05;
+              this.vy += (avgVy - this.vy) * 0.05;
+              
+              this.alignmentStrength = coopCount / this.neighbors.length;
+            }
+          }
+          
+          // Separation (avoid getting too close)
+          for (const n of this.neighbors) {
+            if (n.dist < 30) {
+              this.vx -= n.dx * 0.01;
+              this.vy -= n.dy * 0.01;
+            }
+          }
+          
+        } else {
+          // Defectors are chaotic — random direction changes
+          if (Math.random() < 0.02) {
+            this.vx += (Math.random() - 0.5) * 2;
+            this.vy += (Math.random() - 0.5) * 2;
+          }
+          
+          // Defectors disrupt cooperators by moving through them
+          for (const n of this.neighbors) {
+            if (n.agent.cooperates && n.dist > 40) {
+              this.vx += n.dx * 0.003;
+              this.vy += n.dy * 0.003;
+            }
+          }
+          
+          this.alignmentStrength = 0;
+        }
+        
+        // Speed limit
+        const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+        const maxSpeed = this.cooperates ? 1.5 : 2.5;
+        if (speed > maxSpeed) {
+          this.vx = (this.vx / speed) * maxSpeed;
+          this.vy = (this.vy / speed) * maxSpeed;
+        }
+        
+        // Update position
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // Wrap at edges
+        if (this.x < 0) this.x = width;
+        if (this.x > width) this.x = 0;
+        if (this.y < 0) this.y = height;
+        if (this.y > height) this.y = 0;
+        
+        // Update angle based on velocity
+        if (speed > 0.1) {
+          this.targetAngle = Math.atan2(this.vy, this.vx);
+        }
+        
+        // Smooth angle
+        let angleDiff = this.targetAngle - this.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        this.angle += angleDiff * 0.1;
+        
+        // Strategy switching based on neighbors
+        if (this.switchCooldown === 0) {
+          const coopNeighbors = this.neighbors.filter(n => n.agent.cooperates).length;
+          const defectNeighbors = this.neighbors.filter(n => !n.agent.cooperates).length;
+          
+          if (this.cooperates) {
+            // Cooperators defect if surrounded by defectors
+            if (defectNeighbors > coopNeighbors + 2 && Math.random() < 0.01) {
+              this.cooperates = false;
+              this.switchCooldown = 120;
+              playSwitch(false);
+            }
+          } else {
+            // Defectors might cooperate if surrounded by cooperators
+            if (coopNeighbors > defectNeighbors + 3 && Math.random() < 0.005) {
+              this.cooperates = true;
+              this.switchCooldown = 120;
+              playSwitch(true);
+            }
+          }
+        }
+      }
+      
+      draw() {
+        const pulse = Math.sin(this.pulsePhase) * 0.2 + 1;
+        const r = AGENT_RADIUS * pulse;
+        
+        // Connection lines to neighbors (cooperators only)
+        if (this.cooperates) {
+          for (const n of this.neighbors) {
+            if (n.agent.cooperates) {
+              const alpha = Math.max(0, 1 - n.dist / INFLUENCE_RADIUS) * 0.3;
+              ctx.beginPath();
+              ctx.moveTo(this.x, this.y);
+              ctx.lineTo(n.agent.x, n.agent.y);
+              ctx.strokeStyle = `rgba(74, 158, 255, ${alpha})`;
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+          }
+        }
+        
+        // Draw agent body
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        
+        // Glow
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 2);
+        if (this.cooperates) {
+          gradient.addColorStop(0, 'rgba(74, 158, 255, 0.5)');
+          gradient.addColorStop(1, 'rgba(74, 158, 255, 0)');
+        } else {
+          gradient.addColorStop(0, 'rgba(255, 74, 106, 0.5)');
+          gradient.addColorStop(1, 'rgba(255, 74, 106, 0)');
+        }
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 2, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        
+        // Body (triangle pointing in direction)
+        ctx.beginPath();
+        ctx.moveTo(r * 1.5, 0);
+        ctx.lineTo(-r, r * 0.8);
+        ctx.lineTo(-r, -r * 0.8);
+        ctx.closePath();
+        
+        if (this.cooperates) {
+          ctx.fillStyle = `rgba(74, 158, 255, ${0.7 + this.alignmentStrength * 0.3})`;
+          ctx.strokeStyle = '#4a9eff';
+        } else {
+          ctx.fillStyle = 'rgba(255, 74, 106, 0.8)';
+          ctx.strokeStyle = '#ff4a6a';
+        }
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        
+        ctx.restore();
+      }
     }
     
     function init() {
+      resize();
       agents = [];
-      for (let i = 0; i < CONFIG.agentCount; i++) {
-        agents.push(createAgent(i));
-      }
-      phase = 'chaos';
-      phaseTime = 0;
-    }
-    
-    function calculateAlignment() {
-      let totalDiff = 0;
       
-      for (const agent of agents) {
-        if (agent.isDefector) continue;
-        
-        // How close to target position?
-        const angleDiff = Math.abs(normalizeAngle(agent.angle - agent.targetAngle));
-        const radiusDiff = Math.abs(agent.radius - agent.targetRadius) / CONFIG.orbitRadius;
-        const rotDiff = Math.abs(normalizeAngle(agent.rotation - agent.targetRotation));
-        
-        totalDiff += angleDiff / Math.PI + radiusDiff + rotDiff / Math.PI;
-      }
-      
-      const maxDiff = agents.length * 3;
-      return 1 - (totalDiff / maxDiff);
-    }
-    
-    function normalizeAngle(a) {
-      while (a > Math.PI) a -= Math.PI * 2;
-      while (a < -Math.PI) a += Math.PI * 2;
-      return a;
-    }
-    
-    function updateStatus() {
-      const options = STATUSES[phase];
-      const text = options[Math.floor(Math.random() * options.length)];
-      status.style.opacity = 0;
-      setTimeout(() => {
-        status.textContent = text;
-        status.style.opacity = 1;
-      }, 300);
-    }
-    
-    function update() {
-      time++;
-      phaseTime++;
-      
-      // Phase transitions
-      if (phase === 'converging') {
-        alignmentScore = calculateAlignment();
-        
-        if (alignmentScore > CONFIG.alignmentThreshold) {
-          phase = 'aligned';
-          phaseTime = 0;
-          updateStatus();
-        }
-        
-        // Move toward consensus
-        for (const agent of agents) {
-          agent.angle += (agent.targetAngle - agent.angle) * CONFIG.convergenceRate;
-          agent.radius += (agent.targetRadius - agent.radius) * CONFIG.convergenceRate;
-          agent.rotation += (agent.targetRotation - agent.rotation) * CONFIG.convergenceRate * 0.5;
-          agent.rotationVel *= 0.98;
-          agent.rotation += agent.rotationVel;
-        }
-      }
-      
-      else if (phase === 'aligned') {
-        // Hold alignment briefly, tension building
-        for (const agent of agents) {
-          agent.angle += (agent.targetAngle - agent.angle) * 0.1;
-          agent.radius += (agent.targetRadius - agent.radius) * 0.1;
-          // Subtle vibration - tension
-          agent.angle += Math.sin(time * 0.3 + agent.index) * 0.002;
-        }
-        
-        if (phaseTime > CONFIG.alignedTime) {
-          // Choose a defector
-          phase = 'defecting';
-          phaseTime = 0;
-          defector = agents[Math.floor(Math.random() * agents.length)];
-          defector.isDefector = true;
-          defector.defectionAngle = Math.random() * Math.PI * 2;
-          updateStatus();
-        }
-      }
-      
-      else if (phase === 'defecting') {
-        // Defector breaks away
-        defector.angle += CONFIG.defectionSpeed;
-        defector.radius += (CONFIG.orbitRadius * 1.8 - defector.radius) * 0.05;
-        defector.rotation += 0.1;
-        
-        // Others start to destabilize
-        for (const agent of agents) {
-          if (agent.isDefector) continue;
-          agent.angle += (Math.random() - 0.5) * 0.01 * (phaseTime / 30);
-          agent.rotationVel += (Math.random() - 0.5) * 0.002;
-        }
-        
-        if (phaseTime > 60) {
-          phase = 'chaos';
-          phaseTime = 0;
-          cycleCount++;
-          updateStatus();
-          
-          // Everyone scatters
-          for (const agent of agents) {
-            agent.isDefector = false;
-            agent.angleVel = (Math.random() - 0.5) * 0.05;
-            agent.radiusVel = (Math.random() - 0.5) * 3;
-            agent.rotationVel = (Math.random() - 0.5) * 0.1;
-          }
-        }
-      }
-      
-      else if (phase === 'chaos') {
-        // Chaotic movement
-        for (const agent of agents) {
-          agent.angle += agent.angleVel;
-          agent.radius += agent.radiusVel;
-          agent.rotation += agent.rotationVel;
-          
-          // Soft boundaries
-          if (agent.radius < 50) agent.radiusVel += 0.5;
-          if (agent.radius > CONFIG.orbitRadius * 2.5) agent.radiusVel -= 0.5;
-          
-          // Drag
-          agent.angleVel *= 0.99;
-          agent.radiusVel *= 0.98;
-          agent.rotationVel *= 0.995;
-          
-          // Random impulses
-          if (Math.random() < 0.01) {
-            agent.angleVel += (Math.random() - 0.5) * 0.02;
-            agent.radiusVel += (Math.random() - 0.5) * 2;
-          }
-        }
-        
-        if (phaseTime > CONFIG.chaosTime) {
-          phase = 'converging';
-          phaseTime = 0;
-          updateStatus();
-          
-          // Reset targets for new configuration
-          const offset = Math.random() * Math.PI * 2;
-          for (let i = 0; i < agents.length; i++) {
-            agents[i].targetAngle = offset + (i / agents.length) * Math.PI * 2;
-            agents[i].targetRotation = Math.random() < 0.5 ? 0 : Math.PI;
-          }
-        }
+      for (let i = 0; i < AGENT_COUNT; i++) {
+        const cooperates = Math.random() > DEFECT_PROBABILITY;
+        agents.push(new Agent(
+          Math.random() * width,
+          Math.random() * height,
+          cooperates
+        ));
       }
     }
     
-    function drawAgent(agent) {
-      const x = centerX + Math.cos(agent.angle) * agent.radius;
-      const y = centerY + Math.sin(agent.angle) * agent.radius;
+    // Audio
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
       
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(agent.rotation);
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.3;
+      masterGain.connect(audioCtx.destination);
       
-      // Glow
-      const glowSize = agent.isDefector ? 40 : 20;
-      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, agent.size + glowSize);
-      gradient.addColorStop(0, agent.color + '40');
-      gradient.addColorStop(1, agent.color + '00');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(0, 0, agent.size + glowSize, 0, Math.PI * 2);
-      ctx.fill();
+      // Cooperation drone — warm, harmonious
+      coopGain = audioCtx.createGain();
+      coopGain.gain.value = 0;
+      coopGain.connect(masterGain);
       
-      // Shape
-      ctx.strokeStyle = agent.color;
-      ctx.lineWidth = agent.isDefector ? 3 : 2;
-      ctx.globalAlpha = agent.isDefector ? 1 : agent.opacity;
+      // C major chord with slight detuning
+      const coopFreqs = [130.81, 164.81, 196.00, 261.63]; // C3, E3, G3, C4
+      coopFreqs.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq * (1 + (Math.random() - 0.5) * 0.005);
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.15 / (i + 1);
+        osc.connect(gain);
+        gain.connect(coopGain);
+        osc.start();
+      });
       
-      ctx.beginPath();
-      for (let i = 0; i <= agent.sides; i++) {
-        const a = (i / agent.sides) * Math.PI * 2 - Math.PI / 2;
-        const px = Math.cos(a) * agent.size * 0.5;
-        const py = Math.sin(a) * agent.size * 0.5;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.stroke();
+      // Defection drone — tense, dissonant
+      defectGainNode = audioCtx.createGain();
+      defectGainNode.gain.value = 0;
+      defectGainNode.connect(masterGain);
       
-      // Inner shape (smaller, rotated)
-      ctx.globalAlpha *= 0.5;
-      ctx.rotate(Math.PI / agent.sides);
-      ctx.beginPath();
-      for (let i = 0; i <= agent.sides; i++) {
-        const a = (i / agent.sides) * Math.PI * 2 - Math.PI / 2;
-        const px = Math.cos(a) * agent.size * 0.25;
-        const py = Math.sin(a) * agent.size * 0.25;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.stroke();
-      
-      ctx.restore();
+      // Tritone + minor second cluster
+      const defectFreqs = [116.54, 164.81, 174.61, 233.08]; // A#2, E3, F3, A#3
+      defectFreqs.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.value = freq;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 400;
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.08 / (i + 1);
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(defectGainNode);
+        osc.start();
+      });
     }
     
-    function drawConnections() {
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-      ctx.lineWidth = 1;
+    function playSwitch(toCooperate) {
+      if (!audioStarted) return;
       
-      for (let i = 0; i < agents.length; i++) {
-        for (let j = i + 1; j < agents.length; j++) {
-          const a = agents[i];
-          const b = agents[j];
-          
-          const ax = centerX + Math.cos(a.angle) * a.radius;
-          const ay = centerY + Math.sin(a.angle) * a.radius;
-          const bx = centerX + Math.cos(b.angle) * b.radius;
-          const by = centerY + Math.sin(b.angle) * b.radius;
-          
-          const dist = Math.hypot(bx - ax, by - ay);
-          const maxDist = CONFIG.orbitRadius * 2;
-          
-          if (dist < maxDist) {
-            ctx.globalAlpha = (1 - dist / maxDist) * 0.3;
-            ctx.beginPath();
-            ctx.moveTo(ax, ay);
-            ctx.lineTo(bx, by);
-            ctx.stroke();
-          }
-        }
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      if (toCooperate) {
+        // Rising tone — hope
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(440, now + 0.2);
+      } else {
+        // Falling tone — corruption
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(110, now + 0.3);
       }
-      ctx.globalAlpha = 1;
+      
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(now);
+      osc.stop(now + 0.3);
     }
     
-    function draw() {
-      // Fade
-      ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
-      ctx.fillRect(0, 0, width, height);
+    function updateAudio() {
+      if (!audioStarted) return;
       
-      // Center point
-      ctx.fillStyle = 'rgba(255,255,255,0.1)';
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
-      ctx.fill();
+      const coopCount = agents.filter(a => a.cooperates).length;
+      const defectCount = agents.length - coopCount;
+      const coopRatio = coopCount / agents.length;
       
-      // Connections
-      drawConnections();
-      
-      // Agents
-      for (const agent of agents) {
-        drawAgent(agent);
-      }
+      // Crossfade between drones based on ratio
+      const now = audioCtx.currentTime;
+      coopGain.gain.linearRampToValueAtTime(coopRatio * 0.5, now + 0.1);
+      defectGainNode.gain.linearRampToValueAtTime((1 - coopRatio) * 0.4, now + 0.1);
+    }
+    
+    function updateStats() {
+      const coopCount = agents.filter(a => a.cooperates).length;
+      document.getElementById('coop-count').textContent = coopCount;
+      document.getElementById('defect-count').textContent = agents.length - coopCount;
     }
     
     function animate() {
-      update();
-      draw();
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Update neighbors
+      for (const agent of agents) {
+        agent.findNeighbors(agents);
+      }
+      
+      // Update and draw
+      for (const agent of agents) {
+        agent.update(agents);
+      }
+      
+      // Draw connections first (under agents)
+      for (const agent of agents) {
+        if (agent.cooperates) {
+          for (const n of agent.neighbors) {
+            if (n.agent.cooperates) {
+              const alpha = Math.max(0, 1 - n.dist / INFLUENCE_RADIUS) * 0.2;
+              ctx.beginPath();
+              ctx.moveTo(agent.x, agent.y);
+              ctx.lineTo(n.agent.x, n.agent.y);
+              ctx.strokeStyle = `rgba(74, 158, 255, ${alpha})`;
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+          }
+        }
+      }
+      
+      // Draw agents
+      for (const agent of agents) {
+        agent.draw();
+      }
+      
+      updateAudio();
+      updateStats();
+      
       requestAnimationFrame(animate);
     }
     
+    // Click to flip agent strategy
+    canvas.addEventListener('click', (e) => {
+      initAudio();
+      
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      for (const agent of agents) {
+        const dx = agent.x - x;
+        const dy = agent.y - y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < AGENT_RADIUS * 3) {
+          agent.cooperates = !agent.cooperates;
+          agent.switchCooldown = 60;
+          playSwitch(agent.cooperates);
+          break;
+        }
+      }
+    });
+    
+    // Touch support
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      initAudio();
+      
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      
+      for (const agent of agents) {
+        const dx = agent.x - x;
+        const dy = agent.y - y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < AGENT_RADIUS * 4) {
+          agent.cooperates = !agent.cooperates;
+          agent.switchCooldown = 60;
+          playSwitch(agent.cooperates);
+          break;
+        }
+      }
+    });
+    
     window.addEventListener('resize', resize);
     
-    resize();
     init();
-    updateStatus();
     animate();
   </script>
 </body>
