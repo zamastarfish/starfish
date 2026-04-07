@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 7, 2026 ===
     {
+      name: "Lorenz",
+      description: "The butterfly effect, visualized. Three simple equations, infinite complexity. Deterministic chaos — perfectly predictable rules, unpredictable outcomes. Click to spawn trajectories that start almost identically, then diverge into different fates",
+      date: "Apr 7",
+      href: "/projects/lorenz/"
+    },
+    {
       name: "Jellyfish",
       description: "Drifting through the deep. Bell contracts, tentacles trail, bioluminescence glows. Click to spawn, move to create currents. 500 million years of elegant simplicity",
       date: "Apr 7",

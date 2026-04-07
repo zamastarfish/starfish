@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>lorenz — starfish</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.4);
+            font-size: 12px;
+            pointer-events: none;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+        .nav-btn {
+            position: fixed;
+            top: 20px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.3);
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+            z-index: 100;
+        }
+        .nav-btn:hover {
+            border-color: rgba(255,255,255,0.5);
+            color: rgba(255,255,255,0.9);
+            background: rgba(0,0,0,0.5);
+        }
+        #home-btn { left: 20px; }
+        #info-btn { right: 20px; font-size: 14px; font-style: italic; }
+        #tooltip {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 15px;
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
+            max-width: 280px;
+            line-height: 1.6;
+            display: none;
+            z-index: 99;
+        }
+        #tooltip.show { display: block; }
+        #start-prompt {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.6);
+            font-size: 16px;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+    <button class="nav-btn" id="info-btn" title="About this piece">i</button>
+    <div id="tooltip">
+        <strong>Lorenz Attractor</strong><br><br>
+        In 1963, meteorologist Edward Lorenz discovered that tiny rounding errors 
+        in his weather simulation produced wildly different outcomes — the butterfly effect.<br><br>
+        These curves follow three simple equations, yet never repeat. Deterministic chaos: 
+        perfectly predictable rules, unpredictable results.<br><br>
+        <em>Click to spawn new trajectories. Each starts almost identically, 
+        then diverges into its own fate.</em>
+    </div>
+    <div id="start-prompt">click to begin</div>
+    <canvas id="canvas"></canvas>
+    <div id="info">lorenz — deterministic chaos</div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startPrompt = document.getElementById('start-prompt');
+        
+        let width, height;
+        let audioStarted = false;
+        let audioCtx, masterGain;
+        let oscillators = [];
+        let trajectories = [];
+        
+        // Lorenz parameters
+        const sigma = 10;
+        const rho = 28;
+        const beta = 8/3;
+        const dt = 0.005;
+        
+        // Visual parameters
+        const scale = 12;
+        const centerX = () => width / 2;
+        const centerY = () => height / 2 + 50;
+        
+        // Trail canvas for persistence
+        let trailCanvas, trailCtx;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            // Recreate trail canvas
+            trailCanvas = document.createElement('canvas');
+            trailCanvas.width = width;
+            trailCanvas.height = height;
+            trailCtx = trailCanvas.getContext('2d');
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        // Lorenz system derivative
+        function lorenzStep(x, y, z) {
+            const dx = sigma * (y - x);
+            const dy = x * (rho - z) - y;
+            const dz = x * y - beta * z;
+            return {
+                x: x + dx * dt,
+                y: y + dy * dt,
+                z: z + dz * dt
+            };
+        }
+        
+        // Project 3D to 2D (simple orthographic with rotation)
+        function project(x, y, z, time) {
+            const angle = time * 0.0001;
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+            
+            // Rotate around Y axis
+            const rx = x * cosA - z * sinA;
+            const rz = x * sinA + z * cosA;
+            
+            return {
+                x: centerX() + rx * scale,
+                y: centerY() - y * scale + rz * scale * 0.3
+            };
+        }
+        
+        // Color based on position (which wing of the attractor)
+        function getColor(x, z, age) {
+            const wing = x > 0 ? 1 : 0;
+            const hue = wing ? 200 + z * 2 : 30 + z * 2;
+            const saturation = 70;
+            const lightness = 50 + Math.sin(age * 0.01) * 10;
+            const alpha = Math.max(0.1, 1 - age * 0.0005);
+            return `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+        }
+        
+        class Trajectory {
+            constructor(x, y, z, hueOffset = 0) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+                this.hueOffset = hueOffset;
+                this.age = 0;
+                this.history = [];
+                this.maxHistory = 500;
+                this.dead = false;
+            }
+            
+            update() {
+                const next = lorenzStep(this.x, this.y, this.z);
+                this.x = next.x;
+                this.y = next.y;
+                this.z = next.z;
+                this.age++;
+                
+                this.history.push({ x: this.x, y: this.y, z: this.z });
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                }
+                
+                // Die after a while
+                if (this.age > 8000) {
+                    this.dead = true;
+                }
+            }
+            
+            draw(time) {
+                if (this.history.length < 2) return;
+                
+                // Draw trail to persistent canvas
+                for (let i = 1; i < this.history.length; i++) {
+                    const p0 = this.history[i - 1];
+                    const p1 = this.history[i];
+                    
+                    const proj0 = project(p0.x, p0.y, p0.z, time);
+                    const proj1 = project(p1.x, p1.y, p1.z, time);
+                    
+                    const segmentAge = this.history.length - i;
+                    const alpha = Math.max(0.05, (1 - segmentAge / this.maxHistory) * 0.8);
+                    
+                    // Color based on which wing
+                    const wing = p1.x > 0;
+                    const hue = (wing ? 210 : 35) + this.hueOffset + p1.z * 0.5;
+                    
+                    trailCtx.beginPath();
+                    trailCtx.moveTo(proj0.x, proj0.y);
+                    trailCtx.lineTo(proj1.x, proj1.y);
+                    trailCtx.strokeStyle = `hsla(${hue}, 75%, 55%, ${alpha})`;
+                    trailCtx.lineWidth = 1.5;
+                    trailCtx.stroke();
+                }
+                
+                // Draw current point (bright)
+                const current = this.history[this.history.length - 1];
+                const projCurrent = project(current.x, current.y, current.z, time);
+                const wing = current.x > 0;
+                const hue = (wing ? 210 : 35) + this.hueOffset;
+                
+                ctx.beginPath();
+                ctx.arc(projCurrent.x, projCurrent.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${hue}, 90%, 70%, 0.9)`;
+                ctx.fill();
+                
+                // Glow
+                ctx.beginPath();
+                ctx.arc(projCurrent.x, projCurrent.y, 8, 0, Math.PI * 2);
+                const grad = ctx.createRadialGradient(
+                    projCurrent.x, projCurrent.y, 0,
+                    projCurrent.x, projCurrent.y, 8
+                );
+                grad.addColorStop(0, `hsla(${hue}, 90%, 70%, 0.4)`);
+                grad.addColorStop(1, `hsla(${hue}, 90%, 70%, 0)`);
+                ctx.fillStyle = grad;
+                ctx.fill();
+            }
+        }
+        
+        function spawnTrajectory(x, y) {
+            // Start near the attractor with slight randomness
+            const baseX = 1;
+            const baseY = 1;
+            const baseZ = 20;
+            
+            // Spawn a few trajectories with tiny variations
+            const count = 3;
+            for (let i = 0; i < count; i++) {
+                const variation = 0.0001 * (i + 1);
+                trajectories.push(new Trajectory(
+                    baseX + variation * (Math.random() - 0.5),
+                    baseY + variation * (Math.random() - 0.5),
+                    baseZ + variation * (Math.random() - 0.5),
+                    i * 15 // Slight hue offset
+                ));
+            }
+            
+            // Limit total trajectories
+            while (trajectories.length > 15) {
+                trajectories.shift();
+            }
+        }
+        
+        // Audio
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.15;
+            masterGain.connect(audioCtx.destination);
+            
+            // Base drone - two oscillators slightly detuned
+            const drone1 = audioCtx.createOscillator();
+            const drone2 = audioCtx.createOscillator();
+            const droneGain = audioCtx.createGain();
+            
+            drone1.type = 'sine';
+            drone2.type = 'sine';
+            drone1.frequency.value = 55; // A1
+            drone2.frequency.value = 55.5; // Slight detune for beating
+            droneGain.gain.value = 0.3;
+            
+            drone1.connect(droneGain);
+            drone2.connect(droneGain);
+            droneGain.connect(masterGain);
+            
+            drone1.start();
+            drone2.start();
+            
+            // Higher harmonic that will be modulated
+            const harmonic = audioCtx.createOscillator();
+            const harmonicGain = audioCtx.createGain();
+            harmonic.type = 'triangle';
+            harmonic.frequency.value = 220;
+            harmonicGain.gain.value = 0.1;
+            harmonic.connect(harmonicGain);
+            harmonicGain.connect(masterGain);
+            harmonic.start();
+            
+            oscillators = { drone1, drone2, harmonic, harmonicGain, droneGain };
+        }
+        
+        function updateAudio() {
+            if (!audioStarted || !oscillators.harmonic) return;
+            
+            // Find the most active trajectory
+            if (trajectories.length > 0) {
+                const t = trajectories[trajectories.length - 1];
+                
+                // Map x position to stereo and pitch
+                // The attractor oscillates between x ≈ -15 and x ≈ +15
+                const normX = (t.x + 15) / 30; // 0 to 1
+                const normZ = (t.z - 10) / 30; // roughly 0 to 1
+                
+                // Pitch shifts based on which "wing" we're in
+                const basePitch = t.x > 0 ? 220 : 165; // A3 or E3
+                const pitchMod = normZ * 30;
+                oscillators.harmonic.frequency.setTargetAtTime(
+                    basePitch + pitchMod,
+                    audioCtx.currentTime,
+                    0.1
+                );
+                
+                // Volume based on velocity (changes in z)
+                const velocity = Math.abs(t.z - (t.history[t.history.length - 2]?.z || t.z));
+                oscillators.harmonicGain.gain.setTargetAtTime(
+                    0.05 + velocity * 0.02,
+                    audioCtx.currentTime,
+                    0.1
+                );
+            }
+        }
+        
+        let lastTime = 0;
+        function animate(time) {
+            const deltaTime = time - lastTime;
+            lastTime = time;
+            
+            // Fade the trail canvas slightly
+            trailCtx.fillStyle = 'rgba(10, 10, 15, 0.02)';
+            trailCtx.fillRect(0, 0, width, height);
+            
+            // Clear main canvas
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Update and draw trajectories
+            trajectories = trajectories.filter(t => !t.dead);
+            
+            for (const t of trajectories) {
+                // Multiple steps per frame for smoothness
+                for (let i = 0; i < 5; i++) {
+                    t.update();
+                }
+                t.draw(time);
+            }
+            
+            // Draw trail canvas
+            ctx.drawImage(trailCanvas, 0, 0);
+            
+            // Update audio
+            updateAudio();
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Start on click
+        canvas.addEventListener('click', (e) => {
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+                startPrompt.style.opacity = '0';
+            }
+            
+            spawnTrajectory(e.clientX, e.clientY);
+        });
+        
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+                startPrompt.style.opacity = '0';
+            }
+            
+            spawnTrajectory(touch.clientX, touch.clientY);
+        });
+        
+        // Navigation
+        document.getElementById('home-btn').onclick = () => {
+            window.location.href = '/';
+        };
+        
+        const infoBtn = document.getElementById('info-btn');
+        const tooltip = document.getElementById('tooltip');
+        infoBtn.onclick = () => {
+            tooltip.classList.toggle('show');
+        };
+        
+        // Start animation
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
