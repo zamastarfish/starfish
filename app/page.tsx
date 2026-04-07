@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 7, 2026 ===
     {
+      name: "Prism",
+      description: "Newton revealed the rainbow hidden in white light. Move to position the prism, watch the spectrum emerge — red bends least, violet most. Each color sings its frequency. The beauty was there all along",
+      date: "Apr 7",
+      href: "/projects/prism/"
+    },
+    {
       name: "Sediment",
       description: "Geological time compressed. Click to deposit layers — each stratum an epoch, from the Hadean to the Quaternary. The weight of everything above presses down, compacting what came before. What will your layer leave behind?",
       date: "Apr 7",

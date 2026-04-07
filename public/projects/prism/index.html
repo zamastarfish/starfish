@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>prism — starfish</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: none;
+        }
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.3);
+            font-size: 12px;
+            pointer-events: none;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+        .nav-btn {
+            position: fixed;
+            top: 20px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.3);
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+            z-index: 100;
+        }
+        .nav-btn:hover {
+            border-color: rgba(255,255,255,0.5);
+            color: rgba(255,255,255,0.9);
+            background: rgba(0,0,0,0.5);
+        }
+        #home-btn { left: 20px; }
+        #info-btn { right: 20px; font-size: 14px; font-style: italic; }
+        #tooltip {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 15px;
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
+            max-width: 280px;
+            line-height: 1.6;
+            display: none;
+            z-index: 99;
+        }
+        #tooltip.show { display: block; }
+        #start-prompt {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.5);
+            font-size: 16px;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+    <button class="nav-btn" id="info-btn" title="About this piece">i</button>
+    <div id="tooltip">
+        <strong>Prism</strong><br><br>
+        Newton discovered that white light contains all colors. A prism reveals 
+        what was always there — red bends least, violet most.<br><br>
+        Move to position the prism. The light source follows. Watch the spectrum 
+        emerge and dance across the dark.<br><br>
+        <em>The rainbow was hidden in the light all along.</em>
+    </div>
+    <div id="start-prompt">move to refract light</div>
+    <canvas id="canvas"></canvas>
+    <div id="info">prism — hidden spectra</div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startPrompt = document.getElementById('start-prompt');
+        
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let prismX = 0, prismY = 0;
+        let audioStarted = false;
+        let audioCtx, masterGain;
+        let oscillators = {};
+        let interacted = false;
+        
+        // Spectrum colors (ROYGBIV)
+        const spectrum = [
+            { color: '#ff0000', name: 'red', freq: 261.63, angle: 0 },      // C4
+            { color: '#ff7f00', name: 'orange', freq: 293.66, angle: 0.02 }, // D4
+            { color: '#ffff00', name: 'yellow', freq: 329.63, angle: 0.04 }, // E4
+            { color: '#00ff00', name: 'green', freq: 349.23, angle: 0.06 },  // F4
+            { color: '#0000ff', name: 'blue', freq: 392.00, angle: 0.08 },   // G4
+            { color: '#4b0082', name: 'indigo', freq: 440.00, angle: 0.10 }, // A4
+            { color: '#9400d3', name: 'violet', freq: 493.88, angle: 0.12 }, // B4
+        ];
+        
+        const prismSize = 80;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            prismX = width / 2;
+            prismY = height / 2;
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        function drawPrism(x, y, rotation) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+            
+            // Glass prism with refraction effect
+            const gradient = ctx.createLinearGradient(-prismSize/2, 0, prismSize/2, 0);
+            gradient.addColorStop(0, 'rgba(200, 220, 255, 0.15)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.25)');
+            gradient.addColorStop(1, 'rgba(200, 220, 255, 0.15)');
+            
+            ctx.beginPath();
+            ctx.moveTo(0, -prismSize * 0.866); // Top vertex
+            ctx.lineTo(-prismSize, prismSize * 0.433);
+            ctx.lineTo(prismSize, prismSize * 0.433);
+            ctx.closePath();
+            
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // Edge highlights
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Inner glow
+            ctx.beginPath();
+            ctx.moveTo(0, -prismSize * 0.7);
+            ctx.lineTo(-prismSize * 0.8, prismSize * 0.35);
+            ctx.lineTo(prismSize * 0.8, prismSize * 0.35);
+            ctx.closePath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        function drawLightBeam(fromX, fromY, toX, toY, color, width) {
+            const gradient = ctx.createLinearGradient(fromX, fromY, toX, toY);
+            gradient.addColorStop(0, color.replace(')', ', 0.8)').replace('rgb', 'rgba'));
+            gradient.addColorStop(1, color.replace(')', ', 0.1)').replace('rgb', 'rgba'));
+            
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.lineTo(toX, toY);
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = width;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            
+            // Glow effect
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.lineTo(toX, toY);
+            ctx.strokeStyle = color.replace(')', ', 0.2)').replace('rgb', 'rgba').replace('#', 'rgba(');
+            ctx.lineWidth = width * 3;
+            ctx.stroke();
+        }
+        
+        function hexToRgba(hex, alpha) {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+        
+        function drawRefractedBeams(prismX, prismY, rotation, sourceX, sourceY) {
+            // Incoming white light
+            const incomingAngle = Math.atan2(prismY - sourceY, prismX - sourceX);
+            
+            // Draw incoming beam
+            ctx.beginPath();
+            ctx.moveTo(sourceX, sourceY);
+            ctx.lineTo(prismX, prismY);
+            
+            const whiteGradient = ctx.createLinearGradient(sourceX, sourceY, prismX, prismY);
+            whiteGradient.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+            whiteGradient.addColorStop(1, 'rgba(255, 255, 255, 0.9)');
+            
+            ctx.strokeStyle = whiteGradient;
+            ctx.lineWidth = 8;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            
+            // Glow on incoming
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = 20;
+            ctx.stroke();
+            
+            // Refracted spectrum beams
+            const baseAngle = incomingAngle + Math.PI + rotation * 0.5;
+            const spreadFactor = 0.15;
+            
+            spectrum.forEach((band, i) => {
+                const refractAngle = baseAngle + (i - 3) * spreadFactor;
+                const beamLength = Math.max(width, height) * 1.5;
+                
+                const endX = prismX + Math.cos(refractAngle) * beamLength;
+                const endY = prismY + Math.sin(refractAngle) * beamLength;
+                
+                // Main beam
+                ctx.beginPath();
+                ctx.moveTo(prismX, prismY);
+                ctx.lineTo(endX, endY);
+                
+                const beamGradient = ctx.createLinearGradient(prismX, prismY, endX, endY);
+                beamGradient.addColorStop(0, hexToRgba(band.color, 0.9));
+                beamGradient.addColorStop(0.3, hexToRgba(band.color, 0.6));
+                beamGradient.addColorStop(1, hexToRgba(band.color, 0));
+                
+                ctx.strokeStyle = beamGradient;
+                ctx.lineWidth = 6;
+                ctx.stroke();
+                
+                // Glow
+                ctx.beginPath();
+                ctx.moveTo(prismX, prismY);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = hexToRgba(band.color, 0.15);
+                ctx.lineWidth = 20;
+                ctx.stroke();
+                
+                // Update audio
+                if (audioStarted && oscillators[band.name]) {
+                    // Volume based on beam visibility
+                    const targetGain = 0.03;
+                    oscillators[band.name].gain.gain.setTargetAtTime(
+                        targetGain,
+                        audioCtx.currentTime,
+                        0.1
+                    );
+                }
+            });
+        }
+        
+        function drawLightSource(x, y) {
+            // Glowing orb
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, 30);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.3, 'rgba(255, 255, 240, 0.8)');
+            gradient.addColorStop(0.7, 'rgba(255, 255, 220, 0.3)');
+            gradient.addColorStop(1, 'rgba(255, 255, 200, 0)');
+            
+            ctx.beginPath();
+            ctx.arc(x, y, 30, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // Core
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+        }
+        
+        // Audio
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.4;
+            masterGain.connect(audioCtx.destination);
+            
+            // Reverb-like effect with delay
+            const delay = audioCtx.createDelay();
+            delay.delayTime.value = 0.3;
+            const feedback = audioCtx.createGain();
+            feedback.gain.value = 0.4;
+            const delayFilter = audioCtx.createBiquadFilter();
+            delayFilter.type = 'lowpass';
+            delayFilter.frequency.value = 2000;
+            
+            delay.connect(delayFilter);
+            delayFilter.connect(feedback);
+            feedback.connect(delay);
+            delay.connect(masterGain);
+            
+            // Create oscillator for each color
+            spectrum.forEach(band => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                const filter = audioCtx.createBiquadFilter();
+                
+                osc.type = 'sine';
+                osc.frequency.value = band.freq;
+                
+                filter.type = 'lowpass';
+                filter.frequency.value = 1000 + band.freq;
+                filter.Q.value = 2;
+                
+                gain.gain.value = 0;
+                
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(masterGain);
+                gain.connect(delay);
+                
+                osc.start();
+                
+                oscillators[band.name] = { osc, gain, filter };
+            });
+        }
+        
+        function animate() {
+            // Smooth follow
+            prismX += (mouseX - prismX) * 0.08;
+            prismY += (mouseY - prismY) * 0.08;
+            
+            // Clear with slight trail
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Light source position (offset from prism)
+            const sourceX = prismX - 200;
+            const sourceY = prismY - 100;
+            
+            // Calculate rotation based on mouse movement
+            const rotation = Math.atan2(mouseY - height/2, mouseX - width/2) * 0.3;
+            
+            // Draw refracted beams first (behind prism)
+            if (interacted) {
+                drawRefractedBeams(prismX, prismY, rotation, sourceX, sourceY);
+            }
+            
+            // Draw prism
+            drawPrism(prismX, prismY, rotation);
+            
+            // Draw light source
+            if (interacted) {
+                drawLightSource(sourceX, sourceY);
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Mouse tracking
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            if (!interacted) {
+                interacted = true;
+                startPrompt.style.opacity = '0';
+                
+                if (!audioStarted) {
+                    initAudio();
+                    audioStarted = true;
+                }
+            }
+        });
+        
+        // Touch support
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            
+            if (!interacted) {
+                interacted = true;
+                startPrompt.style.opacity = '0';
+                
+                if (!audioStarted) {
+                    initAudio();
+                    audioStarted = true;
+                }
+            }
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            
+            if (!interacted) {
+                interacted = true;
+                startPrompt.style.opacity = '0';
+                
+                if (!audioStarted) {
+                    initAudio();
+                    audioStarted = true;
+                }
+            }
+        });
+        
+        // Navigation
+        document.getElementById('home-btn').onclick = () => {
+            window.location.href = '/';
+        };
+        
+        const infoBtn = document.getElementById('info-btn');
+        const tooltip = document.getElementById('tooltip');
+        infoBtn.onclick = () => {
+            tooltip.classList.toggle('show');
+        };
+        
+        // Initialize with center position
+        mouseX = width / 2;
+        mouseY = height / 2;
+        
+        // Start animation
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
