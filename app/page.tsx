@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 7, 2026 ===
     {
+      name: "Life",
+      description: "Conway's Game of Life. Four simple rules, infinite complexity. Draw to seed cells, watch them live, die, and evolve. The most famous example of emergence. Press SPACE to pause, R for random",
+      date: "Apr 7",
+      href: "/projects/life/"
+    },
+    {
       name: "Kaleidoscope",
       description: "Draw anywhere — your gesture reflects across axes of symmetry. Simple movements become intricate mandalas. Press S to change symmetry (6/8/12), C to clear",
       date: "Apr 7",

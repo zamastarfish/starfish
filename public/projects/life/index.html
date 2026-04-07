@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>life — starfish</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.3);
+            font-size: 12px;
+            pointer-events: none;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+        .nav-btn {
+            position: fixed;
+            top: 20px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.3);
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+            z-index: 100;
+        }
+        .nav-btn:hover {
+            border-color: rgba(255,255,255,0.5);
+            color: rgba(255,255,255,0.9);
+            background: rgba(0,0,0,0.5);
+        }
+        #home-btn { left: 20px; }
+        #info-btn { right: 20px; font-size: 14px; font-style: italic; }
+        #tooltip {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 15px;
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
+            max-width: 280px;
+            line-height: 1.6;
+            display: none;
+            z-index: 99;
+        }
+        #tooltip.show { display: block; }
+        #stats {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.4);
+            font-size: 12px;
+            pointer-events: none;
+            font-family: monospace;
+        }
+        #start-prompt {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.5);
+            font-size: 16px;
+            pointer-events: none;
+            transition: opacity 0.5s;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+    <button class="nav-btn" id="info-btn" title="About this piece">i</button>
+    <div id="tooltip">
+        <strong>Life</strong><br><br>
+        John Conway's Game of Life (1970). Four rules:<br>
+        • Loneliness: &lt;2 neighbors → death<br>
+        • Overcrowding: &gt;3 neighbors → death<br>
+        • Survival: 2-3 neighbors → live<br>
+        • Birth: exactly 3 neighbors → born<br><br>
+        Draw to create cells. Press SPACE to pause/play. 
+        Press C to clear. Press R for random.<br><br>
+        <em>From simple rules, complexity emerges.</em>
+    </div>
+    <div id="stats">gen: 0 | pop: 0</div>
+    <div id="start-prompt">draw to seed life<br><small>space to pause • c to clear • r for random</small></div>
+    <canvas id="canvas"></canvas>
+    <div id="info">life — cellular automata</div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startPrompt = document.getElementById('start-prompt');
+        const statsEl = document.getElementById('stats');
+        
+        let width, height;
+        let cellSize = 8;
+        let cols, rows;
+        let grid, nextGrid;
+        let generation = 0;
+        let population = 0;
+        let running = true;
+        let audioStarted = false;
+        let audioCtx, masterGain;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.floor(width / cellSize);
+            rows = Math.floor(height / cellSize);
+            initGrid();
+        }
+        
+        function initGrid() {
+            grid = new Array(cols).fill(null).map(() => new Array(rows).fill(0));
+            nextGrid = new Array(cols).fill(null).map(() => new Array(rows).fill(0));
+            generation = 0;
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        function countNeighbors(x, y) {
+            let count = 0;
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    if (i === 0 && j === 0) continue;
+                    const nx = (x + i + cols) % cols;
+                    const ny = (y + j + rows) % rows;
+                    count += grid[nx][ny];
+                }
+            }
+            return count;
+        }
+        
+        function step() {
+            let births = 0;
+            let deaths = 0;
+            population = 0;
+            
+            for (let x = 0; x < cols; x++) {
+                for (let y = 0; y < rows; y++) {
+                    const neighbors = countNeighbors(x, y);
+                    const alive = grid[x][y];
+                    
+                    if (alive) {
+                        if (neighbors < 2 || neighbors > 3) {
+                            nextGrid[x][y] = 0;
+                            deaths++;
+                        } else {
+                            nextGrid[x][y] = 1;
+                            population++;
+                        }
+                    } else {
+                        if (neighbors === 3) {
+                            nextGrid[x][y] = 1;
+                            births++;
+                            population++;
+                        } else {
+                            nextGrid[x][y] = 0;
+                        }
+                    }
+                }
+            }
+            
+            // Swap grids
+            [grid, nextGrid] = [nextGrid, grid];
+            generation++;
+            
+            // Update stats
+            statsEl.textContent = `gen: ${generation} | pop: ${population}`;
+            
+            // Audio feedback
+            if (audioStarted && (births > 0 || deaths > 0)) {
+                playLife(births, deaths, population);
+            }
+        }
+        
+        function draw() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, width, height);
+            
+            for (let x = 0; x < cols; x++) {
+                for (let y = 0; y < rows; y++) {
+                    if (grid[x][y]) {
+                        // Color based on neighbor count for visual interest
+                        const neighbors = countNeighbors(x, y);
+                        const hue = 120 + neighbors * 20;
+                        const lightness = 40 + neighbors * 5;
+                        ctx.fillStyle = `hsl(${hue}, 60%, ${lightness}%)`;
+                        
+                        ctx.fillRect(
+                            x * cellSize + 1,
+                            y * cellSize + 1,
+                            cellSize - 2,
+                            cellSize - 2
+                        );
+                    }
+                }
+            }
+            
+            // Subtle grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 0.5;
+            for (let x = 0; x <= cols; x++) {
+                ctx.beginPath();
+                ctx.moveTo(x * cellSize, 0);
+                ctx.lineTo(x * cellSize, height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= rows; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, y * cellSize);
+                ctx.lineTo(width, y * cellSize);
+                ctx.stroke();
+            }
+        }
+        
+        function setCell(px, py, value = 1) {
+            const x = Math.floor(px / cellSize);
+            const y = Math.floor(py / cellSize);
+            if (x >= 0 && x < cols && y >= 0 && y < rows) {
+                grid[x][y] = value;
+            }
+        }
+        
+        function randomize() {
+            for (let x = 0; x < cols; x++) {
+                for (let y = 0; y < rows; y++) {
+                    grid[x][y] = Math.random() < 0.3 ? 1 : 0;
+                }
+            }
+            generation = 0;
+        }
+        
+        // Audio
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.1;
+            masterGain.connect(audioCtx.destination);
+        }
+        
+        let lastAudioTime = 0;
+        function playLife(births, deaths, pop) {
+            const now = audioCtx.currentTime;
+            if (now - lastAudioTime < 0.1) return;
+            lastAudioTime = now;
+            
+            // Ambient hum based on population
+            const maxPop = cols * rows * 0.3;
+            const popRatio = Math.min(pop / maxPop, 1);
+            
+            if (births > 5) {
+                // Birth chime
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 440 + popRatio * 220;
+                gain.gain.setValueAtTime(0.05 * Math.min(births / 20, 1), now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(gain);
+                gain.connect(masterGain);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+            
+            if (deaths > 10) {
+                // Death tone (lower)
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.value = 110 + popRatio * 55;
+                gain.gain.setValueAtTime(0.03 * Math.min(deaths / 30, 1), now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc.connect(gain);
+                gain.connect(masterGain);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            }
+        }
+        
+        // Main loop
+        let lastStep = 0;
+        const stepInterval = 100; // ms between generations
+        
+        function animate(time) {
+            if (running && time - lastStep > stepInterval) {
+                step();
+                lastStep = time;
+            }
+            draw();
+            requestAnimationFrame(animate);
+        }
+        
+        // Drawing interaction
+        let isDrawing = false;
+        
+        canvas.addEventListener('mousedown', (e) => {
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+            }
+            startPrompt.style.opacity = '0';
+            isDrawing = true;
+            setCell(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDrawing) {
+                setCell(e.clientX, e.clientY);
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            isDrawing = false;
+        });
+        
+        // Touch
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+            }
+            startPrompt.style.opacity = '0';
+            isDrawing = true;
+            const touch = e.touches[0];
+            setCell(touch.clientX, touch.clientY);
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDrawing) {
+                const touch = e.touches[0];
+                setCell(touch.clientX, touch.clientY);
+            }
+        });
+        
+        canvas.addEventListener('touchend', () => {
+            isDrawing = false;
+        });
+        
+        // Keyboard
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                running = !running;
+            } else if (e.key.toLowerCase() === 'c') {
+                initGrid();
+            } else if (e.key.toLowerCase() === 'r') {
+                randomize();
+            }
+        });
+        
+        // Navigation
+        document.getElementById('home-btn').onclick = () => {
+            window.location.href = '/';
+        };
+        
+        const infoBtn = document.getElementById('info-btn');
+        const tooltip = document.getElementById('tooltip');
+        infoBtn.onclick = (e) => {
+            e.stopPropagation();
+            tooltip.classList.toggle('show');
+        };
+        
+        // Start
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
