@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>harmonograph — starfish</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #f5f3f0;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(0,0,0,0.3);
+            font-size: 12px;
+            pointer-events: none;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+        .nav-btn {
+            position: fixed;
+            top: 20px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid rgba(0,0,0,0.15);
+            background: rgba(255,255,255,0.8);
+            color: rgba(0,0,0,0.5);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+            z-index: 100;
+        }
+        .nav-btn:hover {
+            border-color: rgba(0,0,0,0.3);
+            color: rgba(0,0,0,0.8);
+            background: rgba(255,255,255,1);
+        }
+        #home-btn { left: 20px; }
+        #info-btn { right: 20px; font-size: 14px; font-style: italic; }
+        #tooltip {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: rgba(255,255,255,0.95);
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 15px;
+            color: rgba(0,0,0,0.7);
+            font-size: 13px;
+            max-width: 280px;
+            line-height: 1.6;
+            display: none;
+            z-index: 99;
+        }
+        #tooltip.show { display: block; }
+        #start-prompt {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(0,0,0,0.4);
+            font-size: 16px;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+    <button class="nav-btn" id="info-btn" title="About this piece">i</button>
+    <div id="tooltip">
+        <strong>Harmonograph</strong><br><br>
+        A 19th-century drawing machine. Two pendulums swing at different frequencies,
+        their combined motion tracing curves called Lissajous figures.<br><br>
+        Small differences in frequency ratios create endlessly varied patterns.
+        The pendulums slowly decay — each drawing is unique and unrepeatable.<br><br>
+        <em>Click to begin a new pattern.</em>
+    </div>
+    <div id="start-prompt">click to draw</div>
+    <canvas id="canvas"></canvas>
+    <div id="info">harmonograph — pendulum drawings</div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startPrompt = document.getElementById('start-prompt');
+        
+        let width, height;
+        let audioStarted = false;
+        let audioCtx, masterGain;
+        let oscillators = [];
+        
+        // Harmonograph state
+        let drawing = false;
+        let t = 0;
+        let lastX, lastY;
+        
+        // Pendulum parameters
+        let params = {};
+        
+        // Ink color palette
+        const inks = [
+            { color: 'rgba(20, 20, 40, INK_ALPHA)', name: 'indigo' },
+            { color: 'rgba(100, 40, 20, INK_ALPHA)', name: 'sepia' },
+            { color: 'rgba(20, 60, 80, INK_ALPHA)', name: 'prussian' },
+            { color: 'rgba(60, 20, 60, INK_ALPHA)', name: 'plum' },
+            { color: 'rgba(20, 50, 30, INK_ALPHA)', name: 'forest' },
+        ];
+        let currentInk = 0;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            clearCanvas();
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        function clearCanvas() {
+            // Paper texture
+            ctx.fillStyle = '#f5f3f0';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Subtle paper grain
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const noise = (Math.random() - 0.5) * 8;
+                data[i] += noise;
+                data[i + 1] += noise;
+                data[i + 2] += noise;
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+        
+        function randomizeParams() {
+            // Musical frequency ratios for pleasing patterns
+            const ratios = [
+                [1, 1], [1, 2], [2, 3], [3, 4], [3, 5], [4, 5], [5, 6], [5, 7], [7, 8]
+            ];
+            const ratio = ratios[Math.floor(Math.random() * ratios.length)];
+            
+            // Base frequency
+            const baseFreq = 0.5 + Math.random() * 0.5;
+            
+            params = {
+                // X pendulum
+                freqX: baseFreq * ratio[0],
+                ampX: Math.min(width, height) * 0.35,
+                phaseX: Math.random() * Math.PI * 2,
+                dampX: 0.0003 + Math.random() * 0.0003,
+                
+                // Y pendulum
+                freqY: baseFreq * ratio[1] + (Math.random() - 0.5) * 0.02, // Slight detuning
+                ampY: Math.min(width, height) * 0.35,
+                phaseY: Math.random() * Math.PI * 2,
+                dampY: 0.0003 + Math.random() * 0.0003,
+                
+                // Rotation (third pendulum effect)
+                freqR: baseFreq * 0.1,
+                ampR: 0.1 + Math.random() * 0.2,
+                phaseR: Math.random() * Math.PI * 2,
+                dampR: 0.0001,
+            };
+            
+            // Pick a new ink
+            currentInk = Math.floor(Math.random() * inks.length);
+        }
+        
+        function getPosition(t) {
+            // Damped harmonic oscillators
+            const dampX = Math.exp(-params.dampX * t);
+            const dampY = Math.exp(-params.dampY * t);
+            const dampR = Math.exp(-params.dampR * t);
+            
+            // Base oscillation
+            let x = params.ampX * dampX * Math.sin(params.freqX * t + params.phaseX);
+            let y = params.ampY * dampY * Math.sin(params.freqY * t + params.phaseY);
+            
+            // Rotation modulation
+            const rotation = params.ampR * dampR * Math.sin(params.freqR * t + params.phaseR);
+            const cos = Math.cos(rotation);
+            const sin = Math.sin(rotation);
+            
+            const rx = x * cos - y * sin;
+            const ry = x * sin + y * cos;
+            
+            return {
+                x: width / 2 + rx,
+                y: height / 2 + ry,
+                amplitude: (dampX + dampY) / 2
+            };
+        }
+        
+        function startDrawing() {
+            clearCanvas();
+            randomizeParams();
+            t = 0;
+            drawing = true;
+            startPrompt.style.opacity = '0';
+            
+            const pos = getPosition(0);
+            lastX = pos.x;
+            lastY = pos.y;
+            
+            if (audioStarted) {
+                playStart();
+            }
+        }
+        
+        // Audio
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.15;
+            masterGain.connect(audioCtx.destination);
+        }
+        
+        function playStart() {
+            // Gentle chime to mark beginning
+            const freqs = [523.25, 659.25, 783.99]; // C5, E5, G5
+            
+            freqs.forEach((freq, i) => {
+                setTimeout(() => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
+                    
+                    osc.connect(gain);
+                    gain.connect(masterGain);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 2);
+                }, i * 150);
+            });
+        }
+        
+        function playDrawing(amplitude, x, y) {
+            if (!audioStarted || Math.random() > 0.02) return;
+            
+            // Soft scratching sounds
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+            
+            osc.type = 'triangle';
+            osc.frequency.value = 200 + (x / width) * 200 + (y / height) * 100;
+            
+            filter.type = 'bandpass';
+            filter.frequency.value = 800;
+            filter.Q.value = 5;
+            
+            gain.gain.setValueAtTime(0.05 * amplitude, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(masterGain);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+        
+        function animate() {
+            if (drawing) {
+                // Draw multiple segments per frame for smoothness
+                const stepsPerFrame = 8;
+                
+                for (let i = 0; i < stepsPerFrame; i++) {
+                    t += 0.05;
+                    
+                    const pos = getPosition(t);
+                    
+                    // Stop when amplitude is too low
+                    if (pos.amplitude < 0.01) {
+                        drawing = false;
+                        break;
+                    }
+                    
+                    // Draw line segment
+                    const inkAlpha = 0.3 + pos.amplitude * 0.5;
+                    const inkColor = inks[currentInk].color.replace('INK_ALPHA', inkAlpha.toFixed(2));
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(lastX, lastY);
+                    ctx.lineTo(pos.x, pos.y);
+                    ctx.strokeStyle = inkColor;
+                    ctx.lineWidth = 0.5 + pos.amplitude * 1;
+                    ctx.lineCap = 'round';
+                    ctx.stroke();
+                    
+                    // Audio feedback
+                    playDrawing(pos.amplitude, pos.x, pos.y);
+                    
+                    lastX = pos.x;
+                    lastY = pos.y;
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Interaction
+        canvas.addEventListener('click', (e) => {
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+            }
+            
+            startDrawing();
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+            }
+            
+            startDrawing();
+        });
+        
+        // Navigation
+        document.getElementById('home-btn').onclick = () => {
+            window.location.href = '/';
+        };
+        
+        const infoBtn = document.getElementById('info-btn');
+        const tooltip = document.getElementById('tooltip');
+        infoBtn.onclick = (e) => {
+            e.stopPropagation();
+            tooltip.classList.toggle('show');
+        };
+        
+        // Prevent info button from triggering drawing
+        document.getElementById('info-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+        
+        // Start animation loop
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

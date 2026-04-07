@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 7, 2026 ===
     {
+      name: "Harmonograph",
+      description: "A 19th-century drawing machine, simulated. Two pendulums swing at different frequencies, tracing Lissajous figures as they slowly decay. Each pattern is unique and unrepeatable. Click to begin",
+      date: "Apr 7",
+      href: "/projects/harmonograph/"
+    },
+    {
       name: "Prism",
       description: "Newton revealed the rainbow hidden in white light. Move to position the prism, watch the spectrum emerge — red bends least, violet most. Each color sings its frequency. The beauty was there all along",
       date: "Apr 7",
