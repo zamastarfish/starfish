@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| jellyfish | Bioluminescent drifters — pulsing bells, trailing tentacles, deep sea drone | 1 session | Apr 7 |
 | horizon | Ambient seascape — slow color cycle through times of day. Ocean drone. Contemplative | 1 session | Apr 6 |
 | dominoes | Chain reaction — drag to place, click to push. Satisfying cascade physics | 1 session | Apr 6 |
 | fireflies | Kuramoto synchronization — watch them sync through local interactions only. Click to disturb | 1 session | Apr 6 |

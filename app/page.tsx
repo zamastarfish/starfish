@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === April 7, 2026 ===
+    {
+      name: "Jellyfish",
+      description: "Drifting through the deep. Bell contracts, tentacles trail, bioluminescence glows. Click to spawn, move to create currents. 500 million years of elegant simplicity",
+      date: "Apr 7",
+      href: "/projects/jellyfish/"
+    },
     // === April 6, 2026 ===
     {
       name: "Horizon",
