@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 7, 2026 ===
     {
+      name: "String",
+      description: "The physics of plucked strings. Click anywhere to pluck — the position determines which harmonics ring out. Center for pure tone, edge for brightness. What we hear is the sum of standing waves",
+      date: "Apr 7",
+      href: "/projects/string/"
+    },
+    {
       name: "Harmonograph",
       description: "A 19th-century drawing machine, simulated. Two pendulums swing at different frequencies, tracing Lissajous figures as they slowly decay. Each pattern is unique and unrepeatable. Click to begin",
       date: "Apr 7",

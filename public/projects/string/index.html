@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>string — starfish</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #1a1816;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.3);
+            font-size: 12px;
+            pointer-events: none;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+        .nav-btn {
+            position: fixed;
+            top: 20px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.3);
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+            z-index: 100;
+        }
+        .nav-btn:hover {
+            border-color: rgba(255,255,255,0.5);
+            color: rgba(255,255,255,0.9);
+            background: rgba(0,0,0,0.5);
+        }
+        #home-btn { left: 20px; }
+        #info-btn { right: 20px; font-size: 14px; font-style: italic; }
+        #tooltip {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 15px;
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
+            max-width: 280px;
+            line-height: 1.6;
+            display: none;
+            z-index: 99;
+        }
+        #tooltip.show { display: block; }
+        #start-prompt {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.5);
+            font-size: 16px;
+            pointer-events: none;
+            transition: opacity 0.5s;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+    <button class="nav-btn" id="info-btn" title="About this piece">i</button>
+    <div id="tooltip">
+        <strong>String</strong><br><br>
+        A vibrating string contains multitudes. The fundamental frequency, 
+        plus overtones at integer multiples — harmonics that give each 
+        instrument its voice.<br><br>
+        Click anywhere on a string to pluck it. The position determines 
+        which harmonics ring out. Pluck the center for pure tone; 
+        pluck near the edge for brightness.<br><br>
+        <em>What we hear is the sum of many standing waves.</em>
+    </div>
+    <div id="start-prompt">click strings to pluck</div>
+    <canvas id="canvas"></canvas>
+    <div id="info">string — standing waves</div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startPrompt = document.getElementById('start-prompt');
+        
+        let width, height;
+        let audioStarted = false;
+        let audioCtx, masterGain;
+        
+        const NUM_STRINGS = 6;
+        const strings = [];
+        
+        // Musical tuning (guitar-like, low to high)
+        const tuning = [82.41, 110.00, 146.83, 196.00, 246.94, 329.63]; // E2-E4
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initStrings();
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        class GuitarString {
+            constructor(y, baseFreq, index) {
+                this.y = y;
+                this.baseFreq = baseFreq;
+                this.index = index;
+                this.segments = 200;
+                this.points = new Array(this.segments).fill(0);
+                this.velocities = new Array(this.segments).fill(0);
+                this.damping = 0.998;
+                this.tension = 0.4;
+                this.thickness = 3 - index * 0.3;
+                
+                // Color gradient based on pitch
+                const hue = 30 + index * 8;
+                this.color = `hsl(${hue}, 50%, 60%)`;
+                this.glowColor = `hsla(${hue}, 60%, 50%, 0.3)`;
+            }
+            
+            pluck(normalizedX, amplitude) {
+                // Create initial displacement based on pluck position
+                const pluckPoint = Math.floor(normalizedX * this.segments);
+                
+                for (let i = 0; i < this.segments; i++) {
+                    if (i < pluckPoint) {
+                        this.points[i] = amplitude * (i / pluckPoint);
+                    } else {
+                        this.points[i] = amplitude * ((this.segments - i) / (this.segments - pluckPoint));
+                    }
+                }
+            }
+            
+            update() {
+                // Wave equation simulation
+                const newPoints = [...this.points];
+                
+                for (let i = 1; i < this.segments - 1; i++) {
+                    // Force from neighboring points (spring-like)
+                    const force = this.tension * (
+                        this.points[i - 1] + 
+                        this.points[i + 1] - 
+                        2 * this.points[i]
+                    );
+                    
+                    this.velocities[i] += force;
+                    this.velocities[i] *= this.damping;
+                    newPoints[i] = this.points[i] + this.velocities[i];
+                }
+                
+                // Fixed endpoints
+                newPoints[0] = 0;
+                newPoints[this.segments - 1] = 0;
+                
+                this.points = newPoints;
+            }
+            
+            draw() {
+                const stringStart = width * 0.1;
+                const stringEnd = width * 0.9;
+                const stringLength = stringEnd - stringStart;
+                
+                // Glow
+                ctx.beginPath();
+                ctx.moveTo(stringStart, this.y);
+                
+                for (let i = 0; i < this.segments; i++) {
+                    const x = stringStart + (i / this.segments) * stringLength;
+                    const y = this.y + this.points[i];
+                    ctx.lineTo(x, y);
+                }
+                
+                ctx.strokeStyle = this.glowColor;
+                ctx.lineWidth = this.thickness * 4;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // Main string
+                ctx.beginPath();
+                ctx.moveTo(stringStart, this.y);
+                
+                for (let i = 0; i < this.segments; i++) {
+                    const x = stringStart + (i / this.segments) * stringLength;
+                    const y = this.y + this.points[i];
+                    ctx.lineTo(x, y);
+                }
+                
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = this.thickness;
+                ctx.stroke();
+                
+                // Bridge/nut (endpoints)
+                ctx.fillStyle = '#4a4540';
+                ctx.fillRect(stringStart - 10, this.y - 5, 8, 10);
+                ctx.fillRect(stringEnd + 2, this.y - 5, 8, 10);
+            }
+            
+            getEnergy() {
+                let energy = 0;
+                for (let i = 0; i < this.segments; i++) {
+                    energy += Math.abs(this.points[i]) + Math.abs(this.velocities[i]);
+                }
+                return energy / this.segments;
+            }
+            
+            isInBounds(x, y) {
+                const stringStart = width * 0.1;
+                const stringEnd = width * 0.9;
+                const tolerance = 30;
+                
+                return x >= stringStart && x <= stringEnd && 
+                       Math.abs(y - this.y) < tolerance;
+            }
+            
+            getPluckPosition(x) {
+                const stringStart = width * 0.1;
+                const stringEnd = width * 0.9;
+                return (x - stringStart) / (stringEnd - stringStart);
+            }
+        }
+        
+        function initStrings() {
+            strings.length = 0;
+            const margin = height * 0.15;
+            const spacing = (height - margin * 2) / (NUM_STRINGS - 1);
+            
+            for (let i = 0; i < NUM_STRINGS; i++) {
+                const y = margin + i * spacing;
+                strings.push(new GuitarString(y, tuning[i], i));
+            }
+        }
+        
+        // Audio
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.3;
+            masterGain.connect(audioCtx.destination);
+        }
+        
+        function playString(stringIndex, pluckPosition) {
+            const str = strings[stringIndex];
+            const baseFreq = str.baseFreq;
+            
+            // Create harmonics based on pluck position
+            // Plucking at 1/n of the string emphasizes the nth harmonic
+            const numHarmonics = 8;
+            
+            for (let h = 1; h <= numHarmonics; h++) {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                const filter = audioCtx.createBiquadFilter();
+                
+                osc.type = 'sine';
+                osc.frequency.value = baseFreq * h;
+                
+                // Harmonic amplitude based on pluck position
+                // Plucking at a node of harmonic h cancels it
+                const nodePosition = 1 / h;
+                const distanceFromNode = Math.abs(pluckPosition - 0.5) / 0.5;
+                let harmonicAmp = Math.sin(pluckPosition * Math.PI * h);
+                harmonicAmp = Math.abs(harmonicAmp) / h; // Higher harmonics quieter
+                
+                // Brightness based on pluck position (closer to bridge = brighter)
+                const brightness = 0.5 + pluckPosition * 0.5;
+                
+                filter.type = 'lowpass';
+                filter.frequency.value = 1000 + brightness * 4000;
+                filter.Q.value = 1;
+                
+                const attackTime = 0.005;
+                const decayTime = 2 + (1 - pluckPosition) * 2; // Longer decay for center plucks
+                
+                gain.gain.setValueAtTime(0, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(harmonicAmp * 0.3, audioCtx.currentTime + attackTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + decayTime);
+                
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(masterGain);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + decayTime);
+            }
+        }
+        
+        function animate() {
+            // Clear with slight trail
+            ctx.fillStyle = 'rgba(26, 24, 22, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Update and draw strings
+            for (const str of strings) {
+                str.update();
+                str.draw();
+            }
+            
+            // Draw fret markers
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            const fretPositions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+            const stringStart = width * 0.1;
+            const stringEnd = width * 0.9;
+            const stringLength = stringEnd - stringStart;
+            
+            fretPositions.forEach((pos, i) => {
+                const x = stringStart + pos * stringLength;
+                ctx.beginPath();
+                ctx.moveTo(x, height * 0.12);
+                ctx.lineTo(x, height * 0.88);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Double dot at middle
+                if (pos === 0.5) {
+                    ctx.beginPath();
+                    ctx.arc(x, height * 0.5 - 20, 4, 0, Math.PI * 2);
+                    ctx.arc(x, height * 0.5 + 20, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Interaction
+        function handlePluck(x, y) {
+            for (let i = 0; i < strings.length; i++) {
+                if (strings[i].isInBounds(x, y)) {
+                    const pluckPos = strings[i].getPluckPosition(x);
+                    const amplitude = 30 + Math.random() * 20;
+                    
+                    strings[i].pluck(pluckPos, amplitude);
+                    
+                    if (audioStarted) {
+                        playString(i, pluckPos);
+                    }
+                    
+                    break;
+                }
+            }
+        }
+        
+        canvas.addEventListener('click', (e) => {
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+                startPrompt.style.opacity = '0';
+            }
+            
+            handlePluck(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (e.buttons === 1) { // Left mouse down
+                handlePluck(e.clientX, e.clientY);
+            }
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+                startPrompt.style.opacity = '0';
+            }
+            
+            const touch = e.touches[0];
+            handlePluck(touch.clientX, touch.clientY);
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handlePluck(touch.clientX, touch.clientY);
+        });
+        
+        // Navigation
+        document.getElementById('home-btn').onclick = () => {
+            window.location.href = '/';
+        };
+        
+        const infoBtn = document.getElementById('info-btn');
+        const tooltip = document.getElementById('tooltip');
+        infoBtn.onclick = (e) => {
+            e.stopPropagation();
+            tooltip.classList.toggle('show');
+        };
+        
+        // Start
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

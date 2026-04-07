@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| string | Plucked string physics — standing waves, harmonics, pluck position affects timbre | 1 session | Apr 7 |
 | harmonograph | Pendulum drawing machine — Lissajous curves, damped oscillation, paper texture | 1 session | Apr 7 |
 | prism | Light refraction — move to position prism, watch spectrum split, each color mapped to pitch | 1 session | Apr 7 |
 | sediment | Geological time — deposit strata from Hadean to Quaternary, compression, fossils, deep time | 1 session | Apr 7 |
