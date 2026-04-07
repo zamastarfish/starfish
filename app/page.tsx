@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 7, 2026 ===
     {
+      name: "Kaleidoscope",
+      description: "Draw anywhere — your gesture reflects across axes of symmetry. Simple movements become intricate mandalas. Press S to change symmetry (6/8/12), C to clear",
+      date: "Apr 7",
+      href: "/projects/kaleidoscope/"
+    },
+    {
       name: "String",
       description: "The physics of plucked strings. Click anywhere to pluck — the position determines which harmonics ring out. Center for pure tone, edge for brightness. What we hear is the sum of standing waves",
       date: "Apr 7",
