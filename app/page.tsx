@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 7, 2026 ===
     {
+      name: "Sediment",
+      description: "Geological time compressed. Click to deposit layers — each stratum an epoch, from the Hadean to the Quaternary. The weight of everything above presses down, compacting what came before. What will your layer leave behind?",
+      date: "Apr 7",
+      href: "/projects/sediment/"
+    },
+    {
       name: "Lorenz",
       description: "The butterfly effect, visualized. Three simple equations, infinite complexity. Deterministic chaos — perfectly predictable rules, unpredictable outcomes. Click to spawn trajectories that start almost identically, then diverge into different fates",
       date: "Apr 7",

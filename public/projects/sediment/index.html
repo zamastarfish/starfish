@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sediment — starfish</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #1a1814;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.3);
+            font-size: 12px;
+            pointer-events: none;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+        .nav-btn {
+            position: fixed;
+            top: 20px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.3);
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+            z-index: 100;
+        }
+        .nav-btn:hover {
+            border-color: rgba(255,255,255,0.5);
+            color: rgba(255,255,255,0.9);
+            background: rgba(0,0,0,0.5);
+        }
+        #home-btn { left: 20px; }
+        #info-btn { right: 20px; font-size: 14px; font-style: italic; }
+        #tooltip {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 15px;
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
+            max-width: 280px;
+            line-height: 1.6;
+            display: none;
+            z-index: 99;
+        }
+        #tooltip.show { display: block; }
+        #start-prompt {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.5);
+            font-size: 16px;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+        #epoch {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.4);
+            font-size: 14px;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+    <button class="nav-btn" id="info-btn" title="About this piece">i</button>
+    <div id="tooltip">
+        <strong>Sediment</strong><br><br>
+        Millions of years compressed into stone. Each layer is an epoch — 
+        rivers depositing silt, seas leaving shells, forests becoming coal.<br><br>
+        Click to deposit a new stratum. The weight of everything above presses down,
+        compacting what came before.<br><br>
+        <em>What will your layer leave behind?</em>
+    </div>
+    <div id="start-prompt">click to deposit layers</div>
+    <div id="epoch"></div>
+    <canvas id="canvas"></canvas>
+    <div id="info">sediment — geological time</div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startPrompt = document.getElementById('start-prompt');
+        const epochDisplay = document.getElementById('epoch');
+        
+        let width, height;
+        let audioStarted = false;
+        let audioCtx, masterGain;
+        
+        let layers = [];
+        let particles = [];
+        let settling = false;
+        let settleY = 0;
+        
+        // Geological color palettes by era
+        const epochs = [
+            { name: 'Hadean', colors: ['#2d1f1f', '#3d2b2b', '#4a3535', '#5c4242'], age: '4.5 billion years ago' },
+            { name: 'Archean', colors: ['#1f2d1f', '#2b3d2b', '#354a35', '#425c42'], age: '4 billion years ago' },
+            { name: 'Proterozoic', colors: ['#1f1f2d', '#2b2b3d', '#35354a', '#42425c'], age: '2.5 billion years ago' },
+            { name: 'Cambrian', colors: ['#3d4a4a', '#4a5a5a', '#5a6a6a', '#6a7a7a'], age: '541 million years ago' },
+            { name: 'Ordovician', colors: ['#4a5a4a', '#5a6a5a', '#6a7a6a', '#7a8a7a'], age: '485 million years ago' },
+            { name: 'Silurian', colors: ['#5a5a4a', '#6a6a5a', '#7a7a6a', '#8a8a7a'], age: '443 million years ago' },
+            { name: 'Devonian', colors: ['#6a5a4a', '#7a6a5a', '#8a7a6a', '#9a8a7a'], age: '419 million years ago' },
+            { name: 'Carboniferous', colors: ['#2a2a2a', '#3a3a3a', '#4a4a4a', '#353535'], age: '358 million years ago' },
+            { name: 'Permian', colors: ['#5a4a3a', '#6a5a4a', '#7a6a5a', '#8a7a6a'], age: '298 million years ago' },
+            { name: 'Triassic', colors: ['#7a5a4a', '#8a6a5a', '#9a7a6a', '#aa8a7a'], age: '252 million years ago' },
+            { name: 'Jurassic', colors: ['#4a6a5a', '#5a7a6a', '#6a8a7a', '#7a9a8a'], age: '201 million years ago' },
+            { name: 'Cretaceous', colors: ['#8a8a6a', '#9a9a7a', '#aaaa8a', '#bbbb9a'], age: '145 million years ago' },
+            { name: 'Paleogene', colors: ['#9a8a7a', '#aa9a8a', '#bbaa9a', '#ccbbaa'], age: '66 million years ago' },
+            { name: 'Neogene', colors: ['#aa9a8a', '#bbaa9a', '#ccbbaa', '#ddccbb'], age: '23 million years ago' },
+            { name: 'Quaternary', colors: ['#bba a9a', '#ccbbaa', '#ddccbb', '#eeddcc'], age: '2.6 million years ago' },
+        ];
+        
+        let currentEpoch = 0;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            settleY = height;
+            redrawLayers();
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        class Layer {
+            constructor(y, thickness, epoch) {
+                this.y = y;
+                this.baseY = y;
+                this.thickness = thickness;
+                this.targetThickness = thickness;
+                this.epoch = epoch;
+                this.colors = epochs[epoch % epochs.length].colors;
+                this.name = epochs[epoch % epochs.length].name;
+                this.age = epochs[epoch % epochs.length].age;
+                
+                // Texture noise
+                this.noiseOffsetX = Math.random() * 1000;
+                this.noiseOffsetY = Math.random() * 1000;
+                
+                // Fossils and inclusions
+                this.inclusions = [];
+                const numInclusions = Math.floor(Math.random() * 5);
+                for (let i = 0; i < numInclusions; i++) {
+                    this.inclusions.push({
+                        x: Math.random() * width,
+                        yOffset: Math.random(),
+                        size: 2 + Math.random() * 4,
+                        type: Math.random() > 0.5 ? 'shell' : 'bone'
+                    });
+                }
+            }
+            
+            compress(amount) {
+                this.targetThickness *= (1 - amount);
+            }
+            
+            update() {
+                this.thickness += (this.targetThickness - this.thickness) * 0.05;
+            }
+            
+            draw(yOffset) {
+                const drawY = yOffset;
+                
+                // Main layer
+                ctx.fillStyle = this.colors[0];
+                ctx.fillRect(0, drawY, width, this.thickness);
+                
+                // Striations
+                ctx.strokeStyle = this.colors[1];
+                ctx.lineWidth = 1;
+                const stripes = Math.floor(this.thickness / 8);
+                for (let i = 0; i < stripes; i++) {
+                    const stripeY = drawY + (i / stripes) * this.thickness;
+                    ctx.beginPath();
+                    ctx.moveTo(0, stripeY);
+                    
+                    // Wavy line
+                    for (let x = 0; x < width; x += 20) {
+                        const wave = Math.sin((x + this.noiseOffsetX) * 0.02 + i) * 3;
+                        ctx.lineTo(x, stripeY + wave);
+                    }
+                    ctx.stroke();
+                }
+                
+                // Inclusions (fossils)
+                for (const inc of this.inclusions) {
+                    const incY = drawY + inc.yOffset * this.thickness;
+                    ctx.fillStyle = this.colors[2];
+                    ctx.beginPath();
+                    if (inc.type === 'shell') {
+                        // Spiral shell
+                        ctx.arc(inc.x, incY, inc.size, 0, Math.PI * 1.5);
+                    } else {
+                        // Bone fragment
+                        ctx.ellipse(inc.x, incY, inc.size * 1.5, inc.size * 0.5, 0, 0, Math.PI * 2);
+                    }
+                    ctx.fill();
+                }
+                
+                return this.thickness;
+            }
+        }
+        
+        class SettlingParticle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vy = 0;
+                this.color = color;
+                this.size = 1 + Math.random() * 2;
+                this.settled = false;
+            }
+            
+            update(targetY) {
+                if (this.settled) return;
+                
+                this.vy += 0.1; // Gravity
+                this.vy *= 0.98; // Drag (water resistance)
+                this.y += this.vy;
+                
+                // Slight drift
+                this.x += (Math.random() - 0.5) * 0.5;
+                
+                if (this.y >= targetY - this.size) {
+                    this.y = targetY - this.size;
+                    this.settled = true;
+                }
+            }
+            
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        function addLayer() {
+            const epoch = currentEpoch % epochs.length;
+            const thickness = 30 + Math.random() * 50;
+            
+            // Compress existing layers
+            for (const layer of layers) {
+                layer.compress(0.05);
+            }
+            
+            // Add settling particles
+            const colors = epochs[epoch].colors;
+            for (let i = 0; i < 100; i++) {
+                particles.push(new SettlingParticle(
+                    Math.random() * width,
+                    -Math.random() * 100,
+                    colors[Math.floor(Math.random() * colors.length)]
+                ));
+            }
+            
+            // Calculate where this layer will settle
+            let totalThickness = thickness;
+            for (const layer of layers) {
+                totalThickness += layer.targetThickness;
+            }
+            
+            const newLayer = new Layer(height - totalThickness, thickness, epoch);
+            layers.unshift(newLayer); // Add to front (top)
+            
+            // Update display
+            epochDisplay.textContent = `${epochs[epoch].name} — ${epochs[epoch].age}`;
+            epochDisplay.style.opacity = '1';
+            setTimeout(() => {
+                epochDisplay.style.opacity = '0.4';
+            }, 2000);
+            
+            currentEpoch++;
+            
+            // Play sound
+            if (audioStarted) {
+                playDeposit(epoch);
+            }
+        }
+        
+        function redrawLayers() {
+            ctx.fillStyle = '#1a1814';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw from bottom up
+            let yOffset = height;
+            for (let i = layers.length - 1; i >= 0; i--) {
+                layers[i].update();
+                yOffset -= layers[i].thickness;
+                layers[i].draw(yOffset);
+            }
+        }
+        
+        // Audio
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.3;
+            masterGain.connect(audioCtx.destination);
+            
+            // Deep drone
+            const drone = audioCtx.createOscillator();
+            const droneGain = audioCtx.createGain();
+            drone.type = 'sine';
+            drone.frequency.value = 40;
+            droneGain.gain.value = 0.15;
+            drone.connect(droneGain);
+            droneGain.connect(masterGain);
+            drone.start();
+            
+            // Rumble (filtered noise)
+            const noise = audioCtx.createBufferSource();
+            const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+            const noiseData = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseData.length; i++) {
+                noiseData[i] = Math.random() * 2 - 1;
+            }
+            noise.buffer = noiseBuffer;
+            noise.loop = true;
+            
+            const noiseFilter = audioCtx.createBiquadFilter();
+            noiseFilter.type = 'lowpass';
+            noiseFilter.frequency.value = 100;
+            
+            const noiseGain = audioCtx.createGain();
+            noiseGain.gain.value = 0.08;
+            
+            noise.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(masterGain);
+            noise.start();
+        }
+        
+        function playDeposit(epoch) {
+            // Deep thud
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.value = 60 + (epoch % 5) * 10;
+            
+            gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+            gain.gain.exponentialDecayTo?.(0.01, audioCtx.currentTime + 1) ||
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1);
+            
+            osc.connect(gain);
+            gain.connect(masterGain);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 1);
+            
+            // Settling sounds (granular crumble)
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    const grain = audioCtx.createOscillator();
+                    const grainGain = audioCtx.createGain();
+                    grain.type = 'triangle';
+                    grain.frequency.value = 200 + Math.random() * 400;
+                    grainGain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                    grainGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                    grain.connect(grainGain);
+                    grainGain.connect(masterGain);
+                    grain.start();
+                    grain.stop(audioCtx.currentTime + 0.1);
+                }, i * 100 + Math.random() * 200);
+            }
+        }
+        
+        function animate() {
+            // Clear
+            ctx.fillStyle = '#1a1814';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Calculate current surface
+            let surface = height;
+            for (const layer of layers) {
+                surface -= layer.thickness;
+            }
+            
+            // Update and draw particles
+            particles = particles.filter(p => !p.settled || p.y > surface - 50);
+            for (const p of particles) {
+                p.update(surface);
+                p.draw();
+            }
+            
+            // Draw layers
+            redrawLayers();
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Interaction
+        canvas.addEventListener('click', (e) => {
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+                startPrompt.style.opacity = '0';
+            }
+            
+            addLayer();
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+                startPrompt.style.opacity = '0';
+            }
+            
+            addLayer();
+        });
+        
+        // Navigation
+        document.getElementById('home-btn').onclick = () => {
+            window.location.href = '/';
+        };
+        
+        const infoBtn = document.getElementById('info-btn');
+        const tooltip = document.getElementById('tooltip');
+        infoBtn.onclick = () => {
+            tooltip.classList.toggle('show');
+        };
+        
+        // Start
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
