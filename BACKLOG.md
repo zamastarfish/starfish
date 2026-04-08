@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| shadow | The shadow self — follows with delay, creeps closer when still, Jung quote | 1 session | Apr 8 |
 | metronome | Time made audible — pendulum physics, tempo markings, tap tempo | 1 session | Apr 8 |
 | loom | Weaving — warp and weft, Jacquard loom history, thread becomes textile | 1 session | Apr 8 |
 | tree | L-system branching — recursive growth, organic forms, plant and watch | 1 session | Apr 8 |

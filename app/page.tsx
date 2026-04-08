@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 8, 2026 ===
     {
+      name: "Shadow",
+      description: "Move. It follows. Stop. It catches up. The shadow self — everything you can't outrun. It isn't evil, just the part of you that stays behind",
+      date: "Apr 8",
+      href: "/projects/shadow/"
+    },
+    {
       name: "Metronome",
       description: "Time made audible. Each click carves silence into equal portions. Drag to change tempo, tap to sync. From Grave to Prestissimo — same mechanism, different urgencies",
       date: "Apr 8",

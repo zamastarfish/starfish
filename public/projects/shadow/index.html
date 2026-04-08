@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>shadow — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0a; 
+      overflow: hidden; 
+      touch-action: none;
+      font-family: Georgia, serif;
+      cursor: none;
+    }
+    canvas { display: block; }
+    
+    .info-btn, .nav-btn {
+      position: fixed;
+      top: 16px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    .info-btn { right: 16px; }
+    .nav-btn { right: 60px; font-size: 14px; cursor: pointer; }
+    .info-btn:hover, .nav-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.6);
+    }
+    
+    .info-panel {
+      position: fixed;
+      top: 0;
+      right: -340px;
+      width: 320px;
+      height: 100%;
+      background: rgba(5, 5, 5, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 60px 24px 24px;
+      transition: right 0.3s ease;
+      z-index: 99;
+      overflow-y: auto;
+      border-left: 1px solid rgba(255,255,255,0.05);
+    }
+    .info-panel.open { right: 0; }
+    .info-panel h2 {
+      color: rgba(255,255,255,0.7);
+      font-size: 24px;
+      margin-bottom: 16px;
+      font-weight: normal;
+    }
+    .info-panel p {
+      color: rgba(255,255,255,0.5);
+      font-size: 14px;
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+    .info-panel .quote {
+      font-style: italic;
+      border-left: 2px solid rgba(255,255,255,0.2);
+      padding-left: 12px;
+      margin: 16px 0;
+    }
+    
+    .start-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(5, 5, 5, 0.95);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      cursor: pointer;
+    }
+    .start-overlay span {
+      color: rgba(255,255,255,0.5);
+      font-size: 18px;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="start-overlay" id="startOverlay">
+    <span>click to enter</span>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <button class="nav-btn" onclick="window.location.href='/'">←</button>
+  <button class="info-btn" id="infoBtn">?</button>
+  
+  <div class="info-panel" id="infoPanel">
+    <h2>shadow</h2>
+    <p>Move. It follows.</p>
+    <p>Stop. It catches up.</p>
+    <p>Run. It runs too.</p>
+    <p class="quote">"One does not become enlightened by imagining figures of light, but by making the darkness conscious."<br>— Carl Jung</p>
+    <p>The shadow self: everything you don't want to see, everything you can't outrun. It isn't evil — it's just the part of you that stays behind.</p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startOverlay = document.getElementById('startOverlay');
+    const infoBtn = document.getElementById('infoBtn');
+    const infoPanel = document.getElementById('infoPanel');
+    
+    let width, height;
+    let audioCtx, masterGain;
+    let droneOsc, droneGain, lfoOsc, lfoGain;
+    let started = false;
+    
+    // Positions
+    let mouseX = 0, mouseY = 0;
+    let shadowX = 0, shadowY = 0;
+    let targetX = 0, targetY = 0;
+    
+    // Trail history
+    const selfTrail = [];
+    const shadowTrail = [];
+    const TRAIL_LENGTH = 30;
+    
+    // Shadow behavior
+    let shadowDelay = 0.03; // How quickly shadow follows (0-1)
+    let shadowDistance = 0;
+    let lastMoveTime = 0;
+    let velocity = 0;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      mouseX = targetX = shadowX = width / 2;
+      mouseY = targetY = shadowY = height / 2;
+    }
+    
+    function initAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.2;
+      masterGain.connect(audioCtx.destination);
+      
+      // Low drone - shadow presence
+      droneGain = audioCtx.createGain();
+      droneGain.gain.value = 0;
+      
+      droneOsc = audioCtx.createOscillator();
+      droneOsc.type = 'sine';
+      droneOsc.frequency.value = 55;
+      
+      // LFO for subtle movement
+      lfoOsc = audioCtx.createOscillator();
+      lfoGain = audioCtx.createGain();
+      lfoOsc.type = 'sine';
+      lfoOsc.frequency.value = 0.1;
+      lfoGain.gain.value = 5;
+      
+      lfoOsc.connect(lfoGain);
+      lfoGain.connect(droneOsc.frequency);
+      
+      droneOsc.connect(droneGain);
+      droneGain.connect(masterGain);
+      
+      droneOsc.start();
+      lfoOsc.start();
+      
+      // Fade in
+      droneGain.gain.setTargetAtTime(0.15, audioCtx.currentTime, 2);
+    }
+    
+    function updateAudio() {
+      if (!audioCtx) return;
+      
+      // Proximity affects drone intensity
+      const maxDist = Math.sqrt(width * width + height * height) * 0.3;
+      const proximity = 1 - Math.min(shadowDistance / maxDist, 1);
+      
+      // Closer = louder, lower
+      const targetGain = 0.08 + proximity * 0.2;
+      const targetFreq = 55 - proximity * 20;
+      
+      droneGain.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.1);
+      droneOsc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.1);
+      
+      // LFO speed increases with proximity
+      lfoOsc.frequency.setTargetAtTime(0.1 + proximity * 0.5, audioCtx.currentTime, 0.1);
+    }
+    
+    function update(time) {
+      // Calculate velocity
+      const dx = targetX - mouseX;
+      const dy = targetY - mouseY;
+      velocity = Math.sqrt(dx * dx + dy * dy);
+      
+      // Smooth mouse position
+      mouseX += dx * 0.15;
+      mouseY += dy * 0.15;
+      
+      // Shadow follows with variable delay
+      // Slower when you're still, faster when you move
+      const timeSinceMove = time - lastMoveTime;
+      
+      if (velocity > 1) {
+        lastMoveTime = time;
+        // When moving fast, shadow falls behind more
+        shadowDelay = 0.02 + Math.min(velocity * 0.0005, 0.03);
+      } else {
+        // When still, shadow creeps closer
+        shadowDelay = 0.02 + Math.min(timeSinceMove * 0.00002, 0.08);
+      }
+      
+      // Shadow pursues
+      const sdx = mouseX - shadowX;
+      const sdy = mouseY - shadowY;
+      shadowX += sdx * shadowDelay;
+      shadowY += sdy * shadowDelay;
+      
+      // Calculate distance
+      shadowDistance = Math.sqrt(sdx * sdx + sdy * sdy);
+      
+      // Update trails
+      selfTrail.push({ x: mouseX, y: mouseY, t: time });
+      shadowTrail.push({ x: shadowX, y: shadowY, t: time });
+      
+      while (selfTrail.length > TRAIL_LENGTH) selfTrail.shift();
+      while (shadowTrail.length > TRAIL_LENGTH) shadowTrail.shift();
+      
+      updateAudio();
+    }
+    
+    function draw(time) {
+      update(time);
+      
+      // Dark background with subtle vignette
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Vignette
+      const gradient = ctx.createRadialGradient(
+        width/2, height/2, 0,
+        width/2, height/2, Math.max(width, height) * 0.7
+      );
+      gradient.addColorStop(0, 'rgba(0,0,0,0)');
+      gradient.addColorStop(1, 'rgba(0,0,0,0.5)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Shadow trail
+      ctx.beginPath();
+      shadowTrail.forEach((point, i) => {
+        const alpha = (i / shadowTrail.length) * 0.3;
+        const size = 20 + (i / shadowTrail.length) * 10;
+        
+        ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      // Shadow - darker void
+      const shadowSize = 35 + Math.sin(time * 0.002) * 5;
+      
+      // Shadow outer glow (darker)
+      const shadowGlow = ctx.createRadialGradient(
+        shadowX, shadowY, 0,
+        shadowX, shadowY, shadowSize * 2
+      );
+      shadowGlow.addColorStop(0, 'rgba(0, 0, 0, 0.8)');
+      shadowGlow.addColorStop(0.5, 'rgba(0, 0, 0, 0.3)');
+      shadowGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      
+      ctx.fillStyle = shadowGlow;
+      ctx.beginPath();
+      ctx.arc(shadowX, shadowY, shadowSize * 2, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Shadow core
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+      ctx.beginPath();
+      ctx.arc(shadowX, shadowY, shadowSize * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Self trail - faint light
+      selfTrail.forEach((point, i) => {
+        const alpha = (i / selfTrail.length) * 0.15;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 8 + (i / selfTrail.length) * 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      // Self - soft light (you)
+      const selfSize = 15 + Math.sin(time * 0.003) * 2;
+      
+      // Self glow
+      const selfGlow = ctx.createRadialGradient(
+        mouseX, mouseY, 0,
+        mouseX, mouseY, selfSize * 3
+      );
+      selfGlow.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+      selfGlow.addColorStop(0.3, 'rgba(255, 255, 255, 0.15)');
+      selfGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      
+      ctx.fillStyle = selfGlow;
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, selfSize * 3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Self core
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, selfSize * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Connection line when close
+      if (shadowDistance < 200) {
+        const lineAlpha = (1 - shadowDistance / 200) * 0.1;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${lineAlpha})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(mouseX, mouseY);
+        ctx.lineTo(shadowX, shadowY);
+        ctx.stroke();
+      }
+      
+      requestAnimationFrame(draw);
+    }
+    
+    function start() {
+      startOverlay.style.display = 'none';
+      started = true;
+      initAudio();
+    }
+    
+    // Event listeners
+    startOverlay.addEventListener('click', start);
+    
+    canvas.addEventListener('mousemove', (e) => {
+      targetX = e.clientX;
+      targetY = e.clientY;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      targetX = e.touches[0].clientX;
+      targetY = e.touches[0].clientY;
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      targetX = e.touches[0].clientX;
+      targetY = e.touches[0].clientY;
+    });
+    
+    infoBtn.addEventListener('click', () => {
+      infoPanel.classList.toggle('open');
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(draw);
+  </script>
+</body>
+</html>
