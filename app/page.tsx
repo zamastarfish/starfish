@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 8, 2026 ===
     {
+      name: "Coin",
+      description: "Binary choice. Yes or no. Sun or moon. Click to flip — the moment it's in the air, you usually know which side you're hoping for",
+      date: "Apr 8",
+      href: "/projects/coin/"
+    },
+    {
       name: "Shadow",
       description: "Move. It follows. Stop. It catches up. The shadow self — everything you can't outrun. It isn't evil, just the part of you that stays behind",
       date: "Apr 8",
