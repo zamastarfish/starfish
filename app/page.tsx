@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 8, 2026 ===
     {
+      name: "Loom",
+      description: "Warp and weft. Thread becomes textile through the ancient dance of over and under. Before punch cards, before computers, the Jacquard loom encoded patterns in paper. Click to change the weft color",
+      date: "Apr 8",
+      href: "/projects/loom/"
+    },
+    {
       name: "Tree",
       description: "L-system growth. Click to plant — watch branches emerge recursively from simple rules. Each tree grows differently, same grammar different seeds. The patience of organic form",
       date: "Apr 8",
