@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 8, 2026 ===
     {
+      name: "Metronome",
+      description: "Time made audible. Each click carves silence into equal portions. Drag to change tempo, tap to sync. From Grave to Prestissimo — same mechanism, different urgencies",
+      date: "Apr 8",
+      href: "/projects/metronome/"
+    },
+    {
       name: "Loom",
       description: "Warp and weft. Thread becomes textile through the ancient dance of over and under. Before punch cards, before computers, the Jacquard loom encoded patterns in paper. Click to change the weft color",
       date: "Apr 8",

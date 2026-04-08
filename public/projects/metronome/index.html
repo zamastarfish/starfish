@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>metronome — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #1a1612; 
+      overflow: hidden; 
+      touch-action: none;
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; }
+    
+    .info-btn, .nav-btn {
+      position: fixed;
+      top: 16px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      z-index: 100;
+      backdrop-filter: blur(4px);
+    }
+    .info-btn { right: 16px; }
+    .nav-btn { right: 60px; font-size: 14px; }
+    .info-btn:hover, .nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    
+    .info-panel {
+      position: fixed;
+      top: 0;
+      right: -340px;
+      width: 320px;
+      height: 100%;
+      background: rgba(20, 16, 12, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 60px 24px 24px;
+      transition: right 0.3s ease;
+      z-index: 99;
+      overflow-y: auto;
+      border-left: 1px solid rgba(255,255,255,0.1);
+    }
+    .info-panel.open { right: 0; }
+    .info-panel h2 {
+      color: #c9a875;
+      font-size: 24px;
+      margin-bottom: 16px;
+      font-weight: normal;
+    }
+    .info-panel p {
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+    .info-panel .controls {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .info-panel .controls p {
+      color: rgba(255,255,255,0.5);
+      font-size: 13px;
+    }
+    
+    .start-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(20, 16, 12, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      cursor: pointer;
+    }
+    .start-overlay span {
+      color: #c9a875;
+      font-size: 18px;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="start-overlay" id="startOverlay">
+    <span>click to begin</span>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <button class="nav-btn" onclick="window.location.href='/'">←</button>
+  <button class="info-btn" id="infoBtn">?</button>
+  
+  <div class="info-panel" id="infoPanel">
+    <h2>metronome</h2>
+    <p>Time made audible. Each click carves the silence into equal portions.</p>
+    <p>Musicians practice against it, trying to internalize the pulse until they no longer need the machine. The goal is to become the metronome.</p>
+    <p>Largo to Prestissimo. The same mechanism, different urgencies.</p>
+    <div class="controls">
+      <p><strong>Drag up/down:</strong> Change tempo</p>
+      <p><strong>Click:</strong> Tap tempo</p>
+      <p><strong>Space:</strong> Start/stop</p>
+      <p><strong>1-4:</strong> Time signature</p>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startOverlay = document.getElementById('startOverlay');
+    const infoBtn = document.getElementById('infoBtn');
+    const infoPanel = document.getElementById('infoPanel');
+    
+    let width, height;
+    let audioCtx;
+    let started = false;
+    let running = true;
+    
+    // Metronome state
+    let bpm = 90;
+    let beatsPerMeasure = 4;
+    let currentBeat = 0;
+    let lastBeatTime = 0;
+    let angle = 0;
+    let angularVelocity = 0;
+    let targetAngle = Math.PI / 4; // Max swing
+    
+    // Tap tempo
+    let tapTimes = [];
+    
+    // Drag state
+    let isDragging = false;
+    let dragStartY = 0;
+    let dragStartBPM = 0;
+    
+    // Tempo markings
+    const tempoMarkings = [
+      { min: 20, max: 40, name: 'Grave' },
+      { min: 40, max: 60, name: 'Largo' },
+      { min: 60, max: 66, name: 'Larghetto' },
+      { min: 66, max: 76, name: 'Adagio' },
+      { min: 76, max: 108, name: 'Andante' },
+      { min: 108, max: 120, name: 'Moderato' },
+      { min: 120, max: 156, name: 'Allegro' },
+      { min: 156, max: 176, name: 'Vivace' },
+      { min: 176, max: 200, name: 'Presto' },
+      { min: 200, max: 300, name: 'Prestissimo' },
+    ];
+    
+    function getTempoMarking(bpm) {
+      for (const marking of tempoMarkings) {
+        if (bpm >= marking.min && bpm < marking.max) return marking.name;
+      }
+      return '';
+    }
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    function initAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    function playClick(isDownbeat) {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Wood block sound
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+      
+      // Higher pitch for downbeat
+      const baseFreq = isDownbeat ? 1200 : 800;
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, now + 0.02);
+      
+      filter.type = 'highpass';
+      filter.frequency.value = 400;
+      
+      gain.gain.setValueAtTime(isDownbeat ? 0.4 : 0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start(now);
+      osc.stop(now + 0.1);
+      
+      // Add a click component
+      const noise = audioCtx.createOscillator();
+      const noiseGain = audioCtx.createGain();
+      
+      noise.type = 'square';
+      noise.frequency.value = isDownbeat ? 2000 : 1500;
+      
+      noiseGain.gain.setValueAtTime(isDownbeat ? 0.15 : 0.08, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.015);
+      
+      noise.connect(noiseGain);
+      noiseGain.connect(audioCtx.destination);
+      
+      noise.start(now);
+      noise.stop(now + 0.02);
+    }
+    
+    function update(time) {
+      if (!started || !running) return;
+      
+      const beatInterval = 60000 / bpm; // ms per beat
+      
+      if (time - lastBeatTime >= beatInterval) {
+        // Beat!
+        const isDownbeat = currentBeat === 0;
+        playClick(isDownbeat);
+        
+        currentBeat = (currentBeat + 1) % beatsPerMeasure;
+        lastBeatTime = time;
+        
+        // Reverse pendulum direction
+        targetAngle = -targetAngle;
+      }
+      
+      // Pendulum physics - simple harmonic motion toward target
+      const progress = (time - lastBeatTime) / beatInterval;
+      const swing = Math.PI / 4; // Max angle
+      
+      // Sine wave for smooth pendulum motion
+      angle = swing * Math.cos(Math.PI * progress);
+      if (targetAngle < 0) angle = -angle;
+    }
+    
+    function draw(time) {
+      update(time);
+      
+      // Background - dark wood
+      ctx.fillStyle = '#1a1612';
+      ctx.fillRect(0, 0, width, height);
+      
+      const cx = width / 2;
+      const cy = height / 2;
+      const scale = Math.min(width, height) / 600;
+      
+      // Metronome body (trapezoid)
+      const bodyWidth = 120 * scale;
+      const bodyHeight = 300 * scale;
+      const bodyTop = 80 * scale;
+      
+      ctx.fillStyle = '#3d2e1f';
+      ctx.beginPath();
+      ctx.moveTo(cx - bodyWidth, cy + bodyHeight/2);
+      ctx.lineTo(cx + bodyWidth, cy + bodyHeight/2);
+      ctx.lineTo(cx + bodyTop, cy - bodyHeight/2);
+      ctx.lineTo(cx - bodyTop, cy - bodyHeight/2);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Wood grain texture
+      ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 20; i++) {
+        const y = cy - bodyHeight/2 + (i / 20) * bodyHeight;
+        const wobble = Math.sin(i * 0.5) * 5 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - bodyWidth + 20 + wobble, y);
+        ctx.lineTo(cx + bodyWidth - 20 + wobble, y);
+        ctx.stroke();
+      }
+      
+      // Face plate
+      ctx.fillStyle = '#f5e6c8';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - 20 * scale, 60 * scale, 80 * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Tempo scale arc
+      ctx.strokeStyle = '#2a1f14';
+      ctx.lineWidth = 2 * scale;
+      ctx.beginPath();
+      ctx.arc(cx, cy + 100 * scale, 70 * scale, -Math.PI * 0.8, -Math.PI * 0.2);
+      ctx.stroke();
+      
+      // Scale markings
+      ctx.fillStyle = '#2a1f14';
+      ctx.font = `${10 * scale}px Georgia`;
+      ctx.textAlign = 'center';
+      const markings = [40, 60, 80, 100, 120, 160, 200];
+      markings.forEach((mark, i) => {
+        const markAngle = -Math.PI * 0.8 + (i / (markings.length - 1)) * Math.PI * 0.6;
+        const markX = cx + Math.cos(markAngle) * 70 * scale;
+        const markY = cy + 100 * scale + Math.sin(markAngle) * 70 * scale;
+        ctx.fillText(mark.toString(), markX, markY);
+      });
+      
+      // Pendulum pivot
+      const pivotY = cy + 100 * scale;
+      
+      // Pendulum arm
+      const armLength = 180 * scale;
+      const armEndX = cx + Math.sin(angle) * armLength;
+      const armEndY = pivotY - Math.cos(angle) * armLength;
+      
+      ctx.strokeStyle = '#1a1208';
+      ctx.lineWidth = 6 * scale;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx, pivotY);
+      ctx.lineTo(armEndX, armEndY);
+      ctx.stroke();
+      
+      // Weight on pendulum
+      const weightY = pivotY - Math.cos(angle) * (armLength * 0.6);
+      const weightX = cx + Math.sin(angle) * (armLength * 0.6);
+      
+      ctx.fillStyle = '#8b7355';
+      ctx.beginPath();
+      ctx.moveTo(weightX - 15 * scale, weightY - 10 * scale);
+      ctx.lineTo(weightX + 15 * scale, weightY - 10 * scale);
+      ctx.lineTo(weightX + 12 * scale, weightY + 20 * scale);
+      ctx.lineTo(weightX - 12 * scale, weightY + 20 * scale);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Pivot cap
+      ctx.fillStyle = '#c9a875';
+      ctx.beginPath();
+      ctx.arc(cx, pivotY, 8 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // BPM display
+      ctx.fillStyle = '#2a1f14';
+      ctx.font = `bold ${36 * scale}px Georgia`;
+      ctx.textAlign = 'center';
+      ctx.fillText(Math.round(bpm).toString(), cx, cy - 40 * scale);
+      
+      ctx.font = `${14 * scale}px Georgia`;
+      ctx.fillText('BPM', cx, cy - 15 * scale);
+      
+      // Tempo marking
+      ctx.font = `italic ${16 * scale}px Georgia`;
+      ctx.fillText(getTempoMarking(bpm), cx, cy + 15 * scale);
+      
+      // Time signature
+      ctx.font = `${12 * scale}px Georgia`;
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillText(`${beatsPerMeasure}/4`, cx, cy + 180 * scale);
+      
+      // Beat indicators
+      const beatSpacing = 20 * scale;
+      const beatStartX = cx - ((beatsPerMeasure - 1) * beatSpacing) / 2;
+      
+      for (let i = 0; i < beatsPerMeasure; i++) {
+        const x = beatStartX + i * beatSpacing;
+        const y = cy + 200 * scale;
+        const isCurrent = running && i === (currentBeat === 0 ? beatsPerMeasure - 1 : currentBeat - 1);
+        
+        ctx.fillStyle = isCurrent ? '#c9a875' : 'rgba(255,255,255,0.2)';
+        ctx.beginPath();
+        ctx.arc(x, y, (i === 0 ? 6 : 4) * scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Running indicator
+      if (!running) {
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = `${14 * scale}px Georgia`;
+        ctx.fillText('paused', cx, cy + 230 * scale);
+      }
+      
+      requestAnimationFrame(draw);
+    }
+    
+    function start() {
+      startOverlay.style.display = 'none';
+      started = true;
+      initAudio();
+      lastBeatTime = performance.now();
+    }
+    
+    function handleTap() {
+      const now = performance.now();
+      tapTimes.push(now);
+      
+      // Keep only recent taps (last 4)
+      if (tapTimes.length > 4) tapTimes.shift();
+      
+      // Calculate average interval
+      if (tapTimes.length >= 2) {
+        let totalInterval = 0;
+        for (let i = 1; i < tapTimes.length; i++) {
+          totalInterval += tapTimes[i] - tapTimes[i-1];
+        }
+        const avgInterval = totalInterval / (tapTimes.length - 1);
+        
+        // Only update if reasonable (30-240 BPM)
+        const tapBPM = 60000 / avgInterval;
+        if (tapBPM >= 30 && tapBPM <= 240) {
+          bpm = tapBPM;
+        }
+      }
+      
+      // Clear taps after 2 seconds of inactivity
+      setTimeout(() => {
+        if (performance.now() - tapTimes[tapTimes.length - 1] > 2000) {
+          tapTimes = [];
+        }
+      }, 2100);
+    }
+    
+    // Event listeners
+    startOverlay.addEventListener('click', start);
+    
+    canvas.addEventListener('mousedown', (e) => {
+      if (!started) return;
+      isDragging = true;
+      dragStartY = e.clientY;
+      dragStartBPM = bpm;
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const deltaY = dragStartY - e.clientY;
+      bpm = Math.max(30, Math.min(240, dragStartBPM + deltaY * 0.5));
+    });
+    
+    canvas.addEventListener('mouseup', (e) => {
+      if (isDragging && Math.abs(e.clientY - dragStartY) < 5) {
+        // It was a click, not a drag
+        handleTap();
+      }
+      isDragging = false;
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      if (!started) return;
+      e.preventDefault();
+      isDragging = true;
+      dragStartY = e.touches[0].clientY;
+      dragStartBPM = bpm;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      const deltaY = dragStartY - e.touches[0].clientY;
+      bpm = Math.max(30, Math.min(240, dragStartBPM + deltaY * 0.5));
+    });
+    
+    canvas.addEventListener('touchend', (e) => {
+      isDragging = false;
+    });
+    
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        running = !running;
+        if (running) {
+          lastBeatTime = performance.now();
+          currentBeat = 0;
+        }
+      } else if (e.key >= '1' && e.key <= '9') {
+        beatsPerMeasure = parseInt(e.key);
+        currentBeat = 0;
+      }
+    });
+    
+    infoBtn.addEventListener('click', () => {
+      infoPanel.classList.toggle('open');
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(draw);
+  </script>
+</body>
+</html>
