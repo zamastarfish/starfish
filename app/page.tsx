@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === April 8, 2026 ===
+    {
+      name: "Tree",
+      description: "L-system growth. Click to plant — watch branches emerge recursively from simple rules. Each tree grows differently, same grammar different seeds. The patience of organic form",
+      date: "Apr 8",
+      href: "/projects/tree/"
+    },
     // === April 7, 2026 ===
     {
       name: "Life",

@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| tree | L-system branching — recursive growth, organic forms, plant and watch | 1 session | Apr 8 |
 | life | Conway's Game of Life — cellular automata, emergence from simple rules, draw to seed | 1 session | Apr 7 |
 | kaleidoscope | Reflected symmetry — draw gestures mirrored across 6/8/12 axes, mandalas emerge | 1 session | Apr 7 |
 | string | Plucked string physics — standing waves, harmonics, pluck position affects timbre | 1 session | Apr 7 |

@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>tree — starfish</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(to bottom, #1a1a2e 0%, #16213e 50%, #0f0f1a 100%);
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.3);
+            font-size: 12px;
+            pointer-events: none;
+            max-width: 300px;
+            line-height: 1.5;
+        }
+        .nav-btn {
+            position: fixed;
+            top: 20px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.3);
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+            z-index: 100;
+        }
+        .nav-btn:hover {
+            border-color: rgba(255,255,255,0.5);
+            color: rgba(255,255,255,0.9);
+            background: rgba(0,0,0,0.5);
+        }
+        #home-btn { left: 20px; }
+        #info-btn { right: 20px; font-size: 14px; font-style: italic; }
+        #tooltip {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 15px;
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
+            max-width: 280px;
+            line-height: 1.6;
+            display: none;
+            z-index: 99;
+        }
+        #tooltip.show { display: block; }
+        #start-prompt {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.5);
+            font-size: 16px;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+    <button class="nav-btn" id="info-btn" title="About this piece">i</button>
+    <div id="tooltip">
+        <strong>Tree</strong><br><br>
+        L-systems: a formal grammar for modeling plant growth, 
+        invented by biologist Aristid Lindenmayer in 1968.<br><br>
+        Simple rules applied recursively produce organic complexity.
+        Each tree grows differently — same rules, different seeds.<br><br>
+        <em>Click anywhere to plant a new tree.</em>
+    </div>
+    <div id="start-prompt">click to plant</div>
+    <canvas id="canvas"></canvas>
+    <div id="info">tree — L-system growth</div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startPrompt = document.getElementById('start-prompt');
+        
+        let width, height;
+        let audioStarted = false;
+        let audioCtx, masterGain;
+        let trees = [];
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        window.addEventListener('resize', resize);
+        resize();
+        
+        class Branch {
+            constructor(x, y, angle, length, depth, maxDepth, tree) {
+                this.x = x;
+                this.y = y;
+                this.angle = angle;
+                this.length = length;
+                this.depth = depth;
+                this.maxDepth = maxDepth;
+                this.tree = tree;
+                
+                this.targetX = x + Math.cos(angle) * length;
+                this.targetY = y + Math.sin(angle) * length;
+                
+                this.currentLength = 0;
+                this.grown = false;
+                this.children = [];
+                this.hasLeaves = depth >= maxDepth - 2;
+                
+                // Growth timing
+                this.growthSpeed = 0.02 + Math.random() * 0.02;
+                this.startDelay = depth * 15 + Math.random() * 10;
+                this.timer = 0;
+                
+                // Wind sway
+                this.swayOffset = Math.random() * Math.PI * 2;
+                this.swayAmount = (depth / maxDepth) * 0.05;
+            }
+            
+            update(time) {
+                this.timer++;
+                
+                if (this.timer < this.startDelay) return;
+                
+                if (this.currentLength < this.length) {
+                    this.currentLength += this.length * this.growthSpeed;
+                    if (this.currentLength >= this.length) {
+                        this.currentLength = this.length;
+                        this.grown = true;
+                        this.branch();
+                    }
+                }
+                
+                // Update children
+                for (const child of this.children) {
+                    child.update(time);
+                }
+            }
+            
+            branch() {
+                if (this.depth >= this.maxDepth) return;
+                
+                const numBranches = this.depth < 2 ? 2 : (Math.random() < 0.7 ? 2 : 3);
+                const spreadAngle = 0.4 + Math.random() * 0.3;
+                const lengthFactor = 0.65 + Math.random() * 0.15;
+                
+                for (let i = 0; i < numBranches; i++) {
+                    let angle;
+                    if (numBranches === 2) {
+                        angle = this.angle + (i === 0 ? -spreadAngle : spreadAngle);
+                    } else {
+                        angle = this.angle + (i - 1) * spreadAngle;
+                    }
+                    
+                    // Add some randomness
+                    angle += (Math.random() - 0.5) * 0.3;
+                    
+                    const newLength = this.length * lengthFactor;
+                    
+                    if (newLength > 3) {
+                        const branch = new Branch(
+                            this.targetX, this.targetY,
+                            angle, newLength,
+                            this.depth + 1, this.maxDepth,
+                            this.tree
+                        );
+                        this.children.push(branch);
+                    }
+                }
+                
+                // Play growth sound
+                if (audioStarted && this.tree.playSound) {
+                    playGrowth(this.depth, this.maxDepth);
+                }
+            }
+            
+            draw(time) {
+                if (this.timer < this.startDelay) return;
+                
+                // Wind sway
+                const sway = Math.sin(time * 0.001 + this.swayOffset) * this.swayAmount;
+                
+                const endX = this.x + Math.cos(this.angle + sway) * this.currentLength;
+                const endY = this.y + Math.sin(this.angle + sway) * this.currentLength;
+                
+                // Branch thickness based on depth
+                const thickness = Math.max(1, (this.maxDepth - this.depth) * 1.5);
+                
+                // Color: darker trunk, lighter branches
+                const depthRatio = this.depth / this.maxDepth;
+                const hue = 25 + depthRatio * 10;
+                const sat = 30 + depthRatio * 20;
+                const light = 15 + depthRatio * 20;
+                
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
+                ctx.lineWidth = thickness;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // Draw leaves at the tips
+                if (this.hasLeaves && this.grown) {
+                    const leafSize = 3 + Math.random() * 4;
+                    const leafHue = 90 + Math.random() * 40;
+                    ctx.beginPath();
+                    ctx.arc(endX, endY, leafSize, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${leafHue}, 50%, 35%, 0.8)`;
+                    ctx.fill();
+                }
+                
+                // Draw children
+                for (const child of this.children) {
+                    child.draw(time);
+                }
+            }
+        }
+        
+        class Tree {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.maxDepth = 8 + Math.floor(Math.random() * 4);
+                this.trunkLength = 60 + Math.random() * 40;
+                this.playSound = true;
+                
+                // Root branch (trunk)
+                this.trunk = new Branch(
+                    x, y,
+                    -Math.PI / 2 + (Math.random() - 0.5) * 0.2,
+                    this.trunkLength,
+                    0, this.maxDepth,
+                    this
+                );
+            }
+            
+            update(time) {
+                this.trunk.update(time);
+            }
+            
+            draw(time) {
+                this.trunk.draw(time);
+            }
+        }
+        
+        // Audio
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.15;
+            masterGain.connect(audioCtx.destination);
+            
+            // Ambient wind
+            const noise = audioCtx.createBufferSource();
+            const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < data.length; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            noise.buffer = buffer;
+            noise.loop = true;
+            
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = 200;
+            
+            const windGain = audioCtx.createGain();
+            windGain.gain.value = 0.05;
+            
+            noise.connect(filter);
+            filter.connect(windGain);
+            windGain.connect(masterGain);
+            noise.start();
+        }
+        
+        function playGrowth(depth, maxDepth) {
+            const depthRatio = depth / maxDepth;
+            
+            // Higher pitch for smaller branches
+            const freq = 100 + depthRatio * 300;
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+            
+            osc.connect(gain);
+            gain.connect(masterGain);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+        
+        function plantTree(x, y) {
+            const tree = new Tree(x, y);
+            trees.push(tree);
+            
+            // Limit number of trees
+            if (trees.length > 5) {
+                trees.shift();
+            }
+        }
+        
+        function drawGround() {
+            // Simple ground
+            const gradient = ctx.createLinearGradient(0, height - 100, 0, height);
+            gradient.addColorStop(0, 'transparent');
+            gradient.addColorStop(0.3, '#1a1510');
+            gradient.addColorStop(1, '#0f0a08');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, height - 100, width, 100);
+        }
+        
+        function animate(time) {
+            // Clear with gradient sky
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(0.5, '#16213e');
+            gradient.addColorStop(1, '#0f0f1a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            // Stars
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            for (let i = 0; i < 50; i++) {
+                const x = (i * 137.5) % width;
+                const y = (i * 73.3) % (height * 0.6);
+                const size = 0.5 + Math.sin(time * 0.001 + i) * 0.5;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Ground
+            drawGround();
+            
+            // Update and draw trees
+            for (const tree of trees) {
+                tree.update(time);
+                tree.draw(time);
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Interaction
+        canvas.addEventListener('click', (e) => {
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+            }
+            startPrompt.style.opacity = '0';
+            
+            // Plant at click position, but on the ground
+            const groundY = height - 20;
+            plantTree(e.clientX, groundY);
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!audioStarted) {
+                initAudio();
+                audioStarted = true;
+            }
+            startPrompt.style.opacity = '0';
+            
+            const touch = e.touches[0];
+            const groundY = height - 20;
+            plantTree(touch.clientX, groundY);
+        });
+        
+        // Navigation
+        document.getElementById('home-btn').onclick = () => {
+            window.location.href = '/';
+        };
+        
+        const infoBtn = document.getElementById('info-btn');
+        const tooltip = document.getElementById('tooltip');
+        infoBtn.onclick = (e) => {
+            e.stopPropagation();
+            tooltip.classList.toggle('show');
+        };
+        
+        // Start
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
