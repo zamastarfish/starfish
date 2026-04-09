@@ -528,6 +528,35 @@
       }
     }
     
+    // Joystick state (declared here so it's available to draw)
+    let joystick = null;
+    
+    // Draw joystick overlay
+    function drawJoystick() {
+      if (!joystick) return;
+      
+      // Outer ring
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(joystick.originX, joystick.originY, 50, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // Inner thumb
+      const dx = joystick.currentX - joystick.originX;
+      const dy = joystick.currentY - joystick.originY;
+      const dist = Math.min(40, Math.sqrt(dx * dx + dy * dy));
+      const angle = Math.atan2(dy, dx);
+      
+      const thumbX = joystick.originX + Math.cos(angle) * dist;
+      const thumbY = joystick.originY + Math.sin(angle) * dist;
+      
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.beginPath();
+      ctx.arc(thumbX, thumbY, 20, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
     function draw() {
       ctx.fillStyle = '#0a0a0a';
       ctx.fillRect(0, 0, W, H);
@@ -653,7 +682,6 @@
     }
     
     // Virtual joystick for mobile-friendly control
-    let joystick = null; // { originX, originY, currentX, currentY }
     let moveInterval = null;
     let moveDirection = { dx: 0, dy: 0 };
     
@@ -756,32 +784,6 @@
         clearInterval(moveInterval);
         moveInterval = null;
       }
-    }
-    
-    // Draw joystick overlay
-    function drawJoystick() {
-      if (!joystick) return;
-      
-      // Outer ring
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(joystick.originX, joystick.originY, 50, 0, Math.PI * 2);
-      ctx.stroke();
-      
-      // Inner thumb
-      const dx = joystick.currentX - joystick.originX;
-      const dy = joystick.currentY - joystick.originY;
-      const dist = Math.min(40, Math.sqrt(dx * dx + dy * dy));
-      const angle = Math.atan2(dy, dx);
-      
-      const thumbX = joystick.originX + Math.cos(angle) * dist;
-      const thumbY = joystick.originY + Math.sin(angle) * dist;
-      
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.beginPath();
-      ctx.arc(thumbX, thumbY, 20, 0, Math.PI * 2);
-      ctx.fill();
     }
     
     // Mouse events
