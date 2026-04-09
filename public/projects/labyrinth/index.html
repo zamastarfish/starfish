@@ -110,12 +110,12 @@
       <p>Like Theseus, you carry a thread. Enter the maze, find the center, then follow your thread back out.</p>
       <p>The golden glow marks the center. Your crimson thread marks where you've been. The maze fades behind you, but your thread remains.</p>
       <div class="quote">"The labyrinth is not meant to trap you. It is meant to help you find the center — and return transformed."<br>— adapted from the Chartres labyrinth tradition</div>
-      <p>Tap or click where you want to go. On mobile, tap repeatedly to navigate step by step.</p>
+      <p>Tap and drag to move — a joystick appears where you touch. Drag in the direction you want to go.</p>
       <p class="close">tap anywhere to return</p>
     </div>
   </div>
   
-  <div id="hint">tap to enter the labyrinth</div>
+  <div id="hint">tap and drag to move</div>
   <div id="status"></div>
 
   <script>
@@ -503,10 +503,10 @@
     
     function updateHint() {
       if (phase === 'entering') {
-        hint.textContent = 'find the golden center';
+        hint.textContent = 'drag toward the golden glow';
         hint.style.opacity = '1';
       } else if (phase === 'returning') {
-        hint.textContent = 'follow your thread back out';
+        hint.textContent = 'follow your thread to the green exit';
         hint.style.opacity = '1';
       } else if (phase === 'complete') {
         hint.textContent = 'journey complete — tap to begin again';
@@ -645,15 +645,79 @@
         generateMaze();
       }
       
+      // Draw joystick overlay
+      drawJoystick();
+      
       fade();
       requestAnimationFrame(draw);
     }
     
-    // Input handling with continuous movement
-    let targetPos = null;
+    // Virtual joystick for mobile-friendly control
+    let joystick = null; // { originX, originY, currentX, currentY }
     let moveInterval = null;
+    let moveDirection = { dx: 0, dy: 0 };
     
-    function startMoving(x, y) {
+    function moveInDirection() {
+      if (phase === 'complete' || !moveDirection) return;
+      if (moveDirection.dx === 0 && moveDirection.dy === 0) return;
+      
+      // Try to move player one step in the direction
+      const dirs = [];
+      
+      // Prioritize based on joystick direction
+      if (Math.abs(moveDirection.dx) > Math.abs(moveDirection.dy)) {
+        // Horizontal dominant
+        if (moveDirection.dx > 0) dirs.push([1, 0], [0, moveDirection.dy > 0 ? 1 : -1], [-1, 0]);
+        else dirs.push([-1, 0], [0, moveDirection.dy > 0 ? 1 : -1], [1, 0]);
+      } else {
+        // Vertical dominant
+        if (moveDirection.dy > 0) dirs.push([0, 1], [moveDirection.dx > 0 ? 1 : -1, 0], [0, -1]);
+        else dirs.push([0, -1], [moveDirection.dx > 0 ? 1 : -1, 0], [0, 1]);
+      }
+      
+      for (const [dx, dy] of dirs) {
+        const nx = player.x + dx;
+        const ny = player.y + dy;
+        
+        if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && maze[ny]?.[nx] === 0) {
+          player.x = nx;
+          player.y = ny;
+          
+          // Update thread
+          const lastThread = thread[thread.length - 1];
+          if (thread.length >= 2) {
+            const prevThread = thread[thread.length - 2];
+            if (prevThread.x === player.x && prevThread.y === player.y) {
+              thread.pop(); // Backtracking
+            } else {
+              thread.push({ x: player.x, y: player.y });
+            }
+          } else {
+            thread.push({ x: player.x, y: player.y });
+          }
+          
+          revealAround(player.x, player.y);
+          playFootstep();
+          
+          // Check phase transitions
+          if (phase === 'entering' && player.x === center.x && player.y === center.y) {
+            phase = 'returning';
+            phaseStartTime = Date.now();
+            playArrival(false);
+            updateHint();
+          } else if (phase === 'returning' && player.x === entrance.x && player.y === entrance.y) {
+            phase = 'complete';
+            phaseStartTime = Date.now();
+            playArrival(true);
+            updateHint();
+          }
+          
+          break;
+        }
+      }
+    }
+    
+    function startJoystick(x, y) {
       initAudio();
       hint.style.opacity = '0.3';
       
@@ -662,64 +726,95 @@
         return;
       }
       
-      targetPos = { x, y };
-      moveToward(x, y);
+      joystick = { originX: x, originY: y, currentX: x, currentY: y };
       
-      // Continuous movement while holding
       if (moveInterval) clearInterval(moveInterval);
-      moveInterval = setInterval(() => {
-        if (targetPos && phase !== 'complete') {
-          moveToward(targetPos.x, targetPos.y);
-        }
-      }, 100);
+      moveInterval = setInterval(moveInDirection, 120);
     }
     
-    function updateTarget(x, y) {
-      targetPos = { x, y };
-      if (phase !== 'complete') {
-        moveToward(x, y);
+    function updateJoystick(x, y) {
+      if (!joystick) return;
+      
+      joystick.currentX = x;
+      joystick.currentY = y;
+      
+      const dx = joystick.currentX - joystick.originX;
+      const dy = joystick.currentY - joystick.originY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist > 10) {
+        moveDirection = { dx: dx / dist, dy: dy / dist };
+      } else {
+        moveDirection = { dx: 0, dy: 0 };
       }
     }
     
-    function stopMoving() {
-      targetPos = null;
+    function stopJoystick() {
+      joystick = null;
+      moveDirection = { dx: 0, dy: 0 };
       if (moveInterval) {
         clearInterval(moveInterval);
         moveInterval = null;
       }
     }
     
+    // Draw joystick overlay
+    function drawJoystick() {
+      if (!joystick) return;
+      
+      // Outer ring
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(joystick.originX, joystick.originY, 50, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // Inner thumb
+      const dx = joystick.currentX - joystick.originX;
+      const dy = joystick.currentY - joystick.originY;
+      const dist = Math.min(40, Math.sqrt(dx * dx + dy * dy));
+      const angle = Math.atan2(dy, dx);
+      
+      const thumbX = joystick.originX + Math.cos(angle) * dist;
+      const thumbY = joystick.originY + Math.sin(angle) * dist;
+      
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.beginPath();
+      ctx.arc(thumbX, thumbY, 20, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
     // Mouse events
     canvas.addEventListener('mousedown', (e) => {
-      startMoving(e.clientX, e.clientY);
+      startJoystick(e.clientX, e.clientY);
     });
     
     canvas.addEventListener('mousemove', (e) => {
-      if (targetPos) {
-        updateTarget(e.clientX, e.clientY);
-      }
+      updateJoystick(e.clientX, e.clientY);
     });
     
-    canvas.addEventListener('mouseup', stopMoving);
-    canvas.addEventListener('mouseleave', stopMoving);
+    canvas.addEventListener('mouseup', stopJoystick);
+    canvas.addEventListener('mouseleave', stopJoystick);
     
     // Touch events
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
       const touch = e.touches[0];
-      startMoving(touch.clientX, touch.clientY);
+      startJoystick(touch.clientX, touch.clientY);
     });
     
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
       const touch = e.touches[0];
-      updateTarget(touch.clientX, touch.clientY);
+      updateJoystick(touch.clientX, touch.clientY);
     });
     
     canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
-      stopMoving();
+      stopJoystick();
     });
+    
+    canvas.addEventListener('touchcancel', stopJoystick);
     
     // Info panel
     const infoBtn = document.getElementById('info-btn');
