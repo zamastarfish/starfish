@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === April 9, 2026 ===
+    {
+      name: "Snow",
+      description: "Each flake falls alone, but together they transform the world. Move to create wind. Watch it accumulate. Everything softens under enough snow",
+      date: "Apr 9",
+      href: "/projects/snow/"
+    },
     // === April 8, 2026 ===
     {
       name: "Coin",

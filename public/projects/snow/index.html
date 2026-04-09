@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>snow — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0f14;
+      overflow: hidden; 
+      touch-action: none;
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; }
+    
+    .info-btn, .nav-btn {
+      position: fixed;
+      top: 16px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    .info-btn { right: 16px; }
+    .nav-btn { right: 60px; font-size: 14px; }
+    .info-btn:hover, .nav-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.6);
+    }
+    
+    .info-panel {
+      position: fixed;
+      top: 0;
+      right: -340px;
+      width: 320px;
+      height: 100%;
+      background: rgba(8, 12, 18, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 60px 24px 24px;
+      transition: right 0.3s ease;
+      z-index: 99;
+      overflow-y: auto;
+      border-left: 1px solid rgba(255,255,255,0.05);
+    }
+    .info-panel.open { right: 0; }
+    .info-panel h2 {
+      color: rgba(255,255,255,0.8);
+      font-size: 24px;
+      margin-bottom: 16px;
+      font-weight: normal;
+    }
+    .info-panel p {
+      color: rgba(255,255,255,0.5);
+      font-size: 14px;
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+    
+    .start-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(8, 12, 18, 0.95);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      cursor: pointer;
+    }
+    .start-overlay span {
+      color: rgba(255,255,255,0.5);
+      font-size: 18px;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="start-overlay" id="startOverlay">
+    <span>click to enter</span>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <button class="nav-btn" onclick="window.location.href='/'">←</button>
+  <button class="info-btn" id="infoBtn">?</button>
+  
+  <div class="info-panel" id="infoPanel">
+    <h2>snow</h2>
+    <p>Each flake falls alone, but together they transform the world.</p>
+    <p>Snow muffles sound, softens edges, slows time. Under enough snow, everything looks the same — the familiar made strange.</p>
+    <p>Move to create wind. Or don't. Just watch it fall.</p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startOverlay = document.getElementById('startOverlay');
+    const infoBtn = document.getElementById('infoBtn');
+    const infoPanel = document.getElementById('infoPanel');
+    
+    let width, height;
+    let audioCtx, masterGain;
+    let windNoise, windGain;
+    let started = false;
+    
+    // Snow state
+    const flakes = [];
+    const MAX_FLAKES = 400;
+    const accumulation = [];
+    let accumulationHeight = 0;
+    
+    // Wind
+    let windX = 0;
+    let windTargetX = 0;
+    let mouseX = 0;
+    let lastMouseX = 0;
+    
+    // Stars
+    const stars = [];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      
+      // Reset accumulation
+      accumulation.length = 0;
+      for (let i = 0; i < width; i++) {
+        accumulation[i] = 0;
+      }
+      accumulationHeight = 0;
+      
+      // Create stars
+      stars.length = 0;
+      for (let i = 0; i < 100; i++) {
+        stars.push({
+          x: Math.random() * width,
+          y: Math.random() * height * 0.7,
+          size: Math.random() * 1.5 + 0.5,
+          twinkle: Math.random() * Math.PI * 2
+        });
+      }
+    }
+    
+    function createFlake() {
+      return {
+        x: Math.random() * (width + 100) - 50,
+        y: -10,
+        size: Math.random() * 4 + 1,
+        speed: Math.random() * 1 + 0.5,
+        wobbleAmp: Math.random() * 0.5 + 0.2,
+        wobbleSpeed: Math.random() * 0.02 + 0.01,
+        wobblePhase: Math.random() * Math.PI * 2,
+        opacity: Math.random() * 0.5 + 0.5
+      };
+    }
+    
+    function initAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.15;
+      masterGain.connect(audioCtx.destination);
+      
+      // Wind noise
+      const bufferSize = audioCtx.sampleRate * 2;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      // Brown noise (softer than white)
+      let lastOut = 0;
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        data[i] = (lastOut + (0.02 * white)) / 1.02;
+        lastOut = data[i];
+        data[i] *= 3.5;
+      }
+      
+      windNoise = audioCtx.createBufferSource();
+      windNoise.buffer = buffer;
+      windNoise.loop = true;
+      
+      windGain = audioCtx.createGain();
+      windGain.gain.value = 0;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 400;
+      
+      windNoise.connect(filter);
+      filter.connect(windGain);
+      windGain.connect(masterGain);
+      
+      windNoise.start();
+      
+      // Fade in ambient
+      windGain.gain.setTargetAtTime(0.3, audioCtx.currentTime, 2);
+    }
+    
+    function updateAudio() {
+      if (!audioCtx) return;
+      
+      // Wind intensity based on wind speed
+      const windIntensity = Math.abs(windX) * 2;
+      const targetGain = 0.2 + windIntensity * 0.5;
+      windGain.gain.setTargetAtTime(Math.min(targetGain, 0.8), audioCtx.currentTime, 0.1);
+    }
+    
+    function update(time) {
+      // Calculate wind from mouse movement
+      const mouseDelta = mouseX - lastMouseX;
+      windTargetX = mouseDelta * 0.1;
+      lastMouseX = mouseX;
+      
+      // Smooth wind
+      windX += (windTargetX - windX) * 0.05;
+      windX *= 0.98; // Decay
+      
+      // Spawn new flakes
+      while (flakes.length < MAX_FLAKES) {
+        flakes.push(createFlake());
+      }
+      
+      // Update flakes
+      for (let i = flakes.length - 1; i >= 0; i--) {
+        const flake = flakes[i];
+        
+        // Fall and wobble
+        flake.y += flake.speed;
+        flake.wobblePhase += flake.wobbleSpeed;
+        flake.x += Math.sin(flake.wobblePhase) * flake.wobbleAmp + windX;
+        
+        // Check accumulation collision
+        const ix = Math.floor(flake.x);
+        if (ix >= 0 && ix < width) {
+          const groundLevel = height - accumulation[ix];
+          
+          if (flake.y >= groundLevel - flake.size) {
+            // Accumulate
+            const accAmount = flake.size * 0.3;
+            for (let dx = -2; dx <= 2; dx++) {
+              const ax = ix + dx;
+              if (ax >= 0 && ax < width) {
+                accumulation[ax] += accAmount * (1 - Math.abs(dx) * 0.2);
+              }
+            }
+            
+            // Remove flake
+            flakes.splice(i, 1);
+            continue;
+          }
+        }
+        
+        // Remove if off screen
+        if (flake.y > height + 10 || flake.x < -50 || flake.x > width + 50) {
+          flakes.splice(i, 1);
+        }
+      }
+      
+      // Smooth accumulation
+      for (let i = 1; i < width - 1; i++) {
+        const avg = (accumulation[i-1] + accumulation[i] + accumulation[i+1]) / 3;
+        accumulation[i] = accumulation[i] * 0.9 + avg * 0.1;
+      }
+      
+      // Track max accumulation
+      accumulationHeight = Math.max(...accumulation);
+      
+      updateAudio();
+    }
+    
+    function draw(time) {
+      if (started) update(time);
+      
+      // Night sky gradient
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
+      skyGrad.addColorStop(0, '#0a0f14');
+      skyGrad.addColorStop(0.5, '#0d1520');
+      skyGrad.addColorStop(1, '#111a24');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Stars
+      stars.forEach(star => {
+        star.twinkle += 0.02;
+        const twinkleAlpha = 0.3 + Math.sin(star.twinkle) * 0.2;
+        ctx.fillStyle = `rgba(255, 255, 255, ${twinkleAlpha})`;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      // Distant trees silhouette
+      ctx.fillStyle = '#050a0f';
+      for (let x = 0; x < width; x += 30) {
+        const treeHeight = 50 + Math.sin(x * 0.05) * 30 + Math.sin(x * 0.02) * 20;
+        const treeWidth = 15 + Math.random() * 10;
+        
+        ctx.beginPath();
+        ctx.moveTo(x, height - 40);
+        ctx.lineTo(x + treeWidth/2, height - 40 - treeHeight);
+        ctx.lineTo(x + treeWidth, height - 40);
+        ctx.fill();
+      }
+      
+      // Snow accumulation
+      ctx.fillStyle = '#e8eef4';
+      ctx.beginPath();
+      ctx.moveTo(0, height);
+      for (let x = 0; x < width; x++) {
+        ctx.lineTo(x, height - accumulation[x]);
+      }
+      ctx.lineTo(width, height);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Snow surface highlight
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 0; x < width; x++) {
+        if (x === 0) {
+          ctx.moveTo(x, height - accumulation[x]);
+        } else {
+          ctx.lineTo(x, height - accumulation[x]);
+        }
+      }
+      ctx.stroke();
+      
+      // Snowflakes
+      flakes.forEach(flake => {
+        const gradient = ctx.createRadialGradient(
+          flake.x, flake.y, 0,
+          flake.x, flake.y, flake.size
+        );
+        gradient.addColorStop(0, `rgba(255, 255, 255, ${flake.opacity})`);
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      // Subtle vignette
+      const vignette = ctx.createRadialGradient(
+        width/2, height/2, height * 0.3,
+        width/2, height/2, height
+      );
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.4)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, width, height);
+      
+      requestAnimationFrame(draw);
+    }
+    
+    function start() {
+      startOverlay.style.display = 'none';
+      started = true;
+      initAudio();
+    }
+    
+    // Event listeners
+    startOverlay.addEventListener('click', start);
+    
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      mouseX = e.touches[0].clientX;
+    });
+    
+    infoBtn.addEventListener('click', () => {
+      infoPanel.classList.toggle('open');
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(draw);
+  </script>
+</body>
+</html>
