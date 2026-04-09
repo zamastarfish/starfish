@@ -148,10 +148,10 @@
       W = canvas.width = window.innerWidth;
       H = canvas.height = window.innerHeight;
       
-      // Calculate maze size — smaller cells on mobile for more maze
+      // Calculate maze size — BIGGER cells on mobile for easier tapping
       const minDim = Math.min(W, H);
       const isMobile = minDim < 600;
-      cellSize = isMobile ? Math.floor(minDim / 20) : Math.floor(minDim / 25);
+      cellSize = isMobile ? Math.floor(minDim / 15) : Math.floor(minDim / 25);
       cols = Math.floor(W / cellSize);
       rows = Math.floor(H / cellSize);
       
@@ -159,9 +159,9 @@
       if (cols % 2 === 0) cols--;
       if (rows % 2 === 0) rows--;
       
-      // Smaller maze = more cells visible = easier navigation
-      cols = Math.min(cols, 31);
-      rows = Math.min(rows, 31);
+      // Limit maze size for manageability
+      cols = Math.min(cols, isMobile ? 21 : 31);
+      rows = Math.min(rows, isMobile ? 21 : 31);
       
       offsetX = (W - cols * cellSize) / 2;
       offsetY = (H - rows * cellSize) / 2;
@@ -414,15 +414,41 @@
       return [];
     }
     
+    function findNearestPassage(gx, gy) {
+      // If already on a passage, return it
+      if (gx >= 0 && gx < cols && gy >= 0 && gy < rows && maze[gy]?.[gx] === 0) {
+        return { x: gx, y: gy };
+      }
+      
+      // Search in expanding radius for nearest passage
+      for (let radius = 1; radius < Math.max(cols, rows); radius++) {
+        for (let dy = -radius; dy <= radius; dy++) {
+          for (let dx = -radius; dx <= radius; dx++) {
+            if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+            const nx = gx + dx;
+            const ny = gy + dy;
+            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && maze[ny]?.[nx] === 0) {
+              return { x: nx, y: ny };
+            }
+          }
+        }
+      }
+      return null;
+    }
+    
     function moveToward(targetX, targetY) {
       if (phase === 'complete') return;
       
       // Convert screen position to grid
-      const gx = Math.floor((targetX - offsetX) / cellSize);
-      const gy = Math.floor((targetY - offsetY) / cellSize);
+      let gx = Math.floor((targetX - offsetX) / cellSize);
+      let gy = Math.floor((targetY - offsetY) / cellSize);
       
-      if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) return;
-      if (maze[gy]?.[gx] !== 0) return; // Can only target passages
+      // Find nearest passage if tapped on wall
+      const target = findNearestPassage(gx, gy);
+      if (!target) return;
+      
+      gx = target.x;
+      gy = target.y;
       
       const path = findPath(player, { x: gx, y: gy });
       
@@ -615,8 +641,11 @@
       requestAnimationFrame(draw);
     }
     
-    // Input handling — tap-based for mobile friendliness
-    canvas.addEventListener('click', (e) => {
+    // Input handling with continuous movement
+    let targetPos = null;
+    let moveInterval = null;
+    
+    function startMoving(x, y) {
       initAudio();
       hint.style.opacity = '0.3';
       
@@ -625,53 +654,63 @@
         return;
       }
       
-      moveToward(e.clientX, e.clientY);
-    });
+      targetPos = { x, y };
+      moveToward(x, y);
+      
+      // Continuous movement while holding
+      if (moveInterval) clearInterval(moveInterval);
+      moveInterval = setInterval(() => {
+        if (targetPos && phase !== 'complete') {
+          moveToward(targetPos.x, targetPos.y);
+        }
+      }, 100);
+    }
     
-    // Also support drag for desktop
-    let isDragging = false;
+    function updateTarget(x, y) {
+      targetPos = { x, y };
+      if (phase !== 'complete') {
+        moveToward(x, y);
+      }
+    }
     
+    function stopMoving() {
+      targetPos = null;
+      if (moveInterval) {
+        clearInterval(moveInterval);
+        moveInterval = null;
+      }
+    }
+    
+    // Mouse events
     canvas.addEventListener('mousedown', (e) => {
-      initAudio();
-      isDragging = true;
-      hint.style.opacity = '0.3';
+      startMoving(e.clientX, e.clientY);
     });
     
     canvas.addEventListener('mousemove', (e) => {
-      if (isDragging && phase !== 'complete') {
-        moveToward(e.clientX, e.clientY);
+      if (targetPos) {
+        updateTarget(e.clientX, e.clientY);
       }
     });
     
-    canvas.addEventListener('mouseup', () => {
-      isDragging = false;
-    });
+    canvas.addEventListener('mouseup', stopMoving);
+    canvas.addEventListener('mouseleave', stopMoving);
     
-    canvas.addEventListener('mouseleave', () => {
-      isDragging = false;
-    });
-    
-    // Touch support
+    // Touch events
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      initAudio();
-      hint.style.opacity = '0.3';
-      
-      if (phase === 'complete') {
-        generateMaze();
-        return;
-      }
-      
       const touch = e.touches[0];
-      moveToward(touch.clientX, touch.clientY);
+      startMoving(touch.clientX, touch.clientY);
     });
     
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      if (phase !== 'complete') {
-        const touch = e.touches[0];
-        moveToward(touch.clientX, touch.clientY);
-      }
+      const touch = e.touches[0];
+      updateTarget(touch.clientX, touch.clientY);
+    });
+    
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      stopMoving();
     });
     
     // Info panel
