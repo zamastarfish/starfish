@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>tree — starfish</title>
     <style>
         * {
@@ -13,11 +13,12 @@
         body {
             background: linear-gradient(to bottom, #1a1a2e 0%, #16213e 50%, #0f0f1a 100%);
             overflow: hidden;
+            touch-action: none;
             font-family: system-ui, -apple-system, sans-serif;
         }
         canvas {
             display: block;
-            cursor: pointer;
+            cursor: crosshair;
         }
         #info {
             position: fixed;
@@ -78,6 +79,17 @@
             font-size: 16px;
             pointer-events: none;
             transition: opacity 0.5s;
+            text-align: center;
+            line-height: 1.6;
+        }
+        #params {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(255,255,255,0.4);
+            font-size: 11px;
+            text-align: right;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -88,31 +100,92 @@
         <strong>Tree</strong><br><br>
         L-systems: a formal grammar for modeling plant growth, 
         invented by biologist Aristid Lindenmayer in 1968.<br><br>
+        <strong>Tap high</strong> for tall trees, <strong>tap low</strong> for shrubs.<br>
+        <strong>Hold longer</strong> for bushier growth, <strong>quick tap</strong> for sparse.<br>
+        <strong>Drag down</strong> to throw a seed.<br><br>
         Simple rules applied recursively produce organic complexity.
-        Each tree grows differently — same rules, different seeds.<br><br>
-        <em>Click anywhere to plant a new tree.</em>
+        Each tree grows differently — same grammar, different seeds.
     </div>
-    <div id="start-prompt">click to plant</div>
+    <div id="start-prompt">tap to plant a seed<br><span style="font-size: 12px; opacity: 0.6">tap high for tall · hold for bushy</span></div>
     <canvas id="canvas"></canvas>
     <div id="info">tree — L-system growth</div>
+    <div id="params"></div>
     
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const startPrompt = document.getElementById('start-prompt');
+        const paramsDiv = document.getElementById('params');
         
-        let width, height;
+        let width, height, groundY;
         let audioStarted = false;
         let audioCtx, masterGain;
         let trees = [];
+        let seeds = [];
+        
+        // Interaction state
+        let pressStart = null;
+        let pressPos = null;
         
         function resize() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
+            groundY = height - 40;
         }
         
         window.addEventListener('resize', resize);
         resize();
+        
+        class Seed {
+            constructor(x, y, treeHeight, bushiness) {
+                this.x = x;
+                this.y = y;
+                this.vy = 0;
+                this.landed = false;
+                this.treeHeight = treeHeight;
+                this.bushiness = bushiness;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.2;
+            }
+            
+            update() {
+                if (this.landed) return true;
+                
+                this.vy += 0.3; // gravity
+                this.y += this.vy;
+                this.rotation += this.rotationSpeed;
+                
+                if (this.y >= groundY) {
+                    this.y = groundY;
+                    this.landed = true;
+                    plantTree(this.x, this.treeHeight, this.bushiness);
+                    return true;
+                }
+                return false;
+            }
+            
+            draw() {
+                if (this.landed) return;
+                
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                // Simple seed shape
+                ctx.fillStyle = '#8B4513';
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 4, 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Little wing
+                ctx.fillStyle = 'rgba(200, 180, 150, 0.6)';
+                ctx.beginPath();
+                ctx.ellipse(2, -4, 2, 8, 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
         
         class Branch {
             constructor(x, y, angle, length, depth, maxDepth, tree) {
@@ -132,14 +205,12 @@
                 this.children = [];
                 this.hasLeaves = depth >= maxDepth - 2;
                 
-                // Growth timing
-                this.growthSpeed = 0.02 + Math.random() * 0.02;
-                this.startDelay = depth * 15 + Math.random() * 10;
+                this.growthSpeed = 0.03 + Math.random() * 0.02;
+                this.startDelay = depth * 12 + Math.random() * 8;
                 this.timer = 0;
                 
-                // Wind sway
                 this.swayOffset = Math.random() * Math.PI * 2;
-                this.swayAmount = (depth / maxDepth) * 0.05;
+                this.swayAmount = (depth / maxDepth) * 0.04;
             }
             
             update(time) {
@@ -156,7 +227,6 @@
                     }
                 }
                 
-                // Update children
                 for (const child of this.children) {
                     child.update(time);
                 }
@@ -165,9 +235,19 @@
             branch() {
                 if (this.depth >= this.maxDepth) return;
                 
-                const numBranches = this.depth < 2 ? 2 : (Math.random() < 0.7 ? 2 : 3);
-                const spreadAngle = 0.4 + Math.random() * 0.3;
-                const lengthFactor = 0.65 + Math.random() * 0.15;
+                // Bushiness affects number of branches
+                const bushiness = this.tree.bushiness;
+                let numBranches;
+                if (this.depth < 2) {
+                    numBranches = bushiness > 0.6 ? 3 : 2;
+                } else {
+                    const branchChance = 0.5 + bushiness * 0.4;
+                    numBranches = Math.random() < branchChance ? (bushiness > 0.7 ? 3 : 2) : 2;
+                }
+                
+                // Spread angle affected by bushiness
+                const spreadAngle = 0.3 + bushiness * 0.4 + Math.random() * 0.2;
+                const lengthFactor = 0.6 + (1 - bushiness) * 0.15 + Math.random() * 0.1;
                 
                 for (let i = 0; i < numBranches; i++) {
                     let angle;
@@ -177,12 +257,11 @@
                         angle = this.angle + (i - 1) * spreadAngle;
                     }
                     
-                    // Add some randomness
-                    angle += (Math.random() - 0.5) * 0.3;
+                    angle += (Math.random() - 0.5) * 0.25;
                     
                     const newLength = this.length * lengthFactor;
                     
-                    if (newLength > 3) {
+                    if (newLength > 2) {
                         const branch = new Branch(
                             this.targetX, this.targetY,
                             angle, newLength,
@@ -193,7 +272,6 @@
                     }
                 }
                 
-                // Play growth sound
                 if (audioStarted && this.tree.playSound) {
                     playGrowth(this.depth, this.maxDepth);
                 }
@@ -202,20 +280,17 @@
             draw(time) {
                 if (this.timer < this.startDelay) return;
                 
-                // Wind sway
                 const sway = Math.sin(time * 0.001 + this.swayOffset) * this.swayAmount;
                 
                 const endX = this.x + Math.cos(this.angle + sway) * this.currentLength;
                 const endY = this.y + Math.sin(this.angle + sway) * this.currentLength;
                 
-                // Branch thickness based on depth
-                const thickness = Math.max(1, (this.maxDepth - this.depth) * 1.5);
+                const thickness = Math.max(1, (this.maxDepth - this.depth) * 1.2);
                 
-                // Color: darker trunk, lighter branches
                 const depthRatio = this.depth / this.maxDepth;
-                const hue = 25 + depthRatio * 10;
-                const sat = 30 + depthRatio * 20;
-                const light = 15 + depthRatio * 20;
+                const hue = 25 + depthRatio * 15;
+                const sat = 25 + depthRatio * 25;
+                const light = 12 + depthRatio * 25;
                 
                 ctx.beginPath();
                 ctx.moveTo(this.x, this.y);
@@ -225,17 +300,16 @@
                 ctx.lineCap = 'round';
                 ctx.stroke();
                 
-                // Draw leaves at the tips
+                // Leaves
                 if (this.hasLeaves && this.grown) {
-                    const leafSize = 3 + Math.random() * 4;
-                    const leafHue = 90 + Math.random() * 40;
+                    const leafSize = 2 + Math.random() * 4 + this.tree.bushiness * 3;
+                    const leafHue = 85 + Math.random() * 45;
                     ctx.beginPath();
                     ctx.arc(endX, endY, leafSize, 0, Math.PI * 2);
-                    ctx.fillStyle = `hsla(${leafHue}, 50%, 35%, 0.8)`;
+                    ctx.fillStyle = `hsla(${leafHue}, 45%, 30%, 0.85)`;
                     ctx.fill();
                 }
                 
-                // Draw children
                 for (const child of this.children) {
                     child.draw(time);
                 }
@@ -243,17 +317,20 @@
         }
         
         class Tree {
-            constructor(x, y) {
+            constructor(x, heightFactor, bushiness) {
                 this.x = x;
-                this.y = y;
-                this.maxDepth = 8 + Math.floor(Math.random() * 4);
-                this.trunkLength = 60 + Math.random() * 40;
+                this.y = groundY;
+                this.heightFactor = heightFactor; // 0.3 to 1.5
+                this.bushiness = bushiness; // 0 to 1
+                
+                // More depth for taller trees
+                this.maxDepth = Math.floor(6 + heightFactor * 5);
+                this.trunkLength = 30 + heightFactor * 80;
                 this.playSound = true;
                 
-                // Root branch (trunk)
                 this.trunk = new Branch(
-                    x, y,
-                    -Math.PI / 2 + (Math.random() - 0.5) * 0.2,
+                    x, this.y,
+                    -Math.PI / 2 + (Math.random() - 0.5) * 0.15,
                     this.trunkLength,
                     0, this.maxDepth,
                     this
@@ -269,7 +346,6 @@
             }
         }
         
-        // Audio
         function initAudio() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             masterGain = audioCtx.createGain();
@@ -288,10 +364,10 @@
             
             const filter = audioCtx.createBiquadFilter();
             filter.type = 'lowpass';
-            filter.frequency.value = 200;
+            filter.frequency.value = 180;
             
             const windGain = audioCtx.createGain();
-            windGain.gain.value = 0.05;
+            windGain.gain.value = 0.04;
             
             noise.connect(filter);
             filter.connect(windGain);
@@ -301,9 +377,7 @@
         
         function playGrowth(depth, maxDepth) {
             const depthRatio = depth / maxDepth;
-            
-            // Higher pitch for smaller branches
-            const freq = 100 + depthRatio * 300;
+            const freq = 80 + depthRatio * 400;
             
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
@@ -311,7 +385,26 @@
             osc.type = 'sine';
             osc.frequency.value = freq;
             
-            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+            
+            osc.connect(gain);
+            gain.connect(masterGain);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.25);
+        }
+        
+        function playSeedDrop() {
+            if (!audioStarted) return;
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.3);
+            
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
             
             osc.connect(gain);
@@ -320,29 +413,65 @@
             osc.stop(audioCtx.currentTime + 0.3);
         }
         
-        function plantTree(x, y) {
-            const tree = new Tree(x, y);
+        function dropSeed(x, y, holdDuration) {
+            // Height factor based on tap position (higher tap = taller tree)
+            const heightFactor = 0.3 + (1 - y / height) * 1.2;
+            
+            // Bushiness based on hold duration (longer hold = bushier)
+            const bushiness = Math.min(1, holdDuration / 1000);
+            
+            seeds.push(new Seed(x, y, heightFactor, bushiness));
+            playSeedDrop();
+            
+            // Show params briefly
+            const heightLabel = heightFactor > 1 ? 'tall' : heightFactor > 0.6 ? 'medium' : 'shrub';
+            const bushLabel = bushiness > 0.6 ? 'bushy' : bushiness > 0.3 ? 'balanced' : 'sparse';
+            paramsDiv.textContent = `${heightLabel} · ${bushLabel}`;
+            paramsDiv.style.opacity = '1';
+            setTimeout(() => paramsDiv.style.opacity = '0.4', 1500);
+        }
+        
+        function plantTree(x, heightFactor, bushiness) {
+            const tree = new Tree(x, heightFactor, bushiness);
             trees.push(tree);
             
-            // Limit number of trees
-            if (trees.length > 5) {
+            if (trees.length > 6) {
                 trees.shift();
             }
         }
         
         function drawGround() {
-            // Simple ground
-            const gradient = ctx.createLinearGradient(0, height - 100, 0, height);
+            const gradient = ctx.createLinearGradient(0, groundY - 30, 0, height);
             gradient.addColorStop(0, 'transparent');
-            gradient.addColorStop(0.3, '#1a1510');
+            gradient.addColorStop(0.2, '#1a1510');
             gradient.addColorStop(1, '#0f0a08');
             
             ctx.fillStyle = gradient;
-            ctx.fillRect(0, height - 100, width, 100);
+            ctx.fillRect(0, groundY - 30, width, height - groundY + 30);
+            
+            // Ground line hint
+            ctx.strokeStyle = 'rgba(100, 80, 60, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(width, groundY);
+            ctx.stroke();
+        }
+        
+        function drawStars(time) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            for (let i = 0; i < 60; i++) {
+                const x = (i * 137.5) % width;
+                const y = (i * 73.3) % (height * 0.5);
+                const size = 0.5 + Math.sin(time * 0.001 + i) * 0.5;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
         
         function animate(time) {
-            // Clear with gradient sky
+            // Sky gradient
             const gradient = ctx.createLinearGradient(0, 0, 0, height);
             gradient.addColorStop(0, '#1a1a2e');
             gradient.addColorStop(0.5, '#16213e');
@@ -350,19 +479,15 @@
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, width, height);
             
-            // Stars
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-            for (let i = 0; i < 50; i++) {
-                const x = (i * 137.5) % width;
-                const y = (i * 73.3) % (height * 0.6);
-                const size = 0.5 + Math.sin(time * 0.001 + i) * 0.5;
-                ctx.beginPath();
-                ctx.arc(x, y, size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            
-            // Ground
+            drawStars(time);
             drawGround();
+            
+            // Update and draw seeds
+            seeds = seeds.filter(seed => {
+                const landed = seed.update();
+                seed.draw();
+                return !landed;
+            });
             
             // Update and draw trees
             for (const tree of trees) {
@@ -374,29 +499,44 @@
         }
         
         // Interaction
-        canvas.addEventListener('click', (e) => {
+        function handlePressStart(x, y) {
             if (!audioStarted) {
                 initAudio();
                 audioStarted = true;
             }
             startPrompt.style.opacity = '0';
             
-            // Plant at click position, but on the ground
-            const groundY = height - 20;
-            plantTree(e.clientX, groundY);
+            pressStart = Date.now();
+            pressPos = { x, y };
+        }
+        
+        function handlePressEnd(x, y) {
+            if (!pressStart) return;
+            
+            const holdDuration = Date.now() - pressStart;
+            dropSeed(pressPos.x, pressPos.y, holdDuration);
+            
+            pressStart = null;
+            pressPos = null;
+        }
+        
+        canvas.addEventListener('mousedown', (e) => {
+            handlePressStart(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('mouseup', (e) => {
+            handlePressEnd(e.clientX, e.clientY);
         });
         
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            if (!audioStarted) {
-                initAudio();
-                audioStarted = true;
-            }
-            startPrompt.style.opacity = '0';
-            
             const touch = e.touches[0];
-            const groundY = height - 20;
-            plantTree(touch.clientX, groundY);
+            handlePressStart(touch.clientX, touch.clientY);
+        });
+        
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            handlePressEnd(0, 0);
         });
         
         // Navigation
@@ -411,7 +551,6 @@
             tooltip.classList.toggle('show');
         };
         
-        // Start
         requestAnimationFrame(animate);
     </script>
 </body>

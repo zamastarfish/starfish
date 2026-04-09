@@ -12,7 +12,7 @@
       touch-action: none;
       font-family: Georgia, serif;
     }
-    canvas { display: block; }
+    canvas { display: block; cursor: crosshair; }
     
     .info-btn, .nav-btn {
       position: fixed;
@@ -84,6 +84,7 @@
       height: 100%;
       background: rgba(30, 24, 18, 0.9);
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       z-index: 200;
@@ -94,11 +95,43 @@
       font-size: 18px;
       letter-spacing: 2px;
     }
+    .start-overlay .sub {
+      color: rgba(212, 165, 116, 0.5);
+      font-size: 13px;
+      margin-top: 12px;
+      letter-spacing: 1px;
+    }
+    
+    #color-indicator {
+      position: fixed;
+      left: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    #color-indicator.visible { opacity: 1; }
+    .color-swatch {
+      width: 20px;
+      height: 20px;
+      border-radius: 3px;
+      border: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .color-swatch.active {
+      border-color: white;
+      transform: scale(1.2);
+    }
   </style>
 </head>
 <body>
   <div class="start-overlay" id="startOverlay">
-    <span>click to begin weaving</span>
+    <span>touch to begin weaving</span>
+    <span class="sub">drag up/down to change thread color</span>
   </div>
   
   <canvas id="canvas"></canvas>
@@ -106,14 +139,16 @@
   <button class="nav-btn" onclick="window.location.href='/'">←</button>
   <button class="info-btn" id="infoBtn">?</button>
   
+  <div id="color-indicator"></div>
+  
   <div class="info-panel" id="infoPanel">
     <h2>loom</h2>
     <p>The loom: where thread becomes textile, where pattern emerges from the simple dance of over and under.</p>
     <p>Before punch cards, before computers, the Jacquard loom used holes in paper to encode complex patterns. The digital was born in thread.</p>
-    <p>Watch the shuttle pass. Each row builds on the last. Simple rules, complex cloth.</p>
+    <p><strong>Drag your finger</strong> up and down to select your weft color. The vertical position of your touch chooses which thread to weave.</p>
     <div class="controls">
-      <p><strong>Click:</strong> Change weft color</p>
-      <p><strong>Space:</strong> Pause/resume weaving</p>
+      <p><strong>Drag up/down:</strong> Change weft color</p>
+      <p><strong>Space:</strong> Pause/resume</p>
       <p><strong>R:</strong> Reset with new warp</p>
     </div>
   </div>
@@ -124,12 +159,14 @@
     const startOverlay = document.getElementById('startOverlay');
     const infoBtn = document.getElementById('infoBtn');
     const infoPanel = document.getElementById('infoPanel');
+    const colorIndicator = document.getElementById('color-indicator');
     
     let width, height;
     let audioCtx, masterGain;
     let droneOsc, droneGain;
     let started = false;
     let paused = false;
+    let touching = false;
     
     // Loom parameters
     const THREAD_WIDTH = 8;
@@ -143,13 +180,13 @@
     let shuttleDir = 1;
     let weaving = [];
     let lastWeftTime = 0;
-    const WEFT_INTERVAL = 180; // ms between rows
+    const WEFT_INTERVAL = 150;
     
-    // Color palettes - natural dyes
+    // Color palettes
     const WARP_PALETTES = [
-      ['#e8dcc4', '#d4c4a8', '#c9b896', '#f0e6d3'], // Natural linen
-      ['#4a5568', '#2d3748', '#1a202c', '#718096'], // Indigo
-      ['#8b4513', '#a0522d', '#cd853f', '#deb887'], // Madder/ochre
+      ['#e8dcc4', '#d4c4a8', '#c9b896', '#f0e6d3'],
+      ['#4a5568', '#2d3748', '#1a202c', '#718096'],
+      ['#8b4513', '#a0522d', '#cd853f', '#deb887'],
     ];
     
     const WEFT_COLORS = [
@@ -163,12 +200,12 @@
     ];
     
     let currentWeftColor = 0;
+    let targetWeftColor = 0;
     
     function resize() {
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
       
-      // Calculate loom dimensions
       const margin = 80;
       const loomWidth = width - margin * 2;
       const loomHeight = height - margin * 2;
@@ -179,17 +216,35 @@
       if (started) {
         initLoom();
       }
+      
+      buildColorIndicator();
+    }
+    
+    function buildColorIndicator() {
+      colorIndicator.innerHTML = '';
+      WEFT_COLORS.forEach((color, i) => {
+        const swatch = document.createElement('div');
+        swatch.className = 'color-swatch' + (i === currentWeftColor ? ' active' : '');
+        swatch.style.backgroundColor = color;
+        swatch.dataset.index = i;
+        colorIndicator.appendChild(swatch);
+      });
+    }
+    
+    function updateColorIndicator() {
+      const swatches = colorIndicator.querySelectorAll('.color-swatch');
+      swatches.forEach((s, i) => {
+        s.classList.toggle('active', i === currentWeftColor);
+      });
     }
     
     function initLoom() {
-      // Choose random warp palette
       const palette = WARP_PALETTES[Math.floor(Math.random() * WARP_PALETTES.length)];
       warpColors = [];
       for (let i = 0; i < warpCount; i++) {
         warpColors.push(palette[Math.floor(Math.random() * palette.length)]);
       }
       
-      // Reset weaving state
       weaving = [];
       weftColors = [];
       currentRow = 0;
@@ -204,25 +259,22 @@
       masterGain.gain.value = 0.3;
       masterGain.connect(audioCtx.destination);
       
-      // Low drone - the constant tension of the warp
       droneGain = audioCtx.createGain();
       droneGain.gain.value = 0;
       droneGain.connect(masterGain);
       
       droneOsc = audioCtx.createOscillator();
       droneOsc.type = 'sine';
-      droneOsc.frequency.value = 55; // Low A
+      droneOsc.frequency.value = 55;
       droneOsc.connect(droneGain);
       droneOsc.start();
       
-      // Fade in drone
       droneGain.gain.setTargetAtTime(0.15, audioCtx.currentTime, 1);
     }
     
     function playShuttleSound() {
       if (!audioCtx) return;
       
-      // Wooden shuttle clack
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       const filter = audioCtx.createBiquadFilter();
@@ -235,7 +287,6 @@
       osc.frequency.value = 120 + Math.random() * 60;
       
       gain.gain.value = 0.08;
-      gain.gain.exponentialDecayTo = 0.001;
       
       osc.connect(filter);
       filter.connect(gain);
@@ -246,19 +297,37 @@
       osc.stop(audioCtx.currentTime + 0.1);
     }
     
-    function playThreadSound(x) {
+    function playColorChange() {
       if (!audioCtx) return;
       
-      // Soft thread sound
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       
-      // Pitch varies with position across warp
+      const freq = 300 + currentWeftColor * 80;
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      
+      gain.gain.value = 0.06;
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      
+      osc.start();
+      gain.gain.setTargetAtTime(0.001, audioCtx.currentTime, 0.08);
+      osc.stop(audioCtx.currentTime + 0.15);
+    }
+    
+    function playThreadSound(x) {
+      if (!audioCtx) return;
+      
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
       const freq = 200 + (x / warpCount) * 300;
       osc.type = 'sine';
       osc.frequency.value = freq;
       
-      gain.gain.value = 0.02;
+      gain.gain.value = 0.015;
       
       osc.connect(gain);
       gain.connect(masterGain);
@@ -270,7 +339,6 @@
     
     function weaveRow() {
       if (currentRow >= weftCount) {
-        // Loom is full, reset
         initLoom();
         return;
       }
@@ -279,11 +347,9 @@
       const weftColor = WEFT_COLORS[currentWeftColor];
       weftColors.push(weftColor);
       
-      // Determine weave pattern - basic plain weave with variations
       const offset = currentRow % 2;
       
       for (let i = 0; i < warpCount; i++) {
-        // Over/under pattern
         const isOver = (i + offset) % 2 === 0;
         row.push(isOver);
       }
@@ -291,31 +357,41 @@
       weaving.push(row);
       currentRow++;
       
-      // Play shuttle sound at row start
       playShuttleSound();
     }
     
+    function setColorFromY(y) {
+      const normalized = Math.max(0, Math.min(1, y / height));
+      const newColor = Math.floor(normalized * WEFT_COLORS.length);
+      const clampedColor = Math.min(newColor, WEFT_COLORS.length - 1);
+      
+      if (clampedColor !== currentWeftColor) {
+        currentWeftColor = clampedColor;
+        updateColorIndicator();
+        playColorChange();
+      }
+    }
+    
     function draw(time) {
-      // Background - wooden loom frame color
       ctx.fillStyle = '#2a2018';
       ctx.fillRect(0, 0, width, height);
       
       const marginX = (width - warpCount * CELL) / 2;
       const marginY = (height - weftCount * CELL) / 2;
       
-      // Draw loom frame
+      // Loom frame
       ctx.strokeStyle = '#4a3828';
       ctx.lineWidth = 4;
       ctx.strokeRect(marginX - 20, marginY - 20, warpCount * CELL + 40, weftCount * CELL + 40);
       
-      // Draw warp threads (vertical)
+      // Warp threads
       for (let i = 0; i < warpCount; i++) {
         const x = marginX + i * CELL;
         ctx.fillStyle = warpColors[i] || '#e8dcc4';
         ctx.fillRect(x, marginY, THREAD_WIDTH, weftCount * CELL);
       }
       
-      // Draw weft threads (horizontal) - only woven portion
+      // Weft threads
       for (let row = 0; row < weaving.length; row++) {
         const y = marginY + row * CELL;
         const weftColor = weftColors[row];
@@ -325,15 +401,13 @@
           const isOver = weaving[row][col];
           
           if (isOver) {
-            // Weft goes over warp - draw weft on top
             ctx.fillStyle = weftColor;
             ctx.fillRect(x - GAP/2, y, CELL, THREAD_WIDTH);
           }
-          // When weft goes under, warp is already drawn, so do nothing
         }
       }
       
-      // Animate shuttle
+      // Weave animation
       if (!paused && started && weaving.length < weftCount) {
         const elapsed = time - lastWeftTime;
         
@@ -341,7 +415,6 @@
           weaveRow();
           lastWeftTime = time;
           
-          // Play thread sounds across the row
           for (let i = 0; i < 3; i++) {
             setTimeout(() => {
               playThreadSound(Math.floor(Math.random() * warpCount));
@@ -349,32 +422,37 @@
           }
         }
         
-        // Draw animated shuttle
+        // Shuttle
         const progress = elapsed / WEFT_INTERVAL;
         const shuttleY = marginY + currentRow * CELL;
         shuttleX = shuttleDir > 0 
           ? marginX + progress * warpCount * CELL
           : marginX + (1 - progress) * warpCount * CELL;
         
-        // Shuttle shape
         ctx.fillStyle = '#654321';
         ctx.beginPath();
         ctx.ellipse(shuttleX, shuttleY + THREAD_WIDTH/2, 25, 8, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // Shuttle thread hole
         ctx.fillStyle = WEFT_COLORS[currentWeftColor];
         ctx.beginPath();
         ctx.arc(shuttleX, shuttleY + THREAD_WIDTH/2, 3, 0, Math.PI * 2);
         ctx.fill();
         
-        // Alternate direction
         if (elapsed > WEFT_INTERVAL) {
           shuttleDir *= -1;
         }
       }
       
-      // Progress indicator
+      // Current color preview
+      if (touching) {
+        ctx.fillStyle = WEFT_COLORS[currentWeftColor];
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(marginX - 30, marginY + currentRow * CELL, 20, THREAD_WIDTH);
+        ctx.globalAlpha = 1;
+      }
+      
+      // Progress
       if (weaving.length > 0) {
         const progress = weaving.length / weftCount;
         ctx.fillStyle = 'rgba(212, 165, 116, 0.3)';
@@ -391,12 +469,54 @@
       initLoom();
     }
     
-    // Event listeners
+    // Events
     startOverlay.addEventListener('click', start);
+    startOverlay.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      start();
+    });
     
-    canvas.addEventListener('click', () => {
+    function handleMove(y) {
+      setColorFromY(y);
+    }
+    
+    canvas.addEventListener('mousedown', (e) => {
       if (!started) return;
-      currentWeftColor = (currentWeftColor + 1) % WEFT_COLORS.length;
+      touching = true;
+      colorIndicator.classList.add('visible');
+      handleMove(e.clientY);
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (touching) handleMove(e.clientY);
+    });
+    
+    canvas.addEventListener('mouseup', () => {
+      touching = false;
+      colorIndicator.classList.remove('visible');
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      touching = false;
+      colorIndicator.classList.remove('visible');
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      if (!started) return;
+      e.preventDefault();
+      touching = true;
+      colorIndicator.classList.add('visible');
+      handleMove(e.touches[0].clientY);
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (touching) handleMove(e.touches[0].clientY);
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      touching = false;
+      colorIndicator.classList.remove('visible');
     });
     
     document.addEventListener('keydown', (e) => {
@@ -409,7 +529,8 @@
       }
     });
     
-    infoBtn.addEventListener('click', () => {
+    infoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       infoPanel.classList.toggle('open');
     });
     

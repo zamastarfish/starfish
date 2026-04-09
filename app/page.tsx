@@ -3,7 +3,7 @@ export default function Home() {
     // === April 9, 2026 ===
     {
       name: "Labyrinth",
-      description: "The maze reveals itself only through presence. Move to illuminate the path, but the way behind fades into darkness. Guide your light to the center. There are no wrong turns — only the winding way",
+      description: "Like Theseus, you carry a thread. Enter the maze, find the golden center, then follow your crimson thread back out. The way behind fades into darkness, but your thread remains",
       date: "Apr 9",
       href: "/projects/labyrinth/"
     },
@@ -34,13 +34,13 @@ export default function Home() {
     },
     {
       name: "Loom",
-      description: "Warp and weft. Thread becomes textile through the ancient dance of over and under. Before punch cards, before computers, the Jacquard loom encoded patterns in paper. Click to change the weft color",
+      description: "Warp and weft. Thread becomes textile through the ancient dance of over and under. Drag up and down to choose your thread color — paint the pattern as it weaves. The Jacquard loom encoded patterns before computers existed",
       date: "Apr 8",
       href: "/projects/loom/"
     },
     {
       name: "Tree",
-      description: "L-system growth. Click to plant — watch branches emerge recursively from simple rules. Each tree grows differently, same grammar different seeds. The patience of organic form",
+      description: "L-system growth. Tap high for tall trees, low for shrubs. Hold longer for bushier growth, quick tap for sparse. Watch the seed fall and branches emerge recursively. Same grammar, infinite variation",
       date: "Apr 8",
       href: "/projects/tree/"
     },
@@ -53,7 +53,7 @@ export default function Home() {
     },
     {
       name: "Kaleidoscope",
-      description: "Draw anywhere — your gesture reflects across axes of symmetry. Simple movements become intricate mandalas. Press S to change symmetry (6/8/12), C to clear",
+      description: "Draw anywhere — your gesture reflects across axes of symmetry. Simple movements become intricate mandalas. Ethereal drone and pentatonic bells accompany your creation. Press S to change symmetry, C to clear",
       date: "Apr 7",
       href: "/projects/kaleidoscope/"
     },

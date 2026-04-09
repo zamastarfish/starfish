@@ -82,17 +82,18 @@
       bottom: 30px;
       left: 50%;
       transform: translateX(-50%);
-      color: rgba(255,255,255,0.3);
+      color: rgba(255,255,255,0.4);
       font-size: 12px;
       transition: opacity 0.5s;
       pointer-events: none;
+      text-align: center;
     }
     
-    #progress {
+    #status {
       position: fixed;
       top: 20px;
       left: 20px;
-      color: rgba(212, 168, 87, 0.6);
+      color: rgba(212, 168, 87, 0.7);
       font-size: 12px;
     }
   </style>
@@ -106,37 +107,37 @@
   <div id="info-panel">
     <div id="info-content">
       <h1>labyrinth</h1>
-      <p>A maze that reveals itself only through presence. Move to illuminate the path ahead — but the way behind fades back into darkness.</p>
-      <p>Guide the light from entrance to center. The maze regenerates when you arrive.</p>
-      <div class="quote">"The maze is not meant to trap you. The maze is meant to help you find the center."<br>— adapted from the Chartres labyrinth tradition</div>
-      <p>In medieval cathedrals, walking the labyrinth was pilgrimage compressed: a journey inward that mirrors the soul's path toward understanding. There is no wrong turn — only the winding way.</p>
-      <p class="close">click anywhere to return</p>
+      <p>Like Theseus, you carry a thread. Enter the maze, find the center, then follow your thread back out.</p>
+      <p>The golden glow marks the center. Your crimson thread marks where you've been. The maze fades behind you, but your thread remains.</p>
+      <div class="quote">"The labyrinth is not meant to trap you. It is meant to help you find the center — and return transformed."<br>— adapted from the Chartres labyrinth tradition</div>
+      <p>Tap or click where you want to go. On mobile, tap repeatedly to navigate step by step.</p>
+      <p class="close">tap anywhere to return</p>
     </div>
   </div>
   
-  <div id="hint">move to illuminate the path</div>
-  <div id="progress"></div>
+  <div id="hint">tap to enter the labyrinth</div>
+  <div id="status"></div>
 
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const hint = document.getElementById('hint');
-    const progress = document.getElementById('progress');
+    const status = document.getElementById('status');
     
     let W, H, cellSize, cols, rows;
     let maze = [];
     let player = { x: 0, y: 0 };
-    let target = { x: 0, y: 0 };
+    let entrance = { x: 0, y: 0 };
+    let center = { x: 0, y: 0 };
     let revealed = [];
-    let revealRadius = 3;
-    let pathToCenter = [];
-    let journeyProgress = 0;
-    let arrived = false;
-    let arrivalTime = 0;
+    let thread = []; // The thread Theseus leaves behind
+    let revealRadius = 3.5;
+    let phase = 'entering'; // 'entering' | 'returning' | 'complete'
+    let phaseStartTime = 0;
+    let offsetX = 0, offsetY = 0;
     
     // Audio
     let audioCtx = null;
-    let footstepOsc = null;
     let ambientDrone = null;
     let reverbConvolver = null;
     let masterGain = null;
@@ -147,15 +148,23 @@
       W = canvas.width = window.innerWidth;
       H = canvas.height = window.innerHeight;
       
-      // Calculate maze size based on screen
+      // Calculate maze size — smaller cells on mobile for more maze
       const minDim = Math.min(W, H);
-      cellSize = Math.floor(minDim / 25);
+      const isMobile = minDim < 600;
+      cellSize = isMobile ? Math.floor(minDim / 20) : Math.floor(minDim / 25);
       cols = Math.floor(W / cellSize);
       rows = Math.floor(H / cellSize);
       
       // Ensure odd dimensions for maze generation
       if (cols % 2 === 0) cols--;
       if (rows % 2 === 0) rows--;
+      
+      // Smaller maze = more cells visible = easier navigation
+      cols = Math.min(cols, 31);
+      rows = Math.min(rows, 31);
+      
+      offsetX = (W - cols * cellSize) / 2;
+      offsetY = (H - rows * cellSize) / 2;
       
       generateMaze();
     }
@@ -164,6 +173,8 @@
     function generateMaze() {
       maze = [];
       revealed = [];
+      thread = [];
+      phase = 'entering';
       
       // Initialize with walls
       for (let y = 0; y < rows; y++) {
@@ -196,25 +207,23 @@
       // Start from center
       const cx = Math.floor(cols / 2);
       const cy = Math.floor(rows / 2);
-      // Ensure center coords are odd
       const startX = cx % 2 === 0 ? cx + 1 : cx;
       const startY = cy % 2 === 0 ? cy + 1 : cy;
       
       carve(startX, startY);
       
-      // Target is center
-      target = { x: startX, y: startY };
+      // Center is the goal
+      center = { x: startX, y: startY };
       
       // Player starts at edge
-      player = findEdgeStart();
-      
-      // Calculate initial path for progress tracking
-      pathToCenter = findPath(player, target);
-      journeyProgress = 0;
-      arrived = false;
+      entrance = findEdgeStart();
+      player = { ...entrance };
+      thread = [{ x: player.x, y: player.y }];
       
       // Reveal around player
       revealAround(player.x, player.y);
+      
+      updateHint();
     }
     
     function shuffle(arr) {
@@ -225,30 +234,153 @@
     }
     
     function findEdgeStart() {
-      // Find a passage on the edge
       const edges = [];
       
-      // Top and bottom edges
       for (let x = 1; x < cols - 1; x++) {
         if (maze[1][x] === 0) edges.push({ x, y: 1 });
         if (maze[rows-2][x] === 0) edges.push({ x, y: rows - 2 });
       }
-      // Left and right edges
       for (let y = 1; y < rows - 1; y++) {
         if (maze[y][1] === 0) edges.push({ x: 1, y });
         if (maze[y][cols-2] === 0) edges.push({ x: cols - 2, y });
       }
       
       // Pick furthest from center
-      const cx = target.x;
-      const cy = target.y;
       edges.sort((a, b) => {
-        const da = Math.abs(a.x - cx) + Math.abs(a.y - cy);
-        const db = Math.abs(b.x - cx) + Math.abs(b.y - cy);
+        const da = Math.abs(a.x - center.x) + Math.abs(a.y - center.y);
+        const db = Math.abs(b.x - center.x) + Math.abs(b.y - center.y);
         return db - da;
       });
       
       return edges[0] || { x: 1, y: 1 };
+    }
+    
+    function revealAround(px, py) {
+      for (let dy = -revealRadius; dy <= revealRadius; dy++) {
+        for (let dx = -revealRadius; dx <= revealRadius; dx++) {
+          const x = px + dx;
+          const y = py + dy;
+          
+          if (x >= 0 && x < cols && y >= 0 && y < rows) {
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist <= revealRadius) {
+              const intensity = 1 - (dist / revealRadius) * 0.5;
+              revealed[y][x] = Math.max(revealed[y][x], intensity);
+            }
+          }
+        }
+      }
+    }
+    
+    function initAudio() {
+      if (initialized) return;
+      initialized = true;
+      
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.5;
+      masterGain.connect(audioCtx.destination);
+      
+      // Create reverb
+      const reverbTime = 3;
+      const sampleRate = audioCtx.sampleRate;
+      const length = sampleRate * reverbTime;
+      const impulse = audioCtx.createBuffer(2, length, sampleRate);
+      
+      for (let c = 0; c < 2; c++) {
+        const channel = impulse.getChannelData(c);
+        for (let i = 0; i < length; i++) {
+          channel[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+        }
+      }
+      
+      reverbConvolver = audioCtx.createConvolver();
+      reverbConvolver.buffer = impulse;
+      reverbConvolver.connect(masterGain);
+      
+      // Ambient drone
+      const droneGain = audioCtx.createGain();
+      droneGain.gain.value = 0.08;
+      
+      ambientDrone = audioCtx.createOscillator();
+      ambientDrone.type = 'sine';
+      ambientDrone.frequency.value = 55;
+      
+      const droneFilter = audioCtx.createBiquadFilter();
+      droneFilter.type = 'lowpass';
+      droneFilter.frequency.value = 200;
+      
+      ambientDrone.connect(droneFilter);
+      droneFilter.connect(droneGain);
+      droneGain.connect(reverbConvolver);
+      
+      const drone2 = audioCtx.createOscillator();
+      drone2.type = 'sine';
+      drone2.frequency.value = 82.5;
+      const drone2Gain = audioCtx.createGain();
+      drone2Gain.gain.value = 0.04;
+      drone2.connect(drone2Gain);
+      drone2Gain.connect(droneFilter);
+      
+      ambientDrone.start();
+      drone2.start();
+    }
+    
+    function playFootstep() {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      if (now - lastStepTime < 0.12) return;
+      lastStepTime = now;
+      
+      const bufferSize = audioCtx.sampleRate * 0.08;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      for (let i = 0; i < bufferSize; i++) {
+        const env = Math.exp(-i / (bufferSize * 0.15));
+        data[i] = (Math.random() * 2 - 1) * env * 0.25;
+      }
+      
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 350 + Math.random() * 150;
+      
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.12;
+      
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(reverbConvolver);
+      
+      source.start(now);
+    }
+    
+    function playArrival(returning) {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      const freqs = returning ? [330, 440, 550, 660] : [220, 330, 440, 550];
+      
+      freqs.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0, now + i * 0.08);
+        gain.gain.linearRampToValueAtTime(0.15, now + i * 0.08 + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 2);
+        
+        osc.connect(gain);
+        gain.connect(reverbConvolver);
+        
+        osc.start(now + i * 0.08);
+        osc.stop(now + i * 0.08 + 2.5);
+      });
     }
     
     // Simple BFS pathfinding
@@ -282,181 +414,73 @@
       return [];
     }
     
-    function revealAround(px, py) {
-      for (let dy = -revealRadius; dy <= revealRadius; dy++) {
-        for (let dx = -revealRadius; dx <= revealRadius; dx++) {
-          const x = px + dx;
-          const y = py + dy;
-          
-          if (x >= 0 && x < cols && y >= 0 && y < rows) {
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist <= revealRadius) {
-              const intensity = 1 - (dist / revealRadius) * 0.5;
-              revealed[y][x] = Math.max(revealed[y][x], intensity);
-            }
-          }
-        }
-      }
-    }
-    
-    function initAudio() {
-      if (initialized) return;
-      initialized = true;
+    function moveToward(targetX, targetY) {
+      if (phase === 'complete') return;
       
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      masterGain = audioCtx.createGain();
-      masterGain.gain.value = 0.5;
-      masterGain.connect(audioCtx.destination);
-      
-      // Create reverb impulse response
-      const reverbTime = 3;
-      const sampleRate = audioCtx.sampleRate;
-      const length = sampleRate * reverbTime;
-      const impulse = audioCtx.createBuffer(2, length, sampleRate);
-      
-      for (let c = 0; c < 2; c++) {
-        const channel = impulse.getChannelData(c);
-        for (let i = 0; i < length; i++) {
-          channel[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
-        }
-      }
-      
-      reverbConvolver = audioCtx.createConvolver();
-      reverbConvolver.buffer = impulse;
-      
-      // Ambient drone - low mysterious hum
-      const droneGain = audioCtx.createGain();
-      droneGain.gain.value = 0.08;
-      
-      ambientDrone = audioCtx.createOscillator();
-      ambientDrone.type = 'sine';
-      ambientDrone.frequency.value = 55; // A1
-      
-      const droneFilter = audioCtx.createBiquadFilter();
-      droneFilter.type = 'lowpass';
-      droneFilter.frequency.value = 200;
-      
-      ambientDrone.connect(droneFilter);
-      droneFilter.connect(droneGain);
-      droneGain.connect(reverbConvolver);
-      reverbConvolver.connect(masterGain);
-      
-      // Second drone for depth
-      const drone2 = audioCtx.createOscillator();
-      drone2.type = 'sine';
-      drone2.frequency.value = 82.5; // E2
-      const drone2Gain = audioCtx.createGain();
-      drone2Gain.gain.value = 0.04;
-      drone2.connect(drone2Gain);
-      drone2Gain.connect(droneFilter);
-      
-      ambientDrone.start();
-      drone2.start();
-    }
-    
-    function playFootstep() {
-      if (!audioCtx) return;
-      
-      const now = audioCtx.currentTime;
-      if (now - lastStepTime < 0.15) return;
-      lastStepTime = now;
-      
-      // Soft footstep - filtered noise burst
-      const bufferSize = audioCtx.sampleRate * 0.1;
-      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-      const data = buffer.getChannelData(0);
-      
-      for (let i = 0; i < bufferSize; i++) {
-        const env = Math.exp(-i / (bufferSize * 0.2));
-        data[i] = (Math.random() * 2 - 1) * env * 0.3;
-      }
-      
-      const source = audioCtx.createBufferSource();
-      source.buffer = buffer;
-      
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 400 + Math.random() * 200;
-      
-      const gain = audioCtx.createGain();
-      gain.gain.value = 0.15;
-      
-      source.connect(filter);
-      filter.connect(gain);
-      gain.connect(reverbConvolver);
-      
-      source.start(now);
-    }
-    
-    function playArrival() {
-      if (!audioCtx) return;
-      
-      const now = audioCtx.currentTime;
-      
-      // Resonant bell-like tone
-      const freqs = [220, 330, 440, 550];
-      
-      freqs.forEach((freq, i) => {
-        const osc = audioCtx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        
-        const gain = audioCtx.createGain();
-        gain.gain.setValueAtTime(0.2, now + i * 0.1);
-        gain.gain.exponentialDecayTo = 0.001;
-        gain.gain.setTargetAtTime(0.001, now + i * 0.1 + 0.1, 1);
-        
-        osc.connect(gain);
-        gain.connect(reverbConvolver);
-        
-        osc.start(now + i * 0.1);
-        osc.stop(now + i * 0.1 + 3);
-      });
-    }
-    
-    function movePlayer(targetX, targetY) {
       // Convert screen position to grid
-      const gx = Math.floor(targetX / cellSize);
-      const gy = Math.floor(targetY / cellSize);
+      const gx = Math.floor((targetX - offsetX) / cellSize);
+      const gy = Math.floor((targetY - offsetY) / cellSize);
       
       if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) return;
-      if (arrived) return;
+      if (maze[gy]?.[gx] !== 0) return; // Can only target passages
       
-      // Find path from current to target
       const path = findPath(player, { x: gx, y: gy });
       
       if (path.length > 1) {
-        // Move one step along path
+        // Move one step
         const next = path[1];
-        if (maze[next.y][next.x] === 0) {
-          player.x = next.x;
-          player.y = next.y;
-          
-          revealAround(player.x, player.y);
-          playFootstep();
-          
-          // Update progress
-          const distToCenter = Math.sqrt(
-            Math.pow(player.x - target.x, 2) + 
-            Math.pow(player.y - target.y, 2)
-          );
-          const maxDist = Math.sqrt(
-            Math.pow(cols/2, 2) + Math.pow(rows/2, 2)
-          );
-          journeyProgress = 1 - (distToCenter / maxDist);
-          
-          // Check arrival
-          if (player.x === target.x && player.y === target.y) {
-            arrived = true;
-            arrivalTime = Date.now();
-            playArrival();
+        player.x = next.x;
+        player.y = next.y;
+        
+        // Add to thread (avoid duplicates if backtracking)
+        const lastThread = thread[thread.length - 1];
+        if (lastThread.x !== player.x || lastThread.y !== player.y) {
+          // Check if we're backtracking along the thread
+          if (thread.length >= 2) {
+            const prevThread = thread[thread.length - 2];
+            if (prevThread.x === player.x && prevThread.y === player.y) {
+              // Backtracking — remove last thread point
+              thread.pop();
+            } else {
+              thread.push({ x: player.x, y: player.y });
+            }
+          } else {
+            thread.push({ x: player.x, y: player.y });
           }
         }
+        
+        revealAround(player.x, player.y);
+        playFootstep();
+        
+        // Check phase transitions
+        if (phase === 'entering' && player.x === center.x && player.y === center.y) {
+          phase = 'returning';
+          phaseStartTime = Date.now();
+          playArrival(false);
+          updateHint();
+        } else if (phase === 'returning' && player.x === entrance.x && player.y === entrance.y) {
+          phase = 'complete';
+          phaseStartTime = Date.now();
+          playArrival(true);
+          updateHint();
+        }
+      }
+    }
+    
+    function updateHint() {
+      if (phase === 'entering') {
+        hint.textContent = 'find the golden center';
+        hint.style.opacity = '1';
+      } else if (phase === 'returning') {
+        hint.textContent = 'follow your thread back out';
+        hint.style.opacity = '1';
+      } else if (phase === 'complete') {
+        hint.textContent = 'journey complete — tap to begin again';
+        hint.style.opacity = '1';
       }
     }
     
     function fade() {
-      // Gradually fade revealed areas
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
           const dist = Math.sqrt(
@@ -464,7 +488,7 @@
             Math.pow(y - player.y, 2)
           );
           if (dist > revealRadius) {
-            revealed[y][x] *= 0.995;
+            revealed[y][x] *= 0.992;
           }
         }
       }
@@ -474,8 +498,19 @@
       ctx.fillStyle = '#0a0a0a';
       ctx.fillRect(0, 0, W, H);
       
-      const offsetX = (W - cols * cellSize) / 2;
-      const offsetY = (H - rows * cellSize) / 2;
+      // Draw center glow (always visible as beacon)
+      const ccx = offsetX + center.x * cellSize + cellSize/2;
+      const ccy = offsetY + center.y * cellSize + cellSize/2;
+      const pulsePhase = (Date.now() / 2000) % 1;
+      const pulse = 0.3 + Math.sin(pulsePhase * Math.PI * 2) * 0.15;
+      
+      const centerGlow = ctx.createRadialGradient(ccx, ccy, 0, ccx, ccy, cellSize * 8);
+      centerGlow.addColorStop(0, `rgba(212, 168, 87, ${pulse})`);
+      centerGlow.addColorStop(0.3, `rgba(212, 168, 87, ${pulse * 0.4})`);
+      centerGlow.addColorStop(1, 'rgba(212, 168, 87, 0)');
+      
+      ctx.fillStyle = centerGlow;
+      ctx.fillRect(0, 0, W, H);
       
       // Draw maze
       for (let y = 0; y < rows; y++) {
@@ -493,28 +528,46 @@
             ctx.fillRect(px, py, cellSize, cellSize);
           } else {
             // Passage
-            const alpha = rev * 0.15;
+            const alpha = rev * 0.12;
             ctx.fillStyle = `rgba(180, 160, 120, ${alpha})`;
             ctx.fillRect(px, py, cellSize, cellSize);
           }
         }
       }
       
-      // Draw center marker (subtle glow when revealed)
-      const centerRev = revealed[target.y]?.[target.x] || 0;
-      if (centerRev > 0.1) {
-        const cx = offsetX + target.x * cellSize + cellSize/2;
-        const cy = offsetY + target.y * cellSize + cellSize/2;
+      // Draw thread (Ariadne's gift)
+      if (thread.length > 1) {
+        ctx.strokeStyle = phase === 'returning' ? 'rgba(200, 80, 80, 0.7)' : 'rgba(180, 60, 60, 0.5)';
+        ctx.lineWidth = cellSize * 0.2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         
-        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, cellSize * 2);
-        gradient.addColorStop(0, `rgba(212, 168, 87, ${centerRev * 0.4})`);
-        gradient.addColorStop(1, 'rgba(212, 168, 87, 0)');
-        
-        ctx.fillStyle = gradient;
         ctx.beginPath();
-        ctx.arc(cx, cy, cellSize * 2, 0, Math.PI * 2);
-        ctx.fill();
+        const start = thread[0];
+        ctx.moveTo(offsetX + start.x * cellSize + cellSize/2, offsetY + start.y * cellSize + cellSize/2);
+        
+        for (let i = 1; i < thread.length; i++) {
+          const pt = thread[i];
+          ctx.lineTo(offsetX + pt.x * cellSize + cellSize/2, offsetY + pt.y * cellSize + cellSize/2);
+        }
+        ctx.stroke();
       }
+      
+      // Draw entrance marker
+      const ex = offsetX + entrance.x * cellSize + cellSize/2;
+      const ey = offsetY + entrance.y * cellSize + cellSize/2;
+      ctx.fillStyle = phase === 'returning' ? 'rgba(100, 200, 100, 0.6)' : 'rgba(100, 150, 100, 0.3)';
+      ctx.beginPath();
+      ctx.arc(ex, ey, cellSize * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw center marker (brighter when revealed)
+      const centerRev = revealed[center.y]?.[center.x] || 0;
+      const centerAlpha = 0.3 + centerRev * 0.5;
+      ctx.fillStyle = `rgba(212, 168, 87, ${centerAlpha})`;
+      ctx.beginPath();
+      ctx.arc(ccx, ccy, cellSize * 0.5, 0, Math.PI * 2);
+      ctx.fill();
       
       // Draw player
       const px = offsetX + player.x * cellSize + cellSize/2;
@@ -522,8 +575,8 @@
       
       // Player glow
       const glowGradient = ctx.createRadialGradient(px, py, 0, px, py, cellSize * revealRadius);
-      glowGradient.addColorStop(0, 'rgba(255, 240, 200, 0.3)');
-      glowGradient.addColorStop(0.5, 'rgba(255, 220, 150, 0.1)');
+      glowGradient.addColorStop(0, 'rgba(255, 240, 200, 0.25)');
+      glowGradient.addColorStop(0.5, 'rgba(255, 220, 150, 0.08)');
       glowGradient.addColorStop(1, 'rgba(255, 200, 100, 0)');
       
       ctx.fillStyle = glowGradient;
@@ -531,19 +584,30 @@
       ctx.arc(px, py, cellSize * revealRadius, 0, Math.PI * 2);
       ctx.fill();
       
-      // Player light core
+      // Player core
       ctx.fillStyle = 'rgba(255, 245, 220, 0.9)';
       ctx.beginPath();
-      ctx.arc(px, py, cellSize * 0.3, 0, Math.PI * 2);
+      ctx.arc(px, py, cellSize * 0.35, 0, Math.PI * 2);
       ctx.fill();
       
-      // Progress indicator
-      const pct = Math.floor(journeyProgress * 100);
-      progress.textContent = arrived ? 'arrived' : `${pct}%`;
+      // Status
+      if (phase === 'entering') {
+        const distToCenter = Math.sqrt(Math.pow(player.x - center.x, 2) + Math.pow(player.y - center.y, 2));
+        const maxDist = Math.sqrt(Math.pow(cols/2, 2) + Math.pow(rows/2, 2));
+        const pct = Math.floor((1 - distToCenter / maxDist) * 100);
+        status.textContent = `entering: ${pct}%`;
+      } else if (phase === 'returning') {
+        const distToExit = Math.sqrt(Math.pow(player.x - entrance.x, 2) + Math.pow(player.y - entrance.y, 2));
+        const maxDist = Math.sqrt(Math.pow(cols/2, 2) + Math.pow(rows/2, 2));
+        const pct = Math.floor((1 - distToExit / maxDist) * 100);
+        status.textContent = `returning: ${pct}%`;
+      } else {
+        status.textContent = 'complete';
+      }
       
-      // Handle arrival state
-      if (arrived && Date.now() - arrivalTime > 3000) {
-        // Regenerate maze after pause
+      // Handle completion
+      if (phase === 'complete' && Date.now() - phaseStartTime > 4000) {
+        // Auto-regenerate after pause
         generateMaze();
       }
       
@@ -551,52 +615,71 @@
       requestAnimationFrame(draw);
     }
     
-    // Input handling
-    let isMoving = false;
+    // Input handling — tap-based for mobile friendliness
+    canvas.addEventListener('click', (e) => {
+      initAudio();
+      hint.style.opacity = '0.3';
+      
+      if (phase === 'complete') {
+        generateMaze();
+        return;
+      }
+      
+      moveToward(e.clientX, e.clientY);
+    });
+    
+    // Also support drag for desktop
+    let isDragging = false;
     
     canvas.addEventListener('mousedown', (e) => {
       initAudio();
-      isMoving = true;
-      hint.style.opacity = '0';
-      movePlayer(e.clientX, e.clientY);
+      isDragging = true;
+      hint.style.opacity = '0.3';
     });
     
     canvas.addEventListener('mousemove', (e) => {
-      if (isMoving) {
-        movePlayer(e.clientX, e.clientY);
+      if (isDragging && phase !== 'complete') {
+        moveToward(e.clientX, e.clientY);
       }
     });
     
     canvas.addEventListener('mouseup', () => {
-      isMoving = false;
+      isDragging = false;
     });
     
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+    });
+    
+    // Touch support
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
       initAudio();
-      isMoving = true;
-      hint.style.opacity = '0';
+      hint.style.opacity = '0.3';
+      
+      if (phase === 'complete') {
+        generateMaze();
+        return;
+      }
+      
       const touch = e.touches[0];
-      movePlayer(touch.clientX, touch.clientY);
+      moveToward(touch.clientX, touch.clientY);
     });
     
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      if (isMoving) {
+      if (phase !== 'complete') {
         const touch = e.touches[0];
-        movePlayer(touch.clientX, touch.clientY);
+        moveToward(touch.clientX, touch.clientY);
       }
-    });
-    
-    canvas.addEventListener('touchend', () => {
-      isMoving = false;
     });
     
     // Info panel
     const infoBtn = document.getElementById('info-btn');
     const infoPanel = document.getElementById('info-panel');
     
-    infoBtn.addEventListener('click', () => {
+    infoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       infoPanel.classList.add('visible');
     });
     
@@ -605,7 +688,8 @@
     });
     
     // Navigation
-    document.getElementById('nav-btn').addEventListener('click', () => {
+    document.getElementById('nav-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
       window.location.href = '/';
     });
     

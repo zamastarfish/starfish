@@ -210,6 +210,8 @@
         }
         
         // Audio
+        let ambientDrone, ambientGain, ambientFilter;
+        
         function initAudio() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             masterGain = audioCtx.createGain();
@@ -218,7 +220,7 @@
             
             // Reverb
             const convolver = audioCtx.createConvolver();
-            const reverbTime = 2;
+            const reverbTime = 3;
             const sampleRate = audioCtx.sampleRate;
             const length = sampleRate * reverbTime;
             const impulse = audioCtx.createBuffer(2, length, sampleRate);
@@ -226,13 +228,46 @@
             for (let channel = 0; channel < 2; channel++) {
                 const data = impulse.getChannelData(channel);
                 for (let i = 0; i < length; i++) {
-                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.5);
                 }
             }
             convolver.buffer = impulse;
             
             masterGain.connect(convolver);
             convolver.connect(audioCtx.destination);
+            
+            // Ethereal ambient drone
+            ambientGain = audioCtx.createGain();
+            ambientGain.gain.value = 0;
+            
+            ambientFilter = audioCtx.createBiquadFilter();
+            ambientFilter.type = 'lowpass';
+            ambientFilter.frequency.value = 800;
+            ambientFilter.Q.value = 2;
+            
+            // Create layered pad
+            const freqs = [110, 165, 220, 330]; // A2, E3, A3, E4
+            freqs.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                
+                // Slight detune for shimmer
+                osc.detune.value = (Math.random() - 0.5) * 10;
+                
+                const oscGain = audioCtx.createGain();
+                oscGain.gain.value = 0.08 / (i + 1); // Quieter overtones
+                
+                osc.connect(oscGain);
+                oscGain.connect(ambientFilter);
+                osc.start();
+            });
+            
+            ambientFilter.connect(ambientGain);
+            ambientGain.connect(convolver);
+            
+            // Fade in drone
+            ambientGain.gain.setTargetAtTime(0.12, audioCtx.currentTime, 2);
         }
         
         let lastToneTime = 0;
