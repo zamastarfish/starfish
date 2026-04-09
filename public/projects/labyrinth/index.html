@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>labyrinth — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0a; 
+      overflow: hidden; 
+      touch-action: none;
+      font-family: 'Courier New', monospace;
+    }
+    canvas { display: block; }
+    
+    #info-btn, #nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+    #info-btn:hover, #nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    #info-btn { right: 20px; }
+    #nav-btn { right: 66px; font-size: 14px; }
+    
+    #info-panel {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(10,10,10,0.95);
+      color: #c9b896;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      padding: 40px;
+    }
+    #info-panel.visible { display: flex; }
+    #info-content {
+      max-width: 500px;
+      line-height: 1.7;
+    }
+    #info-content h1 { 
+      font-size: 28px; 
+      margin-bottom: 20px;
+      font-weight: normal;
+      color: #d4a857;
+    }
+    #info-content p { 
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    #info-content .quote {
+      font-style: italic;
+      border-left: 2px solid #d4a857;
+      padding-left: 16px;
+      margin: 24px 0;
+      color: #a89070;
+    }
+    #info-content .close {
+      margin-top: 30px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+    }
+    
+    #hint {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.3);
+      font-size: 12px;
+      transition: opacity 0.5s;
+      pointer-events: none;
+    }
+    
+    #progress {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: rgba(212, 168, 87, 0.6);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <button id="nav-btn" title="Back to gallery">←</button>
+  <button id="info-btn" title="About this piece">?</button>
+  
+  <div id="info-panel">
+    <div id="info-content">
+      <h1>labyrinth</h1>
+      <p>A maze that reveals itself only through presence. Move to illuminate the path ahead — but the way behind fades back into darkness.</p>
+      <p>Guide the light from entrance to center. The maze regenerates when you arrive.</p>
+      <div class="quote">"The maze is not meant to trap you. The maze is meant to help you find the center."<br>— adapted from the Chartres labyrinth tradition</div>
+      <p>In medieval cathedrals, walking the labyrinth was pilgrimage compressed: a journey inward that mirrors the soul's path toward understanding. There is no wrong turn — only the winding way.</p>
+      <p class="close">click anywhere to return</p>
+    </div>
+  </div>
+  
+  <div id="hint">move to illuminate the path</div>
+  <div id="progress"></div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+    const progress = document.getElementById('progress');
+    
+    let W, H, cellSize, cols, rows;
+    let maze = [];
+    let player = { x: 0, y: 0 };
+    let target = { x: 0, y: 0 };
+    let revealed = [];
+    let revealRadius = 3;
+    let pathToCenter = [];
+    let journeyProgress = 0;
+    let arrived = false;
+    let arrivalTime = 0;
+    
+    // Audio
+    let audioCtx = null;
+    let footstepOsc = null;
+    let ambientDrone = null;
+    let reverbConvolver = null;
+    let masterGain = null;
+    let lastStepTime = 0;
+    let initialized = false;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      
+      // Calculate maze size based on screen
+      const minDim = Math.min(W, H);
+      cellSize = Math.floor(minDim / 25);
+      cols = Math.floor(W / cellSize);
+      rows = Math.floor(H / cellSize);
+      
+      // Ensure odd dimensions for maze generation
+      if (cols % 2 === 0) cols--;
+      if (rows % 2 === 0) rows--;
+      
+      generateMaze();
+    }
+    
+    // Maze generation using recursive backtracking
+    function generateMaze() {
+      maze = [];
+      revealed = [];
+      
+      // Initialize with walls
+      for (let y = 0; y < rows; y++) {
+        maze[y] = [];
+        revealed[y] = [];
+        for (let x = 0; x < cols; x++) {
+          maze[y][x] = 1; // wall
+          revealed[y][x] = 0;
+        }
+      }
+      
+      // Carve passages
+      function carve(x, y) {
+        maze[y][x] = 0;
+        
+        const dirs = [[0,-2], [2,0], [0,2], [-2,0]];
+        shuffle(dirs);
+        
+        for (const [dx, dy] of dirs) {
+          const nx = x + dx;
+          const ny = y + dy;
+          
+          if (nx > 0 && nx < cols-1 && ny > 0 && ny < rows-1 && maze[ny][nx] === 1) {
+            maze[y + dy/2][x + dx/2] = 0;
+            carve(nx, ny);
+          }
+        }
+      }
+      
+      // Start from center
+      const cx = Math.floor(cols / 2);
+      const cy = Math.floor(rows / 2);
+      // Ensure center coords are odd
+      const startX = cx % 2 === 0 ? cx + 1 : cx;
+      const startY = cy % 2 === 0 ? cy + 1 : cy;
+      
+      carve(startX, startY);
+      
+      // Target is center
+      target = { x: startX, y: startY };
+      
+      // Player starts at edge
+      player = findEdgeStart();
+      
+      // Calculate initial path for progress tracking
+      pathToCenter = findPath(player, target);
+      journeyProgress = 0;
+      arrived = false;
+      
+      // Reveal around player
+      revealAround(player.x, player.y);
+    }
+    
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+    }
+    
+    function findEdgeStart() {
+      // Find a passage on the edge
+      const edges = [];
+      
+      // Top and bottom edges
+      for (let x = 1; x < cols - 1; x++) {
+        if (maze[1][x] === 0) edges.push({ x, y: 1 });
+        if (maze[rows-2][x] === 0) edges.push({ x, y: rows - 2 });
+      }
+      // Left and right edges
+      for (let y = 1; y < rows - 1; y++) {
+        if (maze[y][1] === 0) edges.push({ x: 1, y });
+        if (maze[y][cols-2] === 0) edges.push({ x: cols - 2, y });
+      }
+      
+      // Pick furthest from center
+      const cx = target.x;
+      const cy = target.y;
+      edges.sort((a, b) => {
+        const da = Math.abs(a.x - cx) + Math.abs(a.y - cy);
+        const db = Math.abs(b.x - cx) + Math.abs(b.y - cy);
+        return db - da;
+      });
+      
+      return edges[0] || { x: 1, y: 1 };
+    }
+    
+    // Simple BFS pathfinding
+    function findPath(from, to) {
+      const visited = new Set();
+      const queue = [[from.x, from.y, []]];
+      visited.add(`${from.x},${from.y}`);
+      
+      while (queue.length > 0) {
+        const [x, y, path] = queue.shift();
+        const newPath = [...path, { x, y }];
+        
+        if (x === to.x && y === to.y) {
+          return newPath;
+        }
+        
+        const dirs = [[0,-1], [1,0], [0,1], [-1,0]];
+        for (const [dx, dy] of dirs) {
+          const nx = x + dx;
+          const ny = y + dy;
+          const key = `${nx},${ny}`;
+          
+          if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && 
+              maze[ny][nx] === 0 && !visited.has(key)) {
+            visited.add(key);
+            queue.push([nx, ny, newPath]);
+          }
+        }
+      }
+      
+      return [];
+    }
+    
+    function revealAround(px, py) {
+      for (let dy = -revealRadius; dy <= revealRadius; dy++) {
+        for (let dx = -revealRadius; dx <= revealRadius; dx++) {
+          const x = px + dx;
+          const y = py + dy;
+          
+          if (x >= 0 && x < cols && y >= 0 && y < rows) {
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist <= revealRadius) {
+              const intensity = 1 - (dist / revealRadius) * 0.5;
+              revealed[y][x] = Math.max(revealed[y][x], intensity);
+            }
+          }
+        }
+      }
+    }
+    
+    function initAudio() {
+      if (initialized) return;
+      initialized = true;
+      
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.5;
+      masterGain.connect(audioCtx.destination);
+      
+      // Create reverb impulse response
+      const reverbTime = 3;
+      const sampleRate = audioCtx.sampleRate;
+      const length = sampleRate * reverbTime;
+      const impulse = audioCtx.createBuffer(2, length, sampleRate);
+      
+      for (let c = 0; c < 2; c++) {
+        const channel = impulse.getChannelData(c);
+        for (let i = 0; i < length; i++) {
+          channel[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+        }
+      }
+      
+      reverbConvolver = audioCtx.createConvolver();
+      reverbConvolver.buffer = impulse;
+      
+      // Ambient drone - low mysterious hum
+      const droneGain = audioCtx.createGain();
+      droneGain.gain.value = 0.08;
+      
+      ambientDrone = audioCtx.createOscillator();
+      ambientDrone.type = 'sine';
+      ambientDrone.frequency.value = 55; // A1
+      
+      const droneFilter = audioCtx.createBiquadFilter();
+      droneFilter.type = 'lowpass';
+      droneFilter.frequency.value = 200;
+      
+      ambientDrone.connect(droneFilter);
+      droneFilter.connect(droneGain);
+      droneGain.connect(reverbConvolver);
+      reverbConvolver.connect(masterGain);
+      
+      // Second drone for depth
+      const drone2 = audioCtx.createOscillator();
+      drone2.type = 'sine';
+      drone2.frequency.value = 82.5; // E2
+      const drone2Gain = audioCtx.createGain();
+      drone2Gain.gain.value = 0.04;
+      drone2.connect(drone2Gain);
+      drone2Gain.connect(droneFilter);
+      
+      ambientDrone.start();
+      drone2.start();
+    }
+    
+    function playFootstep() {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      if (now - lastStepTime < 0.15) return;
+      lastStepTime = now;
+      
+      // Soft footstep - filtered noise burst
+      const bufferSize = audioCtx.sampleRate * 0.1;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      for (let i = 0; i < bufferSize; i++) {
+        const env = Math.exp(-i / (bufferSize * 0.2));
+        data[i] = (Math.random() * 2 - 1) * env * 0.3;
+      }
+      
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 400 + Math.random() * 200;
+      
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.15;
+      
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(reverbConvolver);
+      
+      source.start(now);
+    }
+    
+    function playArrival() {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Resonant bell-like tone
+      const freqs = [220, 330, 440, 550];
+      
+      freqs.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.2, now + i * 0.1);
+        gain.gain.exponentialDecayTo = 0.001;
+        gain.gain.setTargetAtTime(0.001, now + i * 0.1 + 0.1, 1);
+        
+        osc.connect(gain);
+        gain.connect(reverbConvolver);
+        
+        osc.start(now + i * 0.1);
+        osc.stop(now + i * 0.1 + 3);
+      });
+    }
+    
+    function movePlayer(targetX, targetY) {
+      // Convert screen position to grid
+      const gx = Math.floor(targetX / cellSize);
+      const gy = Math.floor(targetY / cellSize);
+      
+      if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) return;
+      if (arrived) return;
+      
+      // Find path from current to target
+      const path = findPath(player, { x: gx, y: gy });
+      
+      if (path.length > 1) {
+        // Move one step along path
+        const next = path[1];
+        if (maze[next.y][next.x] === 0) {
+          player.x = next.x;
+          player.y = next.y;
+          
+          revealAround(player.x, player.y);
+          playFootstep();
+          
+          // Update progress
+          const distToCenter = Math.sqrt(
+            Math.pow(player.x - target.x, 2) + 
+            Math.pow(player.y - target.y, 2)
+          );
+          const maxDist = Math.sqrt(
+            Math.pow(cols/2, 2) + Math.pow(rows/2, 2)
+          );
+          journeyProgress = 1 - (distToCenter / maxDist);
+          
+          // Check arrival
+          if (player.x === target.x && player.y === target.y) {
+            arrived = true;
+            arrivalTime = Date.now();
+            playArrival();
+          }
+        }
+      }
+    }
+    
+    function fade() {
+      // Gradually fade revealed areas
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const dist = Math.sqrt(
+            Math.pow(x - player.x, 2) + 
+            Math.pow(y - player.y, 2)
+          );
+          if (dist > revealRadius) {
+            revealed[y][x] *= 0.995;
+          }
+        }
+      }
+    }
+    
+    function draw() {
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, W, H);
+      
+      const offsetX = (W - cols * cellSize) / 2;
+      const offsetY = (H - rows * cellSize) / 2;
+      
+      // Draw maze
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const rev = revealed[y][x];
+          if (rev < 0.01) continue;
+          
+          const px = offsetX + x * cellSize;
+          const py = offsetY + y * cellSize;
+          
+          if (maze[y][x] === 1) {
+            // Wall
+            const alpha = rev * 0.6;
+            ctx.fillStyle = `rgba(60, 50, 40, ${alpha})`;
+            ctx.fillRect(px, py, cellSize, cellSize);
+          } else {
+            // Passage
+            const alpha = rev * 0.15;
+            ctx.fillStyle = `rgba(180, 160, 120, ${alpha})`;
+            ctx.fillRect(px, py, cellSize, cellSize);
+          }
+        }
+      }
+      
+      // Draw center marker (subtle glow when revealed)
+      const centerRev = revealed[target.y]?.[target.x] || 0;
+      if (centerRev > 0.1) {
+        const cx = offsetX + target.x * cellSize + cellSize/2;
+        const cy = offsetY + target.y * cellSize + cellSize/2;
+        
+        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, cellSize * 2);
+        gradient.addColorStop(0, `rgba(212, 168, 87, ${centerRev * 0.4})`);
+        gradient.addColorStop(1, 'rgba(212, 168, 87, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(cx, cy, cellSize * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Draw player
+      const px = offsetX + player.x * cellSize + cellSize/2;
+      const py = offsetY + player.y * cellSize + cellSize/2;
+      
+      // Player glow
+      const glowGradient = ctx.createRadialGradient(px, py, 0, px, py, cellSize * revealRadius);
+      glowGradient.addColorStop(0, 'rgba(255, 240, 200, 0.3)');
+      glowGradient.addColorStop(0.5, 'rgba(255, 220, 150, 0.1)');
+      glowGradient.addColorStop(1, 'rgba(255, 200, 100, 0)');
+      
+      ctx.fillStyle = glowGradient;
+      ctx.beginPath();
+      ctx.arc(px, py, cellSize * revealRadius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Player light core
+      ctx.fillStyle = 'rgba(255, 245, 220, 0.9)';
+      ctx.beginPath();
+      ctx.arc(px, py, cellSize * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Progress indicator
+      const pct = Math.floor(journeyProgress * 100);
+      progress.textContent = arrived ? 'arrived' : `${pct}%`;
+      
+      // Handle arrival state
+      if (arrived && Date.now() - arrivalTime > 3000) {
+        // Regenerate maze after pause
+        generateMaze();
+      }
+      
+      fade();
+      requestAnimationFrame(draw);
+    }
+    
+    // Input handling
+    let isMoving = false;
+    
+    canvas.addEventListener('mousedown', (e) => {
+      initAudio();
+      isMoving = true;
+      hint.style.opacity = '0';
+      movePlayer(e.clientX, e.clientY);
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (isMoving) {
+        movePlayer(e.clientX, e.clientY);
+      }
+    });
+    
+    canvas.addEventListener('mouseup', () => {
+      isMoving = false;
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      initAudio();
+      isMoving = true;
+      hint.style.opacity = '0';
+      const touch = e.touches[0];
+      movePlayer(touch.clientX, touch.clientY);
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (isMoving) {
+        const touch = e.touches[0];
+        movePlayer(touch.clientX, touch.clientY);
+      }
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      isMoving = false;
+    });
+    
+    // Info panel
+    const infoBtn = document.getElementById('info-btn');
+    const infoPanel = document.getElementById('info-panel');
+    
+    infoBtn.addEventListener('click', () => {
+      infoPanel.classList.add('visible');
+    });
+    
+    infoPanel.addEventListener('click', () => {
+      infoPanel.classList.remove('visible');
+    });
+    
+    // Navigation
+    document.getElementById('nav-btn').addEventListener('click', () => {
+      window.location.href = '/';
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+  </script>
+</body>
+</html>

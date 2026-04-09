@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 9, 2026 ===
     {
+      name: "Labyrinth",
+      description: "The maze reveals itself only through presence. Move to illuminate the path, but the way behind fades into darkness. Guide your light to the center. There are no wrong turns — only the winding way",
+      date: "Apr 9",
+      href: "/projects/labyrinth/"
+    },
+    {
       name: "Snow",
       description: "Each flake falls alone, but together they transform the world. Move to create wind. Watch it accumulate. Everything softens under enough snow",
       date: "Apr 9",
