@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 9, 2026 ===
     {
+      name: "Hourglass",
+      description: "Before clocks measured time in ticks, hourglasses showed it as a flow. Watch the sand slip through, grain by grain. When it empties, flip it and begin again",
+      date: "Apr 9",
+      href: "/projects/hourglass/"
+    },
+    {
       name: "Labyrinth",
       description: "Like Theseus, you carry a thread. Enter the maze, find the golden center, then follow your crimson thread back out. The way behind fades into darkness, but your thread remains",
       date: "Apr 9",

@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>hourglass — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #1a1612; 
+      overflow: hidden; 
+      touch-action: none;
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; cursor: pointer; }
+    
+    #info-btn, #nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+    #info-btn:hover, #nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    #info-btn { right: 20px; }
+    #nav-btn { right: 66px; font-size: 14px; }
+    
+    #info-panel {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(20,18,14,0.95);
+      color: #c9b896;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      padding: 40px;
+    }
+    #info-panel.visible { display: flex; }
+    #info-content {
+      max-width: 500px;
+      line-height: 1.8;
+    }
+    #info-content h1 { 
+      font-size: 28px; 
+      margin-bottom: 20px;
+      font-weight: normal;
+      color: #d4a857;
+    }
+    #info-content p { 
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    #info-content .quote {
+      font-style: italic;
+      border-left: 2px solid #d4a857;
+      padding-left: 16px;
+      margin: 24px 0;
+      color: #a89070;
+    }
+    #info-content .close {
+      margin-top: 30px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+    }
+    
+    #hint {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.3);
+      font-size: 12px;
+      pointer-events: none;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <button id="nav-btn" title="Back to gallery">←</button>
+  <button id="info-btn" title="About this piece">?</button>
+  
+  <div id="info-panel">
+    <div id="info-content">
+      <h1>hourglass</h1>
+      <p>Before clocks measured time in uniform ticks, hourglasses showed it as a flow — sand slipping through the narrow waist, accumulating below.</p>
+      <p>Each grain falls at its own moment. The pile grows. When the top empties, flip it and begin again.</p>
+      <div class="quote">"The present is a point just passed."<br>— David Russell</div>
+      <p>Click or tap to flip the hourglass.</p>
+      <p class="close">tap anywhere to return</p>
+    </div>
+  </div>
+  
+  <div id="hint">tap to flip</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+    
+    let W, H, centerX, centerY, scale;
+    
+    // Hourglass geometry
+    const glassWidth = 120;
+    const glassHeight = 280;
+    const neckWidth = 12;
+    const neckHeight = 8;
+    const frameWidth = 140;
+    const frameThickness = 12;
+    
+    // Sand particles
+    let topSand = [];
+    let bottomSand = [];
+    let fallingSand = [];
+    const GRAIN_SIZE = 3;
+    const TOTAL_GRAINS = 400;
+    const FLOW_RATE = 2; // grains per frame
+    
+    // State
+    let flipping = false;
+    let flipAngle = 0;
+    let flipSpeed = 0;
+    let audioCtx = null;
+    let initialized = false;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      centerX = W / 2;
+      centerY = H / 2;
+      scale = Math.min(W, H) / 500;
+      
+      if (!initialized) {
+        initSand();
+        initialized = true;
+      }
+    }
+    
+    function initSand() {
+      topSand = [];
+      bottomSand = [];
+      fallingSand = [];
+      
+      // Fill top bulb with sand
+      const bulbHeight = (glassHeight - neckHeight) / 2;
+      const bulbTop = -glassHeight / 2;
+      
+      for (let i = 0; i < TOTAL_GRAINS; i++) {
+        // Random position in top bulb (triangular distribution toward bottom)
+        const t = Math.pow(Math.random(), 0.5); // bias toward bottom
+        const y = bulbTop + bulbHeight * 0.2 + t * bulbHeight * 0.75;
+        
+        // Width at this y position
+        const normalizedY = (y - bulbTop) / bulbHeight;
+        const widthAtY = glassWidth * 0.8 * normalizedY;
+        const x = (Math.random() - 0.5) * widthAtY;
+        
+        topSand.push({
+          x, y,
+          vx: 0, vy: 0,
+          settled: true
+        });
+      }
+    }
+    
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    function playSandSound() {
+      if (!audioCtx) return;
+      
+      // Soft granular sound
+      const bufferSize = audioCtx.sampleRate * 0.02;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3)) * 0.1;
+      }
+      
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.value = 2000 + Math.random() * 2000;
+      
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.03;
+      
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      source.start();
+    }
+    
+    function playFlipSound() {
+      if (!audioCtx) return;
+      
+      // Wooden creak
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(80, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.3);
+      
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    }
+    
+    function flipHourglass() {
+      if (flipping) return;
+      
+      initAudio();
+      playFlipSound();
+      
+      flipping = true;
+      flipSpeed = 0.08;
+      hint.style.opacity = '0';
+    }
+    
+    function updateFlip() {
+      if (!flipping) return;
+      
+      flipAngle += flipSpeed;
+      
+      if (flipAngle >= Math.PI) {
+        flipAngle = 0;
+        flipping = false;
+        
+        // Swap sand piles
+        const temp = topSand;
+        topSand = bottomSand.map(g => ({
+          x: g.x,
+          y: -g.y,
+          vx: 0, vy: 0,
+          settled: true
+        }));
+        bottomSand = temp.map(g => ({
+          x: g.x,
+          y: -g.y,
+          vx: 0, vy: 0,
+          settled: true
+        }));
+        fallingSand = [];
+      }
+    }
+    
+    function updateSand() {
+      if (flipping) return;
+      
+      const bulbHeight = (glassHeight - neckHeight) / 2;
+      const neckY = 0;
+      const bottomBulbTop = neckHeight / 2;
+      const bottomBulbBottom = glassHeight / 2;
+      
+      // Move grains from top pile to falling
+      if (topSand.length > 0 && Math.random() < 0.3) {
+        // Find grains near the neck
+        const nearNeck = topSand.filter(g => 
+          Math.abs(g.x) < neckWidth / 2 && 
+          g.y > -neckHeight / 2 - GRAIN_SIZE * 3
+        );
+        
+        if (nearNeck.length > 0) {
+          const grain = nearNeck[Math.floor(Math.random() * nearNeck.length)];
+          const idx = topSand.indexOf(grain);
+          if (idx >= 0) {
+            topSand.splice(idx, 1);
+            grain.settled = false;
+            grain.vy = 1;
+            fallingSand.push(grain);
+            playSandSound();
+          }
+        }
+      }
+      
+      // Update falling sand
+      for (let i = fallingSand.length - 1; i >= 0; i--) {
+        const g = fallingSand[i];
+        
+        g.vy += 0.2; // gravity
+        g.y += g.vy;
+        g.x += g.vx;
+        
+        // Bounce off neck walls
+        if (g.y < bottomBulbTop && g.y > -neckHeight / 2) {
+          if (Math.abs(g.x) > neckWidth / 2 - GRAIN_SIZE) {
+            g.x = Math.sign(g.x) * (neckWidth / 2 - GRAIN_SIZE);
+            g.vx = -g.vx * 0.3;
+          }
+        }
+        
+        // Check collision with bottom bulb walls
+        if (g.y > bottomBulbTop) {
+          const normalizedY = (g.y - bottomBulbTop) / bulbHeight;
+          const maxX = glassWidth * 0.4 * (1 - normalizedY * 0.8);
+          
+          if (Math.abs(g.x) > maxX) {
+            g.x = Math.sign(g.x) * maxX;
+            g.vx = -g.vx * 0.3;
+          }
+        }
+        
+        // Check if hit bottom or other grains
+        let landed = false;
+        
+        // Hit bottom of glass
+        if (g.y > bottomBulbBottom - GRAIN_SIZE * 2) {
+          g.y = bottomBulbBottom - GRAIN_SIZE * 2;
+          landed = true;
+        }
+        
+        // Hit pile of sand
+        for (const other of bottomSand) {
+          const dx = g.x - other.x;
+          const dy = g.y - other.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < GRAIN_SIZE * 2 && g.y > other.y - GRAIN_SIZE) {
+            // Slide to the side
+            g.x += (Math.random() - 0.5) * GRAIN_SIZE * 2;
+            g.y = other.y - GRAIN_SIZE * 1.5;
+            landed = true;
+            break;
+          }
+        }
+        
+        if (landed) {
+          g.settled = true;
+          g.vx = 0;
+          g.vy = 0;
+          bottomSand.push(g);
+          fallingSand.splice(i, 1);
+          playSandSound();
+        }
+      }
+      
+      // Settle top sand (fill gaps near neck)
+      for (const g of topSand) {
+        if (!g.settled) continue;
+        
+        // Gravity toward neck
+        if (g.y < -neckHeight / 2 - GRAIN_SIZE * 2) {
+          const targetX = 0;
+          const targetY = -neckHeight / 2;
+          
+          g.x += (targetX - g.x) * 0.01;
+          g.y += 0.1;
+          
+          // Check collision with other grains
+          for (const other of topSand) {
+            if (other === g) continue;
+            const dx = g.x - other.x;
+            const dy = g.y - other.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist < GRAIN_SIZE * 2) {
+              g.y = other.y - GRAIN_SIZE * 1.8;
+              break;
+            }
+          }
+        }
+      }
+    }
+    
+    function drawHourglass() {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.scale(scale, scale);
+      ctx.rotate(flipAngle);
+      
+      // Wooden frame
+      ctx.fillStyle = '#4a3728';
+      ctx.strokeStyle = '#2a1f18';
+      ctx.lineWidth = 2;
+      
+      // Top frame
+      ctx.fillRect(-frameWidth / 2, -glassHeight / 2 - frameThickness, frameWidth, frameThickness);
+      ctx.strokeRect(-frameWidth / 2, -glassHeight / 2 - frameThickness, frameWidth, frameThickness);
+      
+      // Bottom frame
+      ctx.fillRect(-frameWidth / 2, glassHeight / 2, frameWidth, frameThickness);
+      ctx.strokeRect(-frameWidth / 2, glassHeight / 2, frameWidth, frameThickness);
+      
+      // Side posts
+      ctx.fillRect(-frameWidth / 2, -glassHeight / 2, 8, glassHeight);
+      ctx.fillRect(frameWidth / 2 - 8, -glassHeight / 2, 8, glassHeight);
+      
+      // Glass outline
+      ctx.strokeStyle = 'rgba(200, 220, 255, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      
+      // Top bulb (inverted triangle shape)
+      const bulbH = (glassHeight - neckHeight) / 2;
+      ctx.moveTo(-glassWidth / 2, -glassHeight / 2);
+      ctx.lineTo(-neckWidth / 2, -neckHeight / 2);
+      ctx.lineTo(-neckWidth / 2, neckHeight / 2);
+      ctx.lineTo(-glassWidth / 2, glassHeight / 2);
+      
+      ctx.moveTo(glassWidth / 2, -glassHeight / 2);
+      ctx.lineTo(neckWidth / 2, -neckHeight / 2);
+      ctx.lineTo(neckWidth / 2, neckHeight / 2);
+      ctx.lineTo(glassWidth / 2, glassHeight / 2);
+      
+      ctx.stroke();
+      
+      // Glass fill (very subtle)
+      ctx.fillStyle = 'rgba(200, 220, 255, 0.05)';
+      ctx.beginPath();
+      ctx.moveTo(-glassWidth / 2, -glassHeight / 2);
+      ctx.lineTo(-neckWidth / 2, -neckHeight / 2);
+      ctx.lineTo(neckWidth / 2, -neckHeight / 2);
+      ctx.lineTo(glassWidth / 2, -glassHeight / 2);
+      ctx.closePath();
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.moveTo(-glassWidth / 2, glassHeight / 2);
+      ctx.lineTo(-neckWidth / 2, neckHeight / 2);
+      ctx.lineTo(neckWidth / 2, neckHeight / 2);
+      ctx.lineTo(glassWidth / 2, glassHeight / 2);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Draw sand
+      ctx.fillStyle = '#d4a857';
+      
+      // Top sand
+      for (const g of topSand) {
+        ctx.beginPath();
+        ctx.arc(g.x, g.y, GRAIN_SIZE, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Falling sand
+      for (const g of fallingSand) {
+        ctx.beginPath();
+        ctx.arc(g.x, g.y, GRAIN_SIZE, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Bottom sand
+      for (const g of bottomSand) {
+        ctx.beginPath();
+        ctx.arc(g.x, g.y, GRAIN_SIZE, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+    
+    function draw() {
+      ctx.fillStyle = '#1a1612';
+      ctx.fillRect(0, 0, W, H);
+      
+      updateFlip();
+      updateSand();
+      drawHourglass();
+      
+      // Show hint when sand runs low
+      if (topSand.length === 0 && fallingSand.length === 0 && !flipping) {
+        hint.style.opacity = '0.5';
+        hint.textContent = 'tap to flip';
+      }
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Interaction
+    canvas.addEventListener('click', flipHourglass);
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      flipHourglass();
+    });
+    
+    // Info panel
+    const infoBtn = document.getElementById('info-btn');
+    const infoPanel = document.getElementById('info-panel');
+    
+    infoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      infoPanel.classList.add('visible');
+    });
+    
+    infoPanel.addEventListener('click', () => {
+      infoPanel.classList.remove('visible');
+    });
+    
+    document.getElementById('nav-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.location.href = '/';
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+  </script>
+</body>
+</html>
