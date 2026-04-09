@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| musicbox | Mechanical music — wind it up, watch cylinder turn, tines pluck out Für Elise | 1 session | Apr 9 |
 | hourglass | Sand flowing through time — watch grains fall, flip when empty, meditate on impermanence | 1 session | Apr 9 |
 | labyrinth | Maze revealed by presence — guide light to center, path fades behind you | 1 session | Apr 9 |
 | snow | Winter stillness — falling flakes, accumulation, wind influence, soft sounds | 1 session | Apr 9 |

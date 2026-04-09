@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 9, 2026 ===
     {
+      name: "Music Box",
+      description: "A mechanical marvel. A cylinder studded with pins rotates against a steel comb — each pin plucks a tine, and music emerges from pure mechanism. Drag up to wind",
+      date: "Apr 9",
+      href: "/projects/musicbox/"
+    },
+    {
       name: "Hourglass",
       description: "Before clocks measured time in ticks, hourglasses showed it as a flow. Watch the sand slip through, grain by grain. When it empties, flip it and begin again",
       date: "Apr 9",

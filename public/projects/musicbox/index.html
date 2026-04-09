@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>music box — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: linear-gradient(to bottom, #2a2520, #1a1815);
+      overflow: hidden; 
+      touch-action: none;
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; cursor: pointer; }
+    
+    #info-btn, #nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+    #info-btn:hover, #nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    #info-btn { right: 20px; }
+    #nav-btn { right: 66px; font-size: 14px; }
+    
+    #info-panel {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(20,18,15,0.95);
+      color: #c9b896;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      padding: 40px;
+    }
+    #info-panel.visible { display: flex; }
+    #info-content {
+      max-width: 500px;
+      line-height: 1.8;
+    }
+    #info-content h1 { 
+      font-size: 28px; 
+      margin-bottom: 20px;
+      font-weight: normal;
+      color: #d4a857;
+    }
+    #info-content p { 
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    #info-content .quote {
+      font-style: italic;
+      border-left: 2px solid #d4a857;
+      padding-left: 16px;
+      margin: 24px 0;
+      color: #a89070;
+    }
+    #info-content .close {
+      margin-top: 30px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+    }
+    
+    #hint {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      pointer-events: none;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <button id="nav-btn" title="Back to gallery">←</button>
+  <button id="info-btn" title="About this piece">?</button>
+  
+  <div id="info-panel">
+    <div id="info-content">
+      <h1>music box</h1>
+      <p>A mechanical marvel from the 18th century. A cylinder studded with pins rotates against a steel comb — each pin plucks a tine, and music emerges from pure mechanism.</p>
+      <p>Wind it up and listen. The melody plays until the spring unwinds.</p>
+      <div class="quote">"Music boxes are memories made audible."<br>— Unknown</div>
+      <p>Click or drag upward to wind. The more you wind, the longer it plays.</p>
+      <p class="close">tap anywhere to return</p>
+    </div>
+  </div>
+  
+  <div id="hint">drag up to wind</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+    
+    let W, H, centerX, centerY, scale;
+    
+    // Music box state
+    let windLevel = 0; // 0-100
+    let isPlaying = false;
+    let cylinderAngle = 0;
+    let lastNoteTime = 0;
+    let currentNote = 0;
+    
+    // Melody - "Für Elise" simplified (relative semitones from A4)
+    const melody = [
+      4, 3, 4, 3, 4, -1, 2, 0, -3, // E D# E D# E B D C A
+      null, -8, -5, -3, -1, // rest, low E, G#, B, D
+      null, -5, 0, -1, 2, // rest, low A, C, D, E
+      null, -8, -5, -1, 0, // rest, low E, G#, D, C
+      -1, -3, // D, B
+      4, 3, 4, 3, 4, -1, 2, 0, -3, // repeat first phrase
+    ];
+    
+    // Tine positions (visual)
+    const numTines = 12;
+    const tines = [];
+    
+    // Audio
+    let audioCtx = null;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      centerX = W / 2;
+      centerY = H / 2;
+      scale = Math.min(W, H) / 400;
+      
+      // Initialize tines
+      tines.length = 0;
+      for (let i = 0; i < numTines; i++) {
+        tines.push({
+          deflection: 0,
+          velocity: 0
+        });
+      }
+    }
+    
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    function playNote(semitone) {
+      if (!audioCtx || semitone === null) return;
+      
+      // A4 = 440Hz, calculate frequency
+      const freq = 440 * Math.pow(2, semitone / 12);
+      
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+      
+      // Music box timbre - metallic, bell-like
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      
+      filter.type = 'highpass';
+      filter.frequency.value = 500;
+      
+      // Sharp attack, gentle decay
+      const now = audioCtx.currentTime;
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+      
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start(now);
+      osc.stop(now + 1.5);
+      
+      // Add slight harmonic
+      const osc2 = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.value = freq * 2;
+      gain2.gain.setValueAtTime(0, now);
+      gain2.gain.linearRampToValueAtTime(0.1, now + 0.01);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+      osc2.connect(gain2);
+      gain2.connect(audioCtx.destination);
+      osc2.start(now);
+      osc2.stop(now + 0.8);
+      
+      // Pluck the visual tine
+      const tineIndex = Math.floor((semitone + 12) / 2) % numTines;
+      if (tines[tineIndex]) {
+        tines[tineIndex].deflection = 8;
+        tines[tineIndex].velocity = -2;
+      }
+    }
+    
+    function playWindSound() {
+      if (!audioCtx) return;
+      
+      // Ratchet click
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'square';
+      osc.frequency.value = 80;
+      
+      gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.05);
+    }
+    
+    function update() {
+      // Update tine physics
+      for (const tine of tines) {
+        tine.velocity += -tine.deflection * 0.3; // spring
+        tine.velocity *= 0.85; // damping
+        tine.deflection += tine.velocity;
+      }
+      
+      // Play music if wound
+      if (windLevel > 0) {
+        isPlaying = true;
+        const now = Date.now();
+        const noteInterval = 200; // ms between notes
+        
+        if (now - lastNoteTime > noteInterval) {
+          playNote(melody[currentNote % melody.length]);
+          currentNote++;
+          lastNoteTime = now;
+          windLevel -= 0.5;
+          cylinderAngle += 0.1;
+        }
+        
+        cylinderAngle += 0.02;
+      } else {
+        isPlaying = false;
+        if (windLevel < 0) windLevel = 0;
+      }
+    }
+    
+    function drawBox() {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.scale(scale, scale);
+      
+      // Wooden box base
+      const boxW = 280;
+      const boxH = 180;
+      const boxD = 60;
+      
+      // Box top (lid open)
+      ctx.fillStyle = '#5c4a3a';
+      ctx.strokeStyle = '#3a2a1a';
+      ctx.lineWidth = 2;
+      
+      // Back panel
+      ctx.fillStyle = '#4a3828';
+      ctx.fillRect(-boxW/2, -boxH/2 - 80, boxW, 80);
+      ctx.strokeRect(-boxW/2, -boxH/2 - 80, boxW, 80);
+      
+      // Main box body
+      ctx.fillStyle = '#5c4a3a';
+      ctx.fillRect(-boxW/2, -boxH/2, boxW, boxH);
+      ctx.strokeRect(-boxW/2, -boxH/2, boxW, boxH);
+      
+      // Inner velvet lining
+      ctx.fillStyle = '#8b2942';
+      ctx.fillRect(-boxW/2 + 15, -boxH/2 + 15, boxW - 30, boxH - 30);
+      
+      // Cylinder
+      const cylX = -40;
+      const cylY = 20;
+      const cylW = 120;
+      const cylR = 30;
+      
+      ctx.fillStyle = '#c9a857';
+      ctx.strokeStyle = '#8a7030';
+      ctx.lineWidth = 1;
+      
+      // Cylinder body
+      ctx.beginPath();
+      ctx.ellipse(cylX - cylW/2, cylY, cylR, cylR * 0.4, 0, Math.PI * 0.5, Math.PI * 1.5);
+      ctx.lineTo(cylX + cylW/2, cylY - cylR * 0.4);
+      ctx.ellipse(cylX + cylW/2, cylY, cylR, cylR * 0.4, 0, -Math.PI * 0.5, Math.PI * 0.5);
+      ctx.lineTo(cylX - cylW/2, cylY + cylR * 0.4);
+      ctx.fill();
+      ctx.stroke();
+      
+      // Cylinder pins (rotating)
+      ctx.fillStyle = '#ffd700';
+      const pinCount = 24;
+      for (let i = 0; i < pinCount; i++) {
+        const angle = cylinderAngle + (i / pinCount) * Math.PI * 2;
+        if (Math.cos(angle) > 0) { // only show front-facing pins
+          const px = cylX - cylW/2 + 10 + (i % 8) * 14;
+          const py = cylY + Math.sin(angle) * cylR * 0.35;
+          const pinH = 3 + Math.cos(angle) * 2;
+          
+          ctx.beginPath();
+          ctx.arc(px, py - pinH, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      
+      // Steel comb (tines)
+      const combX = 80;
+      const combY = 10;
+      const combW = 60;
+      const tineH = 40;
+      
+      // Comb base
+      ctx.fillStyle = '#a0a0a0';
+      ctx.fillRect(combX - 10, combY - 5, 20, numTines * 5 + 10);
+      
+      // Individual tines
+      ctx.strokeStyle = '#c0c0c0';
+      ctx.lineWidth = 2;
+      
+      for (let i = 0; i < numTines; i++) {
+        const ty = combY + i * 5;
+        const deflection = tines[i]?.deflection || 0;
+        
+        ctx.beginPath();
+        ctx.moveTo(combX, ty);
+        ctx.quadraticCurveTo(
+          combX - 30 + deflection, ty,
+          combX - tineH, ty
+        );
+        ctx.stroke();
+        
+        // Tine tip
+        ctx.fillStyle = '#e0e0e0';
+        ctx.beginPath();
+        ctx.arc(combX - tineH, ty, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Wind key (on side)
+      const keyAngle = (windLevel / 100) * Math.PI * 4;
+      const keyX = boxW/2 - 5;
+      const keyY = 30;
+      
+      ctx.fillStyle = '#c9a857';
+      ctx.strokeStyle = '#8a7030';
+      ctx.lineWidth = 2;
+      
+      // Key shaft
+      ctx.beginPath();
+      ctx.arc(keyX, keyY, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      
+      // Key handle
+      ctx.save();
+      ctx.translate(keyX + 10, keyY);
+      ctx.rotate(keyAngle);
+      ctx.fillRect(-3, -15, 6, 30);
+      ctx.beginPath();
+      ctx.arc(0, -15, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.arc(0, 15, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      
+      // Wind level indicator
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.font = '14px Georgia';
+      ctx.textAlign = 'center';
+      if (windLevel > 0) {
+        ctx.fillText(Math.ceil(windLevel) + '%', keyX + 10, keyY + 50);
+      }
+      
+      ctx.restore();
+    }
+    
+    function draw() {
+      // Background
+      const gradient = ctx.createLinearGradient(0, 0, 0, H);
+      gradient.addColorStop(0, '#2a2520');
+      gradient.addColorStop(1, '#1a1815');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, W, H);
+      
+      update();
+      drawBox();
+      
+      // Update hint
+      if (windLevel <= 0 && !isPlaying) {
+        hint.style.opacity = '0.5';
+      } else {
+        hint.style.opacity = '0';
+      }
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Interaction - drag to wind
+    let isDragging = false;
+    let lastY = 0;
+    
+    function startDrag(y) {
+      initAudio();
+      isDragging = true;
+      lastY = y;
+    }
+    
+    function doDrag(y) {
+      if (!isDragging) return;
+      
+      const dy = lastY - y; // upward = positive
+      if (dy > 0) {
+        windLevel = Math.min(100, windLevel + dy * 0.2);
+        if (Math.random() < 0.1) playWindSound();
+      }
+      lastY = y;
+    }
+    
+    function endDrag() {
+      isDragging = false;
+    }
+    
+    canvas.addEventListener('mousedown', (e) => startDrag(e.clientY));
+    canvas.addEventListener('mousemove', (e) => doDrag(e.clientY));
+    canvas.addEventListener('mouseup', endDrag);
+    canvas.addEventListener('mouseleave', endDrag);
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      startDrag(e.touches[0].clientY);
+    });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      doDrag(e.touches[0].clientY);
+    });
+    canvas.addEventListener('touchend', endDrag);
+    
+    // Info panel
+    const infoBtn = document.getElementById('info-btn');
+    const infoPanel = document.getElementById('info-panel');
+    
+    infoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      infoPanel.classList.add('visible');
+    });
+    
+    infoPanel.addEventListener('click', () => {
+      infoPanel.classList.remove('visible');
+    });
+    
+    document.getElementById('nav-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.location.href = '/';
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+  </script>
+</body>
+</html>
