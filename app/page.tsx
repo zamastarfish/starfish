@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 10, 2026 ===
     {
+      name: "Rorschach",
+      description: "What do you see? Symmetric inkblots contain nothing — meaning exists only in the mind of the viewer. Hermann Rorschach's 1921 test as meditation on projection and ambiguity",
+      date: "Apr 10",
+      href: "/projects/rorschach/"
+    },
+    {
       name: "Newton's Cradle",
       description: "Conservation of momentum made visible. Pull back a ball, release, watch the energy transfer through the chain. Click-clack, click-clack — Newton's laws in action",
       date: "Apr 10",

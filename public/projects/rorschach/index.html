@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>rorschach — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: #f5f2eb;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    #canvas-container {
+      position: relative;
+      width: 90vmin;
+      height: 70vmin;
+      max-width: 600px;
+      max-height: 500px;
+    }
+    
+    canvas {
+      width: 100%;
+      height: 100%;
+      background: #f5f2eb;
+      cursor: pointer;
+    }
+    
+    .card {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #faf8f3;
+      border: 1px solid #d0c9b8;
+      box-shadow: 2px 4px 12px rgba(0,0,0,0.08);
+      padding: 40px;
+      border-radius: 2px;
+    }
+    
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #8a8578;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      opacity: 0.7;
+    }
+    
+    .plate-number {
+      position: fixed;
+      top: 20px;
+      right: 24px;
+      color: #8a8578;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    
+    /* Nav button */
+    .nav-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.8);
+      border: 1px solid #d0c9b8;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: #5a5347;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      z-index: 1000;
+    }
+    
+    .nav-btn:hover {
+      background: #fff;
+      transform: scale(1.05);
+    }
+    
+    /* Info button */
+    .info-btn {
+      position: fixed;
+      top: 16px;
+      left: 60px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.8);
+      border: 1px solid #d0c9b8;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: #5a5347;
+      transition: all 0.2s ease;
+      z-index: 1000;
+    }
+    
+    .info-btn:hover {
+      background: #fff;
+      transform: scale(1.05);
+    }
+    
+    /* Info panel */
+    .info-panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(245, 242, 235, 0.97);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    
+    .info-panel.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    .info-content {
+      max-width: 480px;
+      padding: 40px;
+      color: #3a3632;
+      line-height: 1.7;
+    }
+    
+    .info-content h2 {
+      font-size: 24px;
+      margin-bottom: 16px;
+      font-weight: normal;
+      letter-spacing: 2px;
+    }
+    
+    .info-content p {
+      margin-bottom: 14px;
+      font-size: 14px;
+    }
+    
+    .info-content .quote {
+      font-style: italic;
+      color: #6a6358;
+      border-left: 2px solid #d0c9b8;
+      padding-left: 16px;
+      margin: 20px 0;
+    }
+    
+    .close-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: transparent;
+      border: 1px solid #d0c9b8;
+      cursor: pointer;
+      font-size: 20px;
+      color: #5a5347;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="nav-btn" title="Gallery">←</a>
+  <button class="info-btn" title="About this piece">?</button>
+  
+  <div class="plate-number">Plate <span id="plate">I</span></div>
+  
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+  
+  <div class="hint">click to generate new plate</div>
+  
+  <div class="info-panel" id="info-panel">
+    <button class="close-btn" id="close-info">×</button>
+    <div class="info-content">
+      <h2>RORSCHACH</h2>
+      <p>The inkblot test was developed by Swiss psychiatrist Hermann Rorschach in 1921. Patients were shown ambiguous symmetric images and asked what they saw.</p>
+      <p>The images themselves contain nothing — they are accidents of ink folded on paper. Meaning exists only in the mind of the viewer.</p>
+      <div class="quote">
+        "We see things not as they are, but as we are."<br>
+        — attributed to Anaïs Nin
+      </div>
+      <p>What do you see in these shapes? A butterfly? Two figures? Something from a dream you've forgotten?</p>
+      <p>The question is not what the inkblot is. The question is what you bring to it.</p>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('canvas-container');
+    const plateEl = document.getElementById('plate');
+    const infoPanel = document.getElementById('info-panel');
+    const infoBtn = document.querySelector('.info-btn');
+    const closeInfo = document.getElementById('close-info');
+    
+    let width, height;
+    let plateNumber = 1;
+    const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+    
+    // Audio context
+    let audioCtx = null;
+    let droneOsc1, droneOsc2, droneGain;
+    let noiseNode, noiseGain;
+    let audioStarted = false;
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Deep drone - mysterious, clinical
+      const masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.15;
+      masterGain.connect(audioCtx.destination);
+      
+      // Low drone oscillators - detuned for dissonance
+      droneOsc1 = audioCtx.createOscillator();
+      droneOsc1.type = 'sine';
+      droneOsc1.frequency.value = 55; // A1
+      
+      droneOsc2 = audioCtx.createOscillator();
+      droneOsc2.type = 'sine';
+      droneOsc2.frequency.value = 55.5; // slight detune for beating
+      
+      const droneOsc3 = audioCtx.createOscillator();
+      droneOsc3.type = 'triangle';
+      droneOsc3.frequency.value = 82.5; // E2 - slightly flat
+      
+      droneGain = audioCtx.createGain();
+      droneGain.gain.value = 0.4;
+      
+      // Filter for warmth
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 200;
+      filter.Q.value = 1;
+      
+      droneOsc1.connect(droneGain);
+      droneOsc2.connect(droneGain);
+      droneOsc3.connect(droneGain);
+      droneGain.connect(filter);
+      filter.connect(masterGain);
+      
+      droneOsc1.start();
+      droneOsc2.start();
+      droneOsc3.start();
+      
+      // Filtered noise - like distant static or wind
+      const bufferSize = 2 * audioCtx.sampleRate;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      
+      noiseNode = audioCtx.createBufferSource();
+      noiseNode.buffer = noiseBuffer;
+      noiseNode.loop = true;
+      
+      const noiseFilter = audioCtx.createBiquadFilter();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.value = 400;
+      noiseFilter.Q.value = 0.5;
+      
+      noiseGain = audioCtx.createGain();
+      noiseGain.gain.value = 0.08;
+      
+      noiseNode.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      noiseNode.start();
+      
+      audioStarted = true;
+    }
+    
+    function playRevealSound() {
+      if (!audioCtx) return;
+      
+      // Soft reveal - like paper unfolding
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.value = 220;
+      osc.frequency.exponentialRampToValueAtTime(110, audioCtx.currentTime + 0.5);
+      
+      gain.gain.value = 0.1;
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.8);
+    }
+    
+    function resize() {
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      width = rect.width;
+      height = rect.height;
+    }
+    
+    // Generate inkblot using layered random shapes
+    function generateInkblot() {
+      ctx.fillStyle = '#f5f2eb';
+      ctx.fillRect(0, 0, width, height);
+      
+      const centerX = width / 2;
+      const centerY = height / 2;
+      
+      // Use dark ink colors - occasionally chromatic (like actual Rorschach plates)
+      const isChromatic = Math.random() < 0.3;
+      let inkColor;
+      if (isChromatic) {
+        const hue = Math.random() * 30 + 350; // reds
+        inkColor = `hsla(${hue % 360}, 40%, 25%, `;
+      } else {
+        inkColor = 'rgba(20, 18, 15, ';
+      }
+      
+      // Multiple layers of ink splotches
+      const numLayers = 3 + Math.floor(Math.random() * 3);
+      
+      for (let layer = 0; layer < numLayers; layer++) {
+        const opacity = 0.3 + Math.random() * 0.4;
+        ctx.fillStyle = inkColor + opacity + ')';
+        
+        // Generate random points on one side
+        const numBlobs = 5 + Math.floor(Math.random() * 8);
+        
+        for (let i = 0; i < numBlobs; i++) {
+          const blobX = Math.random() * (width * 0.4);
+          const blobY = (Math.random() - 0.5) * height * 0.7 + centerY;
+          const blobSize = 20 + Math.random() * 60;
+          
+          // Draw organic blob shape
+          drawBlob(centerX + blobX, blobY, blobSize);
+          // Mirror it
+          drawBlob(centerX - blobX, blobY, blobSize);
+        }
+        
+        // Add some connected streaks
+        const numStreaks = 2 + Math.floor(Math.random() * 4);
+        for (let i = 0; i < numStreaks; i++) {
+          const startY = (Math.random() - 0.5) * height * 0.6 + centerY;
+          const endY = startY + (Math.random() - 0.5) * 100;
+          const streakX = Math.random() * (width * 0.35);
+          const streakWidth = 5 + Math.random() * 15;
+          
+          ctx.beginPath();
+          ctx.moveTo(centerX + streakX, startY);
+          ctx.quadraticCurveTo(
+            centerX + streakX + (Math.random() - 0.5) * 30,
+            (startY + endY) / 2,
+            centerX + streakX * 0.8,
+            endY
+          );
+          ctx.lineWidth = streakWidth;
+          ctx.strokeStyle = inkColor + (opacity * 0.5) + ')';
+          ctx.lineCap = 'round';
+          ctx.stroke();
+          
+          // Mirror
+          ctx.beginPath();
+          ctx.moveTo(centerX - streakX, startY);
+          ctx.quadraticCurveTo(
+            centerX - streakX - (Math.random() - 0.5) * 30,
+            (startY + endY) / 2,
+            centerX - streakX * 0.8,
+            endY
+          );
+          ctx.stroke();
+        }
+      }
+      
+      // Add some small dots (ink splatter)
+      const numDots = 20 + Math.floor(Math.random() * 30);
+      for (let i = 0; i < numDots; i++) {
+        const dotX = Math.random() * (width * 0.45);
+        const dotY = (Math.random() - 0.5) * height * 0.8 + centerY;
+        const dotSize = 1 + Math.random() * 4;
+        
+        ctx.fillStyle = inkColor + (0.2 + Math.random() * 0.3) + ')';
+        ctx.beginPath();
+        ctx.arc(centerX + dotX, dotY, dotSize, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.arc(centerX - dotX, dotY, dotSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Apply paper texture
+      applyTexture();
+    }
+    
+    function drawBlob(x, y, size) {
+      ctx.beginPath();
+      
+      const numPoints = 8 + Math.floor(Math.random() * 6);
+      const angleStep = (Math.PI * 2) / numPoints;
+      
+      for (let i = 0; i <= numPoints; i++) {
+        const angle = i * angleStep;
+        const radius = size * (0.5 + Math.random() * 0.5);
+        const px = x + Math.cos(angle) * radius;
+        const py = y + Math.sin(angle) * radius;
+        
+        if (i === 0) {
+          ctx.moveTo(px, py);
+        } else {
+          // Use quadratic curves for organic feel
+          const prevAngle = (i - 0.5) * angleStep;
+          const cpRadius = size * (0.3 + Math.random() * 0.4);
+          const cpx = x + Math.cos(prevAngle) * cpRadius;
+          const cpy = y + Math.sin(prevAngle) * cpRadius;
+          ctx.quadraticCurveTo(cpx, cpy, px, py);
+        }
+      }
+      
+      ctx.closePath();
+      ctx.fill();
+    }
+    
+    function applyTexture() {
+      // Subtle paper grain
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 8;
+        data[i] = Math.min(255, Math.max(0, data[i] + noise));
+        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
+        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+    }
+    
+    function nextPlate() {
+      initAudio();
+      playRevealSound();
+      
+      plateNumber = (plateNumber % 10) + 1;
+      plateEl.textContent = romanNumerals[plateNumber - 1];
+      
+      // Fade out, generate, fade in
+      canvas.style.opacity = 0;
+      canvas.style.transition = 'opacity 0.3s ease';
+      
+      setTimeout(() => {
+        generateInkblot();
+        canvas.style.opacity = 1;
+      }, 300);
+    }
+    
+    // Event listeners
+    canvas.addEventListener('click', nextPlate);
+    
+    infoBtn.addEventListener('click', () => {
+      infoPanel.classList.add('visible');
+    });
+    
+    closeInfo.addEventListener('click', () => {
+      infoPanel.classList.remove('visible');
+    });
+    
+    infoPanel.addEventListener('click', (e) => {
+      if (e.target === infoPanel) {
+        infoPanel.classList.remove('visible');
+      }
+    });
+    
+    window.addEventListener('resize', () => {
+      resize();
+      generateInkblot();
+    });
+    
+    // Initialize
+    resize();
+    generateInkblot();
+  </script>
+</body>
+</html>
