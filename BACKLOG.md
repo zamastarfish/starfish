@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| cradle | Newton's cradle — momentum transfer, satisfying click-clack physics | 1 session | Apr 10 |
 | musicbox | Mechanical music — wind it up, watch cylinder turn, tines pluck out Für Elise | 1 session | Apr 9 |
 | hourglass | Sand flowing through time — watch grains fall, flip when empty, meditate on impermanence | 1 session | Apr 9 |
 | labyrinth | Maze revealed by presence — guide light to center, path fades behind you | 1 session | Apr 9 |

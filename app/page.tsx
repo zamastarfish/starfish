@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === April 10, 2026 ===
+    {
+      name: "Newton's Cradle",
+      description: "Conservation of momentum made visible. Pull back a ball, release, watch the energy transfer through the chain. Click-clack, click-clack — Newton's laws in action",
+      date: "Apr 10",
+      href: "/projects/cradle/"
+    },
     // === April 9, 2026 ===
     {
       name: "Music Box",

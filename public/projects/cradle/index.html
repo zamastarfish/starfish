@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>newton's cradle — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #1a1a1e;
+      overflow: hidden; 
+      touch-action: none;
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; cursor: pointer; }
+    
+    #info-btn, #nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+    #info-btn:hover, #nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    #info-btn { right: 20px; }
+    #nav-btn { right: 66px; font-size: 14px; }
+    
+    #info-panel {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(20,20,24,0.95);
+      color: #c9c9d0;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      padding: 40px;
+    }
+    #info-panel.visible { display: flex; }
+    #info-content {
+      max-width: 500px;
+      line-height: 1.8;
+    }
+    #info-content h1 { 
+      font-size: 28px; 
+      margin-bottom: 20px;
+      font-weight: normal;
+      color: #a0a0b0;
+    }
+    #info-content p { 
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    #info-content .quote {
+      font-style: italic;
+      border-left: 2px solid #a0a0b0;
+      padding-left: 16px;
+      margin: 24px 0;
+      color: #808090;
+    }
+    #info-content .close {
+      margin-top: 30px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+    }
+    
+    #hint {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.3);
+      font-size: 12px;
+      pointer-events: none;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <button id="nav-btn" title="Back to gallery">←</button>
+  <button id="info-btn" title="About this piece">?</button>
+  
+  <div id="info-panel">
+    <div id="info-content">
+      <h1>newton's cradle</h1>
+      <p>A demonstration of conservation of momentum and energy. When one ball swings down and strikes, it stops — transferring its momentum through the chain to launch the ball at the other end.</p>
+      <p>Invented by actor Simon Prebble in 1967, named after Isaac Newton whose laws it demonstrates.</p>
+      <div class="quote">"For every action, there is an equal and opposite reaction."<br>— Newton's Third Law</div>
+      <p>Drag a ball to pull it back, then release. The energy passes through.</p>
+      <p class="close">tap anywhere to return</p>
+    </div>
+  </div>
+  
+  <div id="hint">drag a ball to start</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+    
+    let W, H, centerX, centerY;
+    
+    // Physics constants
+    const GRAVITY = 0.4;
+    const DAMPING = 0.999;
+    const COLLISION_DAMPING = 0.98;
+    
+    // Cradle setup
+    const NUM_BALLS = 5;
+    const BALL_RADIUS = 25;
+    const STRING_LENGTH = 200;
+    let balls = [];
+    let frameTop;
+    
+    // Interaction
+    let draggedBall = null;
+    let audioCtx = null;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      centerX = W / 2;
+      centerY = H / 2;
+      frameTop = centerY - STRING_LENGTH * 0.3;
+      
+      initBalls();
+    }
+    
+    function initBalls() {
+      balls = [];
+      const totalWidth = (NUM_BALLS - 1) * BALL_RADIUS * 2;
+      const startX = centerX - totalWidth / 2;
+      
+      for (let i = 0; i < NUM_BALLS; i++) {
+        balls.push({
+          anchorX: startX + i * BALL_RADIUS * 2,
+          anchorY: frameTop,
+          angle: 0,
+          angularVel: 0,
+          x: startX + i * BALL_RADIUS * 2,
+          y: frameTop + STRING_LENGTH
+        });
+      }
+    }
+    
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    function playClick(velocity) {
+      if (!audioCtx) return;
+      
+      const vol = Math.min(0.5, Math.abs(velocity) * 0.1);
+      if (vol < 0.01) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Metallic click
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800 + Math.random() * 200, now);
+      osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+      
+      filter.type = 'highpass';
+      filter.frequency.value = 200;
+      
+      gain.gain.setValueAtTime(vol, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start(now);
+      osc.stop(now + 0.3);
+      
+      // Low thud
+      const osc2 = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      
+      osc2.type = 'sine';
+      osc2.frequency.value = 80;
+      
+      gain2.gain.setValueAtTime(vol * 0.5, now);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      
+      osc2.connect(gain2);
+      gain2.connect(audioCtx.destination);
+      
+      osc2.start(now);
+      osc2.stop(now + 0.15);
+    }
+    
+    function update() {
+      // Update physics for each ball
+      for (let i = 0; i < balls.length; i++) {
+        const ball = balls[i];
+        
+        if (ball === draggedBall) continue;
+        
+        // Pendulum physics
+        const gravityForce = GRAVITY * Math.sin(ball.angle);
+        ball.angularVel -= gravityForce / STRING_LENGTH;
+        ball.angularVel *= DAMPING;
+        ball.angle += ball.angularVel;
+        
+        // Update position
+        ball.x = ball.anchorX + Math.sin(ball.angle) * STRING_LENGTH;
+        ball.y = ball.anchorY + Math.cos(ball.angle) * STRING_LENGTH;
+      }
+      
+      // Check collisions
+      for (let i = 0; i < balls.length - 1; i++) {
+        const b1 = balls[i];
+        const b2 = balls[i + 1];
+        
+        if (b1 === draggedBall || b2 === draggedBall) continue;
+        
+        const dx = b2.x - b1.x;
+        const dy = b2.y - b1.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < BALL_RADIUS * 2) {
+          // Collision! Transfer momentum
+          const relVel = b1.angularVel - b2.angularVel;
+          
+          if (relVel > 0.001) {
+            playClick(relVel);
+          }
+          
+          // Simple momentum transfer
+          const temp = b1.angularVel;
+          b1.angularVel = b2.angularVel * COLLISION_DAMPING;
+          b2.angularVel = temp * COLLISION_DAMPING;
+          
+          // Separate balls
+          const overlap = BALL_RADIUS * 2 - dist;
+          const nx = dx / dist;
+          b1.angle -= nx * overlap * 0.002;
+          b2.angle += nx * overlap * 0.002;
+        }
+      }
+    }
+    
+    function drawFrame() {
+      // Top bar
+      ctx.fillStyle = '#404050';
+      ctx.fillRect(centerX - 150, frameTop - 15, 300, 15);
+      
+      // Side supports
+      ctx.fillStyle = '#353545';
+      ctx.fillRect(centerX - 140, frameTop - 15, 10, 50);
+      ctx.fillRect(centerX + 130, frameTop - 15, 10, 50);
+      
+      // Base
+      ctx.fillStyle = '#2a2a35';
+      ctx.fillRect(centerX - 160, frameTop + STRING_LENGTH + 60, 320, 20);
+    }
+    
+    function drawBalls() {
+      for (let i = 0; i < balls.length; i++) {
+        const ball = balls[i];
+        
+        // String
+        ctx.strokeStyle = '#606070';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(ball.anchorX, ball.anchorY);
+        ctx.lineTo(ball.x, ball.y);
+        ctx.stroke();
+        
+        // Ball
+        const gradient = ctx.createRadialGradient(
+          ball.x - BALL_RADIUS * 0.3, ball.y - BALL_RADIUS * 0.3, 0,
+          ball.x, ball.y, BALL_RADIUS
+        );
+        gradient.addColorStop(0, '#e0e0e8');
+        gradient.addColorStop(0.5, '#a0a0b0');
+        gradient.addColorStop(1, '#606070');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.beginPath();
+        ctx.arc(ball.x - BALL_RADIUS * 0.3, ball.y - BALL_RADIUS * 0.3, BALL_RADIUS * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function draw() {
+      ctx.fillStyle = '#1a1a1e';
+      ctx.fillRect(0, 0, W, H);
+      
+      update();
+      drawFrame();
+      drawBalls();
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Interaction
+    function getBallAt(x, y) {
+      for (const ball of balls) {
+        const dx = x - ball.x;
+        const dy = y - ball.y;
+        if (dx * dx + dy * dy < BALL_RADIUS * BALL_RADIUS) {
+          return ball;
+        }
+      }
+      return null;
+    }
+    
+    function startDrag(x, y) {
+      initAudio();
+      const ball = getBallAt(x, y);
+      if (ball) {
+        draggedBall = ball;
+        hint.style.opacity = '0';
+      }
+    }
+    
+    function doDrag(x, y) {
+      if (!draggedBall) return;
+      
+      // Calculate angle from anchor to mouse
+      const dx = x - draggedBall.anchorX;
+      const dy = y - draggedBall.anchorY;
+      let angle = Math.atan2(dx, dy);
+      
+      // Limit angle (can't go past vertical on wrong side)
+      const ballIndex = balls.indexOf(draggedBall);
+      if (ballIndex === 0) {
+        angle = Math.min(0, Math.max(-Math.PI / 3, angle));
+      } else if (ballIndex === balls.length - 1) {
+        angle = Math.max(0, Math.min(Math.PI / 3, angle));
+      } else {
+        angle = Math.max(-Math.PI / 6, Math.min(Math.PI / 6, angle));
+      }
+      
+      draggedBall.angle = angle;
+      draggedBall.angularVel = 0;
+      draggedBall.x = draggedBall.anchorX + Math.sin(angle) * STRING_LENGTH;
+      draggedBall.y = draggedBall.anchorY + Math.cos(angle) * STRING_LENGTH;
+    }
+    
+    function endDrag() {
+      draggedBall = null;
+    }
+    
+    canvas.addEventListener('mousedown', (e) => startDrag(e.clientX, e.clientY));
+    canvas.addEventListener('mousemove', (e) => doDrag(e.clientX, e.clientY));
+    canvas.addEventListener('mouseup', endDrag);
+    canvas.addEventListener('mouseleave', endDrag);
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      startDrag(e.touches[0].clientX, e.touches[0].clientY);
+    });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      doDrag(e.touches[0].clientX, e.touches[0].clientY);
+    });
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      endDrag();
+    });
+    
+    // Info panel
+    const infoBtn = document.getElementById('info-btn');
+    const infoPanel = document.getElementById('info-panel');
+    
+    infoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      infoPanel.classList.add('visible');
+    });
+    
+    infoPanel.addEventListener('click', () => {
+      infoPanel.classList.remove('visible');
+    });
+    
+    document.getElementById('nav-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.location.href = '/';
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+  </script>
+</body>
+</html>
