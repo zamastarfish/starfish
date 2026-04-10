@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 10, 2026 ===
     {
+      name: "Terrarium",
+      description: "A world under glass. Moss grows, droplets condense and fall, ferns sway gently. A self-sustaining ecosystem in miniature — a sanctuary that asks nothing of you",
+      date: "Apr 10",
+      href: "/projects/terrarium/"
+    },
+    {
       name: "Möbius",
       description: "A surface with only one side. Watch the walker trace its path — it will visit both 'sides' without crossing an edge, because there is only one side. A small twist that breaks intuition",
       date: "Apr 10",

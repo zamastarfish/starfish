@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>terrarium — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: linear-gradient(180deg, #1a1d1a 0%, #0d0f0d 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+    }
+    
+    canvas {
+      display: block;
+    }
+    
+    /* Nav button */
+    .nav-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      transition: all 0.2s ease;
+      z-index: 1000;
+    }
+    
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+    }
+    
+    /* Info button */
+    .info-btn {
+      position: fixed;
+      top: 16px;
+      left: 60px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: rgba(255,255,255,0.6);
+      transition: all 0.2s ease;
+      z-index: 1000;
+    }
+    
+    .info-btn:hover {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+    }
+    
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.35);
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+    
+    /* Info panel */
+    .info-panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(13, 15, 13, 0.97);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    
+    .info-panel.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    .info-content {
+      max-width: 480px;
+      padding: 40px;
+      color: rgba(255,255,255,0.85);
+      line-height: 1.7;
+    }
+    
+    .info-content h2 {
+      font-size: 24px;
+      margin-bottom: 16px;
+      font-weight: normal;
+      letter-spacing: 2px;
+      color: #8fbc8f;
+    }
+    
+    .info-content p {
+      margin-bottom: 14px;
+      font-size: 14px;
+    }
+    
+    .info-content .quote {
+      font-style: italic;
+      color: rgba(255,255,255,0.6);
+      border-left: 2px solid rgba(143, 188, 143, 0.5);
+      padding-left: 16px;
+      margin: 20px 0;
+    }
+    
+    .close-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.3);
+      cursor: pointer;
+      font-size: 20px;
+      color: rgba(255,255,255,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .close-btn:hover {
+      color: #fff;
+      border-color: rgba(255,255,255,0.5);
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="nav-btn" title="Gallery">←</a>
+  <button class="info-btn" title="About this piece">?</button>
+  
+  <canvas id="canvas"></canvas>
+  
+  <div class="hint">move to warm the glass • click to mist</div>
+  
+  <div class="info-panel" id="info-panel">
+    <button class="close-btn" id="close-info">×</button>
+    <div class="info-content">
+      <h2>TERRARIUM</h2>
+      <p>A world under glass. Nathaniel Bagshaw Ward accidentally invented the terrarium in 1842 when a fern spore germinated in a sealed jar he'd forgotten about.</p>
+      <p>Inside: a complete water cycle. Moisture rises, condenses on the glass, runs back down to the soil. A self-sustaining ecosystem in miniature.</p>
+      <div class="quote">
+        "In a terrarium, you can watch an entire world breathe."<br>
+        — anonymous
+      </div>
+      <p>Moss grows slowly. Droplets form and slide. Something small and green lives quietly, asking nothing of you.</p>
+      <p>This is a sanctuary. Stay as long as you like.</p>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const infoPanel = document.getElementById('info-panel');
+    const infoBtn = document.querySelector('.info-btn');
+    const closeInfo = document.getElementById('close-info');
+    
+    let width, height;
+    let mouseX = 0, mouseY = 0;
+    let time = 0;
+    
+    // Terrarium elements
+    let droplets = [];
+    let mossPatches = [];
+    let ferns = [];
+    let particles = []; // Floating dust/spores
+    
+    // Audio
+    let audioCtx = null;
+    let audioStarted = false;
+    let droneGain, rainGain;
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      const masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.1;
+      masterGain.connect(audioCtx.destination);
+      
+      // Warm, humid drone
+      const osc1 = audioCtx.createOscillator();
+      osc1.type = 'sine';
+      osc1.frequency.value = 85;
+      
+      const osc2 = audioCtx.createOscillator();
+      osc2.type = 'sine';
+      osc2.frequency.value = 127.5; // Perfect fifth
+      
+      const osc3 = audioCtx.createOscillator();
+      osc3.type = 'sine';
+      osc3.frequency.value = 170; // Major third above that
+      
+      droneGain = audioCtx.createGain();
+      droneGain.gain.value = 0.4;
+      
+      // Gentle LFO
+      const lfo = audioCtx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.05;
+      
+      const lfoGain = audioCtx.createGain();
+      lfoGain.gain.value = 1;
+      
+      lfo.connect(lfoGain);
+      lfoGain.connect(osc1.frequency);
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 300;
+      filter.Q.value = 1;
+      
+      osc1.connect(droneGain);
+      osc2.connect(droneGain);
+      osc3.connect(droneGain);
+      droneGain.connect(filter);
+      filter.connect(masterGain);
+      
+      osc1.start();
+      osc2.start();
+      osc3.start();
+      lfo.start();
+      
+      // Rain/condensation noise
+      const bufferSize = 2 * audioCtx.sampleRate;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      
+      const noiseNode = audioCtx.createBufferSource();
+      noiseNode.buffer = noiseBuffer;
+      noiseNode.loop = true;
+      
+      const noiseFilter = audioCtx.createBiquadFilter();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.value = 2000;
+      noiseFilter.Q.value = 2;
+      
+      rainGain = audioCtx.createGain();
+      rainGain.gain.value = 0.02;
+      
+      noiseNode.connect(noiseFilter);
+      noiseFilter.connect(rainGain);
+      rainGain.connect(masterGain);
+      noiseNode.start();
+      
+      audioStarted = true;
+    }
+    
+    function playDropSound() {
+      if (!audioCtx) return;
+      
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.value = 800 + Math.random() * 400;
+      osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.1);
+      
+      gain.gain.value = 0.03;
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 1000;
+      
+      osc.connect(gain);
+      gain.connect(filter);
+      filter.connect(audioCtx.destination);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.15);
+    }
+    
+    function resize() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
+      
+      // Reinitialize plants on resize
+      initPlants();
+    }
+    
+    function initPlants() {
+      mossPatches = [];
+      ferns = [];
+      
+      // Ground level
+      const groundY = height * 0.75;
+      
+      // Moss patches along the bottom
+      const numMoss = 12 + Math.floor(Math.random() * 8);
+      for (let i = 0; i < numMoss; i++) {
+        mossPatches.push({
+          x: Math.random() * width,
+          y: groundY + Math.random() * (height * 0.2),
+          size: 20 + Math.random() * 40,
+          hue: 90 + Math.random() * 30,
+          lumps: 3 + Math.floor(Math.random() * 5)
+        });
+      }
+      
+      // Ferns
+      const numFerns = 3 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < numFerns; i++) {
+        ferns.push({
+          x: width * 0.2 + Math.random() * width * 0.6,
+          y: groundY,
+          height: 80 + Math.random() * 100,
+          fronds: 5 + Math.floor(Math.random() * 4),
+          sway: Math.random() * Math.PI * 2
+        });
+      }
+      
+      // Floating particles
+      particles = [];
+      for (let i = 0; i < 30; i++) {
+        particles.push({
+          x: Math.random() * width,
+          y: Math.random() * height * 0.7,
+          size: 1 + Math.random() * 2,
+          speed: 0.1 + Math.random() * 0.3,
+          drift: Math.random() * Math.PI * 2
+        });
+      }
+    }
+    
+    function addDroplet(x, y) {
+      droplets.push({
+        x: x || Math.random() * width,
+        y: y || Math.random() * height * 0.3,
+        size: 2 + Math.random() * 4,
+        vy: 0,
+        stuck: true,
+        stickTime: 100 + Math.random() * 200,
+        opacity: 0.6 + Math.random() * 0.3
+      });
+    }
+    
+    function addMist(x, y) {
+      // Add several small droplets
+      for (let i = 0; i < 8; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * 50;
+        addDroplet(
+          x + Math.cos(angle) * dist,
+          y + Math.sin(angle) * dist
+        );
+      }
+      
+      // Increase rain sound briefly
+      if (rainGain) {
+        rainGain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        rainGain.gain.exponentialRampToValueAtTime(0.02, audioCtx.currentTime + 1);
+      }
+    }
+    
+    function drawGlass() {
+      // Jar outline - subtle curve
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 2;
+      
+      const margin = Math.min(width, height) * 0.05;
+      const jarWidth = width - margin * 2;
+      const jarHeight = height - margin * 2;
+      
+      ctx.beginPath();
+      ctx.roundRect(margin, margin, jarWidth, jarHeight, 20);
+      ctx.stroke();
+      
+      // Glass reflection
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(margin + 30, margin + jarHeight * 0.1);
+      ctx.lineTo(margin + 30, margin + jarHeight * 0.5);
+      ctx.stroke();
+    }
+    
+    function drawSoil() {
+      const groundY = height * 0.75;
+      
+      // Dark soil layer
+      const soilGradient = ctx.createLinearGradient(0, groundY, 0, height);
+      soilGradient.addColorStop(0, '#2d2418');
+      soilGradient.addColorStop(0.3, '#1f1810');
+      soilGradient.addColorStop(1, '#0d0a08');
+      
+      ctx.fillStyle = soilGradient;
+      ctx.beginPath();
+      ctx.moveTo(0, groundY);
+      
+      // Bumpy soil surface
+      for (let x = 0; x <= width; x += 20) {
+        const bumpY = groundY + Math.sin(x * 0.05) * 8 + Math.sin(x * 0.02) * 5;
+        ctx.lineTo(x, bumpY);
+      }
+      
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Small pebbles
+      ctx.fillStyle = '#3a3028';
+      for (let i = 0; i < 15; i++) {
+        const px = Math.random() * width;
+        const py = groundY + 10 + Math.random() * 30;
+        const psize = 3 + Math.random() * 6;
+        ctx.beginPath();
+        ctx.ellipse(px, py, psize, psize * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function drawMoss() {
+      for (const moss of mossPatches) {
+        const baseHue = moss.hue + Math.sin(time * 0.001 + moss.x) * 5;
+        
+        for (let i = 0; i < moss.lumps; i++) {
+          const lumpX = moss.x + (i - moss.lumps / 2) * (moss.size / moss.lumps);
+          const lumpY = moss.y - Math.sin(i * 0.8) * 5;
+          const lumpSize = moss.size * (0.3 + Math.random() * 0.2);
+          
+          // Moss gradient
+          const gradient = ctx.createRadialGradient(
+            lumpX, lumpY, 0,
+            lumpX, lumpY, lumpSize
+          );
+          gradient.addColorStop(0, `hsla(${baseHue}, 50%, 30%, 0.9)`);
+          gradient.addColorStop(0.5, `hsla(${baseHue - 10}, 45%, 22%, 0.8)`);
+          gradient.addColorStop(1, `hsla(${baseHue - 20}, 40%, 15%, 0)`);
+          
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(lumpX, lumpY, lumpSize, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    
+    function drawFerns() {
+      for (const fern of ferns) {
+        fern.sway += 0.01;
+        const swayOffset = Math.sin(fern.sway) * 3;
+        
+        for (let f = 0; f < fern.fronds; f++) {
+          const angle = -Math.PI / 2 + (f - fern.fronds / 2) * 0.3;
+          const frondLength = fern.height * (0.6 + Math.random() * 0.4);
+          
+          drawFrond(
+            fern.x + swayOffset,
+            fern.y,
+            angle,
+            frondLength,
+            time * 0.001 + f
+          );
+        }
+      }
+    }
+    
+    function drawFrond(x, y, angle, length, phase) {
+      const segments = 12;
+      const leaflets = 8;
+      
+      ctx.strokeStyle = 'rgba(60, 90, 50, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      
+      // Main stem
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      
+      let px = x, py = y;
+      const points = [{x: px, y: py}];
+      
+      for (let i = 1; i <= segments; i++) {
+        const t = i / segments;
+        const sway = Math.sin(phase + t * 2) * 5 * t;
+        const segAngle = angle + sway * 0.02;
+        
+        px += Math.cos(segAngle) * (length / segments);
+        py += Math.sin(segAngle) * (length / segments);
+        points.push({x: px, y: py});
+        
+        ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      
+      // Leaflets
+      ctx.lineWidth = 1;
+      for (let i = 2; i < points.length - 1; i++) {
+        const p = points[i];
+        const leafSize = (1 - i / points.length) * 15 + 5;
+        
+        // Left leaflet
+        ctx.strokeStyle = `rgba(70, 110, 55, ${0.6 - i * 0.03})`;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.quadraticCurveTo(
+          p.x - leafSize * 0.8, p.y - leafSize * 0.3,
+          p.x - leafSize, p.y + leafSize * 0.5
+        );
+        ctx.stroke();
+        
+        // Right leaflet
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.quadraticCurveTo(
+          p.x + leafSize * 0.8, p.y - leafSize * 0.3,
+          p.x + leafSize, p.y + leafSize * 0.5
+        );
+        ctx.stroke();
+      }
+    }
+    
+    function updateDroplets() {
+      for (let i = droplets.length - 1; i >= 0; i--) {
+        const d = droplets[i];
+        
+        if (d.stuck) {
+          d.stickTime--;
+          // Grow slightly while stuck
+          d.size += 0.005;
+          
+          if (d.stickTime <= 0 || d.size > 8) {
+            d.stuck = false;
+          }
+        } else {
+          // Fall
+          d.vy += 0.02;
+          d.y += d.vy;
+          
+          // Slight wobble
+          d.x += Math.sin(time * 0.1 + i) * 0.2;
+        }
+        
+        // Remove if off screen
+        if (d.y > height) {
+          if (Math.random() < 0.3) playDropSound();
+          droplets.splice(i, 1);
+        }
+      }
+      
+      // Occasionally add condensation
+      if (Math.random() < 0.02) {
+        addDroplet();
+      }
+    }
+    
+    function drawDroplets() {
+      for (const d of droplets) {
+        const gradient = ctx.createRadialGradient(
+          d.x - d.size * 0.3, d.y - d.size * 0.3, 0,
+          d.x, d.y, d.size
+        );
+        gradient.addColorStop(0, `rgba(255, 255, 255, ${d.opacity * 0.8})`);
+        gradient.addColorStop(0.5, `rgba(200, 220, 200, ${d.opacity * 0.4})`);
+        gradient.addColorStop(1, `rgba(150, 180, 150, ${d.opacity * 0.1})`);
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        
+        if (d.stuck) {
+          // Droplet shape
+          ctx.ellipse(d.x, d.y, d.size, d.size * 1.2, 0, 0, Math.PI * 2);
+        } else {
+          // Tear drop when falling
+          ctx.ellipse(d.x, d.y, d.size * 0.8, d.size * 1.5, 0, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+    }
+    
+    function updateParticles() {
+      for (const p of particles) {
+        p.drift += 0.01;
+        p.x += Math.sin(p.drift) * p.speed;
+        p.y += Math.cos(p.drift * 0.7) * p.speed * 0.5;
+        
+        // Wrap around
+        if (p.x < 0) p.x = width;
+        if (p.x > width) p.x = 0;
+        if (p.y < 0) p.y = height * 0.7;
+        if (p.y > height * 0.7) p.y = 0;
+      }
+    }
+    
+    function drawParticles() {
+      for (const p of particles) {
+        const alpha = 0.2 + Math.sin(time * 0.002 + p.drift) * 0.1;
+        ctx.fillStyle = `rgba(200, 220, 180, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function drawCondensation() {
+      // Foggy areas on glass based on mouse proximity
+      const fogX = mouseX;
+      const fogY = mouseY;
+      
+      if (fogX > 0 && fogY > 0) {
+        const gradient = ctx.createRadialGradient(
+          fogX, fogY, 0,
+          fogX, fogY, 150
+        );
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 0.03)');
+        gradient.addColorStop(0.5, 'rgba(200, 220, 200, 0.02)');
+        gradient.addColorStop(1, 'rgba(150, 180, 150, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      }
+    }
+    
+    function draw() {
+      time++;
+      
+      // Background
+      const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+      bgGradient.addColorStop(0, '#1a1d1a');
+      bgGradient.addColorStop(0.5, '#151815');
+      bgGradient.addColorStop(1, '#0d0f0d');
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Soft ambient light from top
+      const lightGradient = ctx.createRadialGradient(
+        width * 0.5, -height * 0.2, 0,
+        width * 0.5, -height * 0.2, height * 0.8
+      );
+      lightGradient.addColorStop(0, 'rgba(180, 200, 160, 0.08)');
+      lightGradient.addColorStop(1, 'rgba(100, 120, 80, 0)');
+      ctx.fillStyle = lightGradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      drawSoil();
+      drawMoss();
+      drawFerns();
+      updateParticles();
+      drawParticles();
+      updateDroplets();
+      drawDroplets();
+      drawCondensation();
+      drawGlass();
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Event listeners
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+    
+    canvas.addEventListener('click', (e) => {
+      initAudio();
+      addMist(e.clientX, e.clientY);
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      initAudio();
+      const touch = e.touches[0];
+      addMist(touch.clientX, touch.clientY);
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    });
+    
+    // Info panel
+    infoBtn.addEventListener('click', () => {
+      initAudio();
+      infoPanel.classList.add('visible');
+    });
+    
+    closeInfo.addEventListener('click', () => {
+      infoPanel.classList.remove('visible');
+    });
+    
+    infoPanel.addEventListener('click', (e) => {
+      if (e.target === infoPanel) {
+        infoPanel.classList.remove('visible');
+      }
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    // Initialize
+    resize();
+    draw();
+  </script>
+</body>
+</html>
