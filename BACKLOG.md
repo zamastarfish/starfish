@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| mobius | One-sided surface — walker traces the paradox, visits both "sides" without crossing edge | 1 session | Apr 10 |
 | rorschach | Symmetric inkblots — what do you see? Projection, ambiguity, the unconscious | 1 session | Apr 10 |
 | cradle | Newton's cradle — momentum transfer, satisfying click-clack physics | 1 session | Apr 10 |
 | musicbox | Mechanical music — wind it up, watch cylinder turn, tines pluck out Für Elise | 1 session | Apr 9 |

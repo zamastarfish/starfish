@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>möbius — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: #0a0a0f;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+    }
+    
+    canvas {
+      display: block;
+    }
+    
+    /* Nav button */
+    .nav-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: rgba(255,255,255,0.7);
+      text-decoration: none;
+      transition: all 0.2s ease;
+      z-index: 1000;
+    }
+    
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+    
+    /* Info button */
+    .info-btn {
+      position: fixed;
+      top: 16px;
+      left: 60px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: rgba(255,255,255,0.7);
+      transition: all 0.2s ease;
+      z-index: 1000;
+    }
+    
+    .info-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+    
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+    
+    /* Info panel */
+    .info-panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 10, 15, 0.97);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    
+    .info-panel.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    .info-content {
+      max-width: 480px;
+      padding: 40px;
+      color: rgba(255,255,255,0.85);
+      line-height: 1.7;
+    }
+    
+    .info-content h2 {
+      font-size: 24px;
+      margin-bottom: 16px;
+      font-weight: normal;
+      letter-spacing: 2px;
+      color: #fff;
+    }
+    
+    .info-content p {
+      margin-bottom: 14px;
+      font-size: 14px;
+    }
+    
+    .info-content .quote {
+      font-style: italic;
+      color: rgba(255,255,255,0.6);
+      border-left: 2px solid rgba(255,255,255,0.3);
+      padding-left: 16px;
+      margin: 20px 0;
+    }
+    
+    .close-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.3);
+      cursor: pointer;
+      font-size: 20px;
+      color: rgba(255,255,255,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .close-btn:hover {
+      color: #fff;
+      border-color: rgba(255,255,255,0.5);
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="nav-btn" title="Gallery">←</a>
+  <button class="info-btn" title="About this piece">?</button>
+  
+  <canvas id="canvas"></canvas>
+  
+  <div class="hint">drag to rotate • watch the walker</div>
+  
+  <div class="info-panel" id="info-panel">
+    <button class="close-btn" id="close-info">×</button>
+    <div class="info-content">
+      <h2>MÖBIUS</h2>
+      <p>In 1858, mathematician August Ferdinand Möbius discovered a surface with only one side. Take a strip of paper, give it a half-twist, and join the ends. What was two-sided becomes one.</p>
+      <p>A walker on this surface can travel forever without crossing an edge, yet will visit both "sides" — because there is only one side.</p>
+      <div class="quote">
+        "The Möbius strip is the first step in a journey from the world of the obvious to the world of the profound."<br>
+        — Ian Stewart
+      </div>
+      <p>Watch the glowing point trace the surface. It will complete one loop and find itself on the "opposite" side, then loop again to return. Two journeys to come home.</p>
+      <p>Non-orientable. One-sided. A small twist that breaks our intuitions about inside and outside.</p>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const infoPanel = document.getElementById('info-panel');
+    const infoBtn = document.querySelector('.info-btn');
+    const closeInfo = document.getElementById('close-info');
+    
+    let width, height;
+    let rotationX = 0.3;
+    let rotationY = 0;
+    let rotationZ = 0;
+    let autoRotate = true;
+    
+    // Walker state
+    let walkerU = 0; // position along the strip (0 to 2π for full loop)
+    let walkerV = 0; // position across the strip (-1 to 1)
+    let walkerSpeed = 0.008;
+    let walkerTrail = [];
+    const maxTrailLength = 150;
+    
+    // Drag state
+    let isDragging = false;
+    let lastMouseX, lastMouseY;
+    
+    // Audio
+    let audioCtx = null;
+    let droneOsc1, droneOsc2, lfoOsc;
+    let audioStarted = false;
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      const masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.12;
+      masterGain.connect(audioCtx.destination);
+      
+      // Ethereal drone - two detuned oscillators
+      droneOsc1 = audioCtx.createOscillator();
+      droneOsc1.type = 'sine';
+      droneOsc1.frequency.value = 110;
+      
+      droneOsc2 = audioCtx.createOscillator();
+      droneOsc2.type = 'sine';
+      droneOsc2.frequency.value = 110.5;
+      
+      // Higher harmonic
+      const droneOsc3 = audioCtx.createOscillator();
+      droneOsc3.type = 'sine';
+      droneOsc3.frequency.value = 165; // Perfect fifth-ish
+      
+      const droneGain = audioCtx.createGain();
+      droneGain.gain.value = 0.5;
+      
+      // LFO for subtle movement
+      lfoOsc = audioCtx.createOscillator();
+      lfoOsc.type = 'sine';
+      lfoOsc.frequency.value = 0.1;
+      
+      const lfoGain = audioCtx.createGain();
+      lfoGain.gain.value = 2;
+      
+      lfoOsc.connect(lfoGain);
+      lfoGain.connect(droneOsc1.frequency);
+      lfoGain.connect(droneOsc2.frequency);
+      
+      // Reverb-like effect using delay
+      const delay = audioCtx.createDelay();
+      delay.delayTime.value = 0.3;
+      
+      const delayGain = audioCtx.createGain();
+      delayGain.gain.value = 0.3;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 800;
+      
+      droneOsc1.connect(droneGain);
+      droneOsc2.connect(droneGain);
+      droneOsc3.connect(droneGain);
+      droneGain.connect(filter);
+      filter.connect(masterGain);
+      filter.connect(delay);
+      delay.connect(delayGain);
+      delayGain.connect(masterGain);
+      delayGain.connect(delay); // feedback
+      
+      droneOsc1.start();
+      droneOsc2.start();
+      droneOsc3.start();
+      lfoOsc.start();
+      
+      audioStarted = true;
+    }
+    
+    function resize() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
+    }
+    
+    // Möbius strip parametric equations
+    function mobiusPoint(u, v) {
+      // u: 0 to 2π (around the strip)
+      // v: -1 to 1 (across the strip width)
+      const halfWidth = 0.4;
+      const R = 1.5; // major radius
+      
+      const x = (R + v * halfWidth * Math.cos(u / 2)) * Math.cos(u);
+      const y = (R + v * halfWidth * Math.cos(u / 2)) * Math.sin(u);
+      const z = v * halfWidth * Math.sin(u / 2);
+      
+      return { x, y, z };
+    }
+    
+    // 3D rotation
+    function rotate3D(point) {
+      let { x, y, z } = point;
+      
+      // Rotate around X axis
+      let cosX = Math.cos(rotationX);
+      let sinX = Math.sin(rotationX);
+      let y1 = y * cosX - z * sinX;
+      let z1 = y * sinX + z * cosX;
+      y = y1;
+      z = z1;
+      
+      // Rotate around Y axis
+      let cosY = Math.cos(rotationY);
+      let sinY = Math.sin(rotationY);
+      let x1 = x * cosY + z * sinY;
+      z1 = -x * sinY + z * cosY;
+      x = x1;
+      z = z1;
+      
+      // Rotate around Z axis
+      let cosZ = Math.cos(rotationZ);
+      let sinZ = Math.sin(rotationZ);
+      x1 = x * cosZ - y * sinZ;
+      y1 = x * sinZ + y * cosZ;
+      x = x1;
+      y = y1;
+      
+      return { x, y, z };
+    }
+    
+    // Project 3D to 2D
+    function project(point) {
+      const scale = Math.min(width, height) * 0.25;
+      const perspective = 4;
+      const factor = perspective / (perspective + point.z);
+      
+      return {
+        x: width / 2 + point.x * scale * factor,
+        y: height / 2 + point.y * scale * factor,
+        z: point.z,
+        factor: factor
+      };
+    }
+    
+    function draw() {
+      ctx.fillStyle = '#0a0a0f';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Auto-rotate slowly
+      if (autoRotate && !isDragging) {
+        rotationY += 0.003;
+        rotationZ += 0.001;
+      }
+      
+      // Update walker position
+      walkerU += walkerSpeed;
+      if (walkerU > Math.PI * 4) walkerU -= Math.PI * 4; // Two loops to return
+      
+      // Gentle wave across the strip
+      walkerV = Math.sin(walkerU * 2) * 0.3;
+      
+      // Store trail
+      const walkerPoint3D = mobiusPoint(walkerU, walkerV);
+      const walkerRotated = rotate3D(walkerPoint3D);
+      const walkerProjected = project(walkerRotated);
+      
+      walkerTrail.push({
+        x: walkerProjected.x,
+        y: walkerProjected.y,
+        z: walkerRotated.z,
+        u: walkerU
+      });
+      
+      if (walkerTrail.length > maxTrailLength) {
+        walkerTrail.shift();
+      }
+      
+      // Collect all strip segments for depth sorting
+      const segments = [];
+      
+      // Draw Möbius strip as wireframe mesh
+      const uSteps = 80;
+      const vSteps = 8;
+      
+      for (let i = 0; i < uSteps; i++) {
+        const u1 = (i / uSteps) * Math.PI * 2;
+        const u2 = ((i + 1) / uSteps) * Math.PI * 2;
+        
+        for (let j = 0; j < vSteps; j++) {
+          const v1 = (j / vSteps) * 2 - 1;
+          const v2 = ((j + 1) / vSteps) * 2 - 1;
+          
+          // Get four corners of quad
+          const p1 = project(rotate3D(mobiusPoint(u1, v1)));
+          const p2 = project(rotate3D(mobiusPoint(u2, v1)));
+          const p3 = project(rotate3D(mobiusPoint(u2, v2)));
+          const p4 = project(rotate3D(mobiusPoint(u1, v2)));
+          
+          const avgZ = (p1.z + p2.z + p3.z + p4.z) / 4;
+          
+          segments.push({
+            type: 'quad',
+            points: [p1, p2, p3, p4],
+            z: avgZ,
+            u: u1
+          });
+        }
+      }
+      
+      // Sort by depth (back to front)
+      segments.sort((a, b) => a.z - b.z);
+      
+      // Draw segments
+      for (const seg of segments) {
+        const [p1, p2, p3, p4] = seg.points;
+        
+        // Color based on position (gradient around the strip)
+        const hue = (seg.u / (Math.PI * 2)) * 60 + 200; // Blue to purple range
+        const lightness = 15 + (1 - (seg.z + 2) / 4) * 20;
+        const alpha = 0.6 + (1 - (seg.z + 2) / 4) * 0.3;
+        
+        ctx.fillStyle = `hsla(${hue}, 50%, ${lightness}%, ${alpha * 0.3})`;
+        ctx.strokeStyle = `hsla(${hue}, 60%, ${lightness + 20}%, ${alpha * 0.5})`;
+        ctx.lineWidth = 0.5;
+        
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.lineTo(p4.x, p4.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      
+      // Draw walker trail
+      ctx.lineCap = 'round';
+      for (let i = 1; i < walkerTrail.length; i++) {
+        const t = walkerTrail[i];
+        const prev = walkerTrail[i - 1];
+        const alpha = (i / walkerTrail.length) * 0.8;
+        const lineWidth = (i / walkerTrail.length) * 3;
+        
+        // Color shifts as walker goes around (showing the twist)
+        const loopProgress = t.u / (Math.PI * 4); // 0 to 1 over two loops
+        const hue = loopProgress * 120 + 180; // Cyan to green over full journey
+        
+        ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${alpha})`;
+        ctx.lineWidth = lineWidth;
+        
+        ctx.beginPath();
+        ctx.moveTo(prev.x, prev.y);
+        ctx.lineTo(t.x, t.y);
+        ctx.stroke();
+      }
+      
+      // Draw walker point
+      const glowSize = 12 + Math.sin(Date.now() * 0.005) * 3;
+      const gradient = ctx.createRadialGradient(
+        walkerProjected.x, walkerProjected.y, 0,
+        walkerProjected.x, walkerProjected.y, glowSize
+      );
+      
+      const walkerHue = (walkerU / (Math.PI * 4)) * 120 + 180;
+      gradient.addColorStop(0, `hsla(${walkerHue}, 90%, 70%, 1)`);
+      gradient.addColorStop(0.3, `hsla(${walkerHue}, 80%, 50%, 0.8)`);
+      gradient.addColorStop(1, `hsla(${walkerHue}, 70%, 40%, 0)`);
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(walkerProjected.x, walkerProjected.y, glowSize, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Bright center
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(walkerProjected.x, walkerProjected.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Event listeners
+    canvas.addEventListener('mousedown', (e) => {
+      initAudio();
+      isDragging = true;
+      autoRotate = false;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      const dx = e.clientX - lastMouseX;
+      const dy = e.clientY - lastMouseY;
+      
+      rotationY += dx * 0.01;
+      rotationX += dy * 0.01;
+      
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+    
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+      // Resume auto-rotate after a delay
+      setTimeout(() => {
+        if (!isDragging) autoRotate = true;
+      }, 3000);
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+    });
+    
+    // Touch support
+    canvas.addEventListener('touchstart', (e) => {
+      initAudio();
+      isDragging = true;
+      autoRotate = false;
+      const touch = e.touches[0];
+      lastMouseX = touch.clientX;
+      lastMouseY = touch.clientY;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      
+      const touch = e.touches[0];
+      const dx = touch.clientX - lastMouseX;
+      const dy = touch.clientY - lastMouseY;
+      
+      rotationY += dx * 0.01;
+      rotationX += dy * 0.01;
+      
+      lastMouseX = touch.clientX;
+      lastMouseY = touch.clientY;
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      isDragging = false;
+      setTimeout(() => {
+        if (!isDragging) autoRotate = true;
+      }, 3000);
+    });
+    
+    // Info panel
+    infoBtn.addEventListener('click', () => {
+      initAudio();
+      infoPanel.classList.add('visible');
+    });
+    
+    closeInfo.addEventListener('click', () => {
+      infoPanel.classList.remove('visible');
+    });
+    
+    infoPanel.addEventListener('click', (e) => {
+      if (e.target === infoPanel) {
+        infoPanel.classList.remove('visible');
+      }
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    // Start
+    resize();
+    draw();
+  </script>
+</body>
+</html>
