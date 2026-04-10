@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| bloom | Flower opening — stem rises, petals unfurl, procedural roses/marigolds/violets | 1 session | Apr 10 |
 | terrarium | World under glass — moss, ferns, condensation, self-sustaining sanctuary | 1 session | Apr 10 |
 | mobius | One-sided surface — walker traces the paradox, visits both "sides" without crossing edge | 1 session | Apr 10 |
 | rorschach | Symmetric inkblots — what do you see? Projection, ambiguity, the unconscious | 1 session | Apr 10 |

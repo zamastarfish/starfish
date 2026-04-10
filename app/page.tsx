@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === April 10, 2026 ===
     {
+      name: "Bloom",
+      description: "A flower opening. Stem rises, bud unfurls, petals reach toward light. Each bloom procedurally generated — roses, marigolds, violets, poppies. Click to plant another seed",
+      date: "Apr 10",
+      href: "/projects/bloom/"
+    },
+    {
       name: "Terrarium",
       description: "A world under glass. Moss grows, droplets condense and fall, ferns sway gently. A self-sustaining ecosystem in miniature — a sanctuary that asks nothing of you",
       date: "Apr 10",

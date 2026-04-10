@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>bloom — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: #0a0d0a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+    }
+    
+    canvas {
+      display: block;
+    }
+    
+    /* Nav button */
+    .nav-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      transition: all 0.2s ease;
+      z-index: 1000;
+    }
+    
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+    }
+    
+    /* Info button */
+    .info-btn {
+      position: fixed;
+      top: 16px;
+      left: 60px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: rgba(255,255,255,0.6);
+      transition: all 0.2s ease;
+      z-index: 1000;
+    }
+    
+    .info-btn:hover {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+    }
+    
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.35);
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+    
+    /* Info panel */
+    .info-panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 13, 10, 0.97);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    
+    .info-panel.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    .info-content {
+      max-width: 480px;
+      padding: 40px;
+      color: rgba(255,255,255,0.85);
+      line-height: 1.7;
+    }
+    
+    .info-content h2 {
+      font-size: 24px;
+      margin-bottom: 16px;
+      font-weight: normal;
+      letter-spacing: 2px;
+      color: #e8a0c0;
+    }
+    
+    .info-content p {
+      margin-bottom: 14px;
+      font-size: 14px;
+    }
+    
+    .info-content .quote {
+      font-style: italic;
+      color: rgba(255,255,255,0.6);
+      border-left: 2px solid rgba(232, 160, 192, 0.5);
+      padding-left: 16px;
+      margin: 20px 0;
+    }
+    
+    .close-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.3);
+      cursor: pointer;
+      font-size: 20px;
+      color: rgba(255,255,255,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .close-btn:hover {
+      color: #fff;
+      border-color: rgba(255,255,255,0.5);
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="nav-btn" title="Gallery">←</a>
+  <button class="info-btn" title="About this piece">?</button>
+  
+  <canvas id="canvas"></canvas>
+  
+  <div class="hint">click to plant a seed</div>
+  
+  <div class="info-panel" id="info-panel">
+    <button class="close-btn" id="close-info">×</button>
+    <div class="info-content">
+      <h2>BLOOM</h2>
+      <p>A flower opening is one of nature's quiet miracles. What begins as a tight-wound bud slowly unfurls, petal by petal, reaching toward light.</p>
+      <p>The process takes hours or days in real time. Here it happens in moments — but the essential motion remains: a spiral unwinding, potential becoming actual.</p>
+      <div class="quote">
+        "The flower doesn't dream of the bee. It blossoms and the bee comes."<br>
+        — Mark Nepo
+      </div>
+      <p>Each bloom is procedurally generated. Different petal counts, colors, rhythms. Click to plant another seed and watch it open.</p>
+      <p>Sometimes beauty needs no explanation. It simply is.</p>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const infoPanel = document.getElementById('info-panel');
+    const infoBtn = document.querySelector('.info-btn');
+    const closeInfo = document.getElementById('close-info');
+    
+    let width, height;
+    let flowers = [];
+    let time = 0;
+    
+    // Audio
+    let audioCtx = null;
+    let audioStarted = false;
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      const masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.08;
+      masterGain.connect(audioCtx.destination);
+      
+      // Gentle, warm pad
+      const voices = [196, 247, 294, 370]; // G3, B3, D4, F#4 - Gmaj7
+      
+      voices.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.15 - i * 0.02;
+        
+        // Slow vibrato
+        const lfo = audioCtx.createOscillator();
+        lfo.type = 'sine';
+        lfo.frequency.value = 0.1 + i * 0.02;
+        
+        const lfoGain = audioCtx.createGain();
+        lfoGain.gain.value = 1;
+        
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.frequency);
+        
+        osc.connect(gain);
+        gain.connect(masterGain);
+        
+        osc.start();
+        lfo.start();
+      });
+      
+      audioStarted = true;
+    }
+    
+    function playBloomSound(hue) {
+      if (!audioCtx) return;
+      
+      // Soft chime based on flower color
+      const baseFreq = 400 + (hue / 360) * 200;
+      
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc1.type = 'sine';
+      osc1.frequency.value = baseFreq;
+      
+      osc2.type = 'sine';
+      osc2.frequency.value = baseFreq * 1.5; // Fifth
+      
+      gain.gain.value = 0.1;
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 2000;
+      
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(filter);
+      filter.connect(audioCtx.destination);
+      
+      osc1.start();
+      osc2.start();
+      osc1.stop(audioCtx.currentTime + 2);
+      osc2.stop(audioCtx.currentTime + 2);
+    }
+    
+    function resize() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
+    }
+    
+    class Flower {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.bloomProgress = 0;
+        this.bloomSpeed = 0.003 + Math.random() * 0.002;
+        this.petalCount = 5 + Math.floor(Math.random() * 4); // 5-8 petals
+        this.petalLayers = 2 + Math.floor(Math.random() * 2); // 2-3 layers
+        this.maxRadius = 60 + Math.random() * 80;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.002;
+        
+        // Color palette
+        const palettes = [
+          { hue: 340, sat: 70, name: 'rose' },      // Pink/rose
+          { hue: 30, sat: 80, name: 'marigold' },   // Orange/marigold
+          { hue: 280, sat: 60, name: 'violet' },    // Purple/violet
+          { hue: 0, sat: 75, name: 'poppy' },       // Red/poppy
+          { hue: 50, sat: 90, name: 'sunflower' },  // Yellow/sunflower
+          { hue: 320, sat: 65, name: 'peony' },     // Magenta/peony
+        ];
+        
+        const palette = palettes[Math.floor(Math.random() * palettes.length)];
+        this.hue = palette.hue + (Math.random() - 0.5) * 20;
+        this.sat = palette.sat;
+        
+        this.stemHeight = 100 + Math.random() * 150;
+        this.stemProgress = 0;
+        this.swayPhase = Math.random() * Math.PI * 2;
+        
+        this.soundPlayed = false;
+      }
+      
+      update() {
+        // Grow stem first, then bloom
+        if (this.stemProgress < 1) {
+          this.stemProgress += 0.015;
+        } else if (this.bloomProgress < 1) {
+          this.bloomProgress += this.bloomSpeed;
+          
+          // Play sound when bloom starts
+          if (!this.soundPlayed && this.bloomProgress > 0.1) {
+            playBloomSound(this.hue);
+            this.soundPlayed = true;
+          }
+        }
+        
+        this.rotation += this.rotationSpeed;
+        this.swayPhase += 0.02;
+      }
+      
+      draw() {
+        const sway = Math.sin(this.swayPhase) * 10 * this.stemProgress;
+        const flowerX = this.x + sway;
+        const flowerY = this.y - this.stemHeight * this.stemProgress;
+        
+        // Draw stem
+        if (this.stemProgress > 0) {
+          ctx.strokeStyle = '#2d5a2d';
+          ctx.lineWidth = 3;
+          ctx.lineCap = 'round';
+          
+          ctx.beginPath();
+          ctx.moveTo(this.x, this.y);
+          
+          // Curved stem
+          const cp1x = this.x + sway * 0.3;
+          const cp1y = this.y - this.stemHeight * 0.3 * this.stemProgress;
+          const cp2x = this.x + sway * 0.7;
+          const cp2y = this.y - this.stemHeight * 0.7 * this.stemProgress;
+          
+          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, flowerX, flowerY);
+          ctx.stroke();
+          
+          // Leaves
+          if (this.stemProgress > 0.3) {
+            this.drawLeaf(
+              this.x + sway * 0.3,
+              this.y - this.stemHeight * 0.3 * this.stemProgress,
+              -0.4,
+              20 * Math.min(1, (this.stemProgress - 0.3) * 3)
+            );
+          }
+          if (this.stemProgress > 0.5) {
+            this.drawLeaf(
+              this.x + sway * 0.5,
+              this.y - this.stemHeight * 0.5 * this.stemProgress,
+              0.4,
+              18 * Math.min(1, (this.stemProgress - 0.5) * 3)
+            );
+          }
+        }
+        
+        // Draw flower
+        if (this.bloomProgress > 0) {
+          ctx.save();
+          ctx.translate(flowerX, flowerY);
+          ctx.rotate(this.rotation);
+          
+          // Draw petal layers (back to front)
+          for (let layer = this.petalLayers - 1; layer >= 0; layer--) {
+            const layerProgress = Math.max(0, Math.min(1, 
+              (this.bloomProgress - layer * 0.2) / 0.6
+            ));
+            
+            if (layerProgress > 0) {
+              const layerRadius = this.maxRadius * (0.6 + layer * 0.2) * layerProgress;
+              const layerHue = this.hue + layer * 8;
+              const layerLightness = 55 + layer * 10;
+              const petalOffset = layer * (Math.PI / this.petalCount / 2);
+              
+              this.drawPetals(
+                layerRadius,
+                layerHue,
+                layerLightness,
+                layerProgress,
+                petalOffset
+              );
+            }
+          }
+          
+          // Center
+          if (this.bloomProgress > 0.3) {
+            const centerSize = 15 * Math.min(1, (this.bloomProgress - 0.3) / 0.3);
+            const centerGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, centerSize);
+            centerGradient.addColorStop(0, `hsl(45, 80%, 60%)`);
+            centerGradient.addColorStop(0.6, `hsl(35, 70%, 45%)`);
+            centerGradient.addColorStop(1, `hsl(30, 60%, 35%)`);
+            
+            ctx.fillStyle = centerGradient;
+            ctx.beginPath();
+            ctx.arc(0, 0, centerSize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Pollen dots
+            if (this.bloomProgress > 0.5) {
+              ctx.fillStyle = 'rgba(255, 220, 100, 0.8)';
+              for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                const dist = centerSize * 0.5;
+                ctx.beginPath();
+                ctx.arc(
+                  Math.cos(angle) * dist,
+                  Math.sin(angle) * dist,
+                  2,
+                  0,
+                  Math.PI * 2
+                );
+                ctx.fill();
+              }
+            }
+          }
+          
+          ctx.restore();
+        }
+      }
+      
+      drawPetals(radius, hue, lightness, progress, offset) {
+        for (let i = 0; i < this.petalCount; i++) {
+          const angle = (i / this.petalCount) * Math.PI * 2 + offset;
+          
+          // Petal unfurling - starts curled, opens out
+          const unfurl = this.easeOutBack(progress);
+          const petalAngle = angle;
+          const petalLength = radius * unfurl;
+          const petalWidth = petalLength * 0.5;
+          
+          ctx.save();
+          ctx.rotate(petalAngle);
+          
+          // Petal gradient
+          const gradient = ctx.createRadialGradient(
+            0, petalLength * 0.3, 0,
+            0, petalLength * 0.5, petalLength
+          );
+          gradient.addColorStop(0, `hsla(${hue}, ${this.sat}%, ${lightness + 15}%, 0.95)`);
+          gradient.addColorStop(0.5, `hsla(${hue}, ${this.sat}%, ${lightness}%, 0.9)`);
+          gradient.addColorStop(1, `hsla(${hue - 10}, ${this.sat - 10}%, ${lightness - 10}%, 0.85)`);
+          
+          ctx.fillStyle = gradient;
+          
+          // Petal shape
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.bezierCurveTo(
+            -petalWidth * 0.5, petalLength * 0.3,
+            -petalWidth, petalLength * 0.6,
+            0, petalLength
+          );
+          ctx.bezierCurveTo(
+            petalWidth, petalLength * 0.6,
+            petalWidth * 0.5, petalLength * 0.3,
+            0, 0
+          );
+          ctx.fill();
+          
+          // Subtle vein
+          ctx.strokeStyle = `hsla(${hue}, ${this.sat - 20}%, ${lightness - 15}%, 0.3)`;
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(0, 5);
+          ctx.lineTo(0, petalLength * 0.7);
+          ctx.stroke();
+          
+          ctx.restore();
+        }
+      }
+      
+      drawLeaf(x, y, angle, size) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        
+        ctx.fillStyle = '#3d6a3d';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.bezierCurveTo(
+          -size * 0.3, -size * 0.5,
+          -size * 0.2, -size,
+          0, -size * 1.2
+        );
+        ctx.bezierCurveTo(
+          size * 0.2, -size,
+          size * 0.3, -size * 0.5,
+          0, 0
+        );
+        ctx.fill();
+        
+        // Leaf vein
+        ctx.strokeStyle = '#2d5a2d';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -size * 0.9);
+        ctx.stroke();
+        
+        ctx.restore();
+      }
+      
+      easeOutBack(t) {
+        const c1 = 1.70158;
+        const c3 = c1 + 1;
+        return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+      }
+      
+      isComplete() {
+        return this.bloomProgress >= 1;
+      }
+    }
+    
+    function addFlower(x, y) {
+      initAudio();
+      
+      // Remove old flowers if too many
+      if (flowers.length > 8) {
+        flowers.shift();
+      }
+      
+      flowers.push(new Flower(x || width / 2, y || height * 0.85));
+    }
+    
+    function draw() {
+      time++;
+      
+      // Background gradient
+      const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+      bgGradient.addColorStop(0, '#0a0d0a');
+      bgGradient.addColorStop(0.7, '#0d100d');
+      bgGradient.addColorStop(1, '#101510');
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Soft top light
+      const lightGradient = ctx.createRadialGradient(
+        width * 0.5, -height * 0.3, 0,
+        width * 0.5, -height * 0.3, height
+      );
+      lightGradient.addColorStop(0, 'rgba(255, 250, 230, 0.04)');
+      lightGradient.addColorStop(1, 'rgba(200, 220, 200, 0)');
+      ctx.fillStyle = lightGradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Update and draw flowers
+      for (const flower of flowers) {
+        flower.update();
+        flower.draw();
+      }
+      
+      // Start with one flower if none
+      if (flowers.length === 0 && time > 60) {
+        addFlower(width / 2, height * 0.9);
+      }
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Event listeners
+    canvas.addEventListener('click', (e) => {
+      addFlower(e.clientX, height * 0.9);
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      const touch = e.touches[0];
+      addFlower(touch.clientX, height * 0.9);
+    });
+    
+    // Info panel
+    infoBtn.addEventListener('click', () => {
+      initAudio();
+      infoPanel.classList.add('visible');
+    });
+    
+    closeInfo.addEventListener('click', () => {
+      infoPanel.classList.remove('visible');
+    });
+    
+    infoPanel.addEventListener('click', (e) => {
+      if (e.target === infoPanel) {
+        infoPanel.classList.remove('visible');
+      }
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    // Initialize
+    resize();
+    draw();
+  </script>
+</body>
+</html>
