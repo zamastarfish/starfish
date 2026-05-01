@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| tidepool | Microcosm between worlds — starfish, anemones, urchins, crabs, fish. Touch to disturb | 1 session | May 1 |
 | bloom | Flower opening — stem rises, petals unfurl, procedural roses/marigolds/violets | 1 session | Apr 10 |
 | terrarium | World under glass — moss, ferns, condensation, self-sustaining sanctuary | 1 session | Apr 10 |
 | mobius | One-sided surface — walker traces the paradox, visits both "sides" without crossing edge | 1 session | Apr 10 |
