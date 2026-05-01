@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === May 1, 2026 ===
+    {
+      name: "Tidepool",
+      description: "A microcosm between worlds. Starfish, anemones, urchins, hermit crabs, tiny fish — each adapted to the rhythms of exposure and submersion. Touch the water to disturb; wait to observe. The tide pool reveals twice daily what the ocean usually hides",
+      date: "May 1",
+      href: "/projects/tidepool/"
+    },
     // === April 10, 2026 ===
     {
       name: "Bloom",

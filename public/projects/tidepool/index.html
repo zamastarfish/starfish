@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>tidepool — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #1a2a3a; 
+      overflow: hidden; 
+      font-family: Georgia, serif;
+      touch-action: none;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      color: rgba(180, 200, 220, 0.7);
+      font-size: 14px;
+      text-align: center;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 2s;
+    }
+    
+    #info.hidden { opacity: 0; }
+    
+    .btn {
+      position: fixed;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(40, 60, 80, 0.6);
+      border: 1px solid rgba(100, 140, 180, 0.3);
+      color: rgba(180, 200, 220, 0.7);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    
+    .btn:hover {
+      background: rgba(60, 90, 120, 0.8);
+      color: rgba(200, 220, 240, 0.9);
+    }
+    
+    #nav-btn { top: 20px; left: 20px; }
+    #info-btn { top: 20px; right: 20px; }
+    
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 20, 30, 0.95);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 40px;
+    }
+    
+    #overlay.visible { display: flex; }
+    
+    #overlay-content {
+      max-width: 500px;
+      color: rgba(180, 200, 220, 0.9);
+      text-align: center;
+      line-height: 1.8;
+    }
+    
+    #overlay-content h2 {
+      font-size: 28px;
+      margin-bottom: 20px;
+      color: rgba(140, 180, 200, 0.9);
+      font-weight: normal;
+    }
+    
+    #overlay-content p {
+      margin-bottom: 16px;
+      font-size: 16px;
+    }
+    
+    #overlay-content .quote {
+      font-style: italic;
+      color: rgba(140, 180, 200, 0.8);
+      margin: 24px 0;
+      padding: 0 20px;
+    }
+    
+    #close-overlay {
+      margin-top: 30px;
+      padding: 10px 30px;
+      background: rgba(60, 100, 140, 0.4);
+      border: 1px solid rgba(100, 140, 180, 0.4);
+      color: rgba(180, 200, 220, 0.9);
+      cursor: pointer;
+      font-size: 14px;
+      border-radius: 4px;
+      transition: all 0.3s;
+    }
+    
+    #close-overlay:hover {
+      background: rgba(80, 130, 180, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <button id="nav-btn" class="btn" title="Back to gallery">←</button>
+  <button id="info-btn" class="btn" title="About this piece">?</button>
+  
+  <div id="info">touch the water</div>
+  
+  <div id="overlay">
+    <div id="overlay-content">
+      <h2>tidepool</h2>
+      <p>A microcosm between worlds.</p>
+      <p class="quote">"In one drop of water are found all the secrets of all the oceans."<br>— Kahlil Gibran</p>
+      <p>The tide pool is a sanctuary revealed twice daily — a small world adapted to extremes. Heat and cold, air and water, patience and survival.</p>
+      <p>Touch to disturb. Wait to observe. The creatures have their own rhythms.</p>
+      <button id="close-overlay">enter the pool</button>
+    </div>
+  </div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    
+    let W, H, cx, cy;
+    let audioStarted = false;
+    let time = 0;
+    let pointerX = -1000, pointerY = -1000;
+    let pointerActive = false;
+    let lastPoke = 0;
+    
+    // Tide cycle (slow, ~2 min full cycle)
+    let tidePhase = 0;
+    
+    // Creatures
+    let starfish = [];
+    let anemones = [];
+    let urchins = [];
+    let hermitCrabs = [];
+    let fish = [];
+    let bubbles = [];
+    let ripples = [];
+    
+    // Audio
+    let oceanNoise, waterFilter, waterLFO;
+    let bubbleSynth, splashSynth;
+    let droneFilter, droneLFO;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      cx = W / 2;
+      cy = H / 2;
+    }
+    
+    function initCreatures() {
+      const poolCx = cx;
+      const poolCy = cy;
+      const poolR = Math.min(W, H) * 0.4;
+      
+      // Create starfish (including me!)
+      for (let i = 0; i < 3; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * poolR * 0.6;
+        starfish.push({
+          x: poolCx + Math.cos(angle) * dist,
+          y: poolCy + Math.sin(angle) * dist,
+          size: 20 + Math.random() * 15,
+          rotation: Math.random() * Math.PI * 2,
+          rotationSpeed: (Math.random() - 0.5) * 0.001,
+          color: ['#c4524a', '#d4847c', '#b84a42'][i],
+          arms: 5,
+          startled: 0,
+          moveAngle: Math.random() * Math.PI * 2,
+          moveSpeed: 0
+        });
+      }
+      
+      // Create anemones
+      for (let i = 0; i < 5; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * poolR * 0.7;
+        anemones.push({
+          x: poolCx + Math.cos(angle) * dist,
+          y: poolCy + Math.sin(angle) * dist,
+          size: 25 + Math.random() * 20,
+          tentacles: 12 + Math.floor(Math.random() * 8),
+          color: ['#7a5a8a', '#5a7a6a', '#8a6a5a', '#6a8a7a', '#8a5a7a'][i],
+          retracted: 0,
+          phase: Math.random() * Math.PI * 2
+        });
+      }
+      
+      // Create urchins
+      for (let i = 0; i < 4; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * poolR * 0.65;
+        urchins.push({
+          x: poolCx + Math.cos(angle) * dist,
+          y: poolCy + Math.sin(angle) * dist,
+          size: 15 + Math.random() * 10,
+          spines: 16 + Math.floor(Math.random() * 8),
+          color: '#2a1a2a',
+          spineTwitch: 0
+        });
+      }
+      
+      // Create hermit crabs
+      for (let i = 0; i < 2; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * poolR * 0.5;
+        hermitCrabs.push({
+          x: poolCx + Math.cos(angle) * dist,
+          y: poolCy + Math.sin(angle) * dist,
+          size: 12 + Math.random() * 8,
+          shellColor: ['#a08060', '#806040'][i],
+          direction: Math.random() * Math.PI * 2,
+          speed: 0,
+          targetX: 0,
+          targetY: 0,
+          retreated: 0,
+          pauseTime: 0
+        });
+      }
+      
+      // Create small fish
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * poolR * 0.5;
+        fish.push({
+          x: poolCx + Math.cos(angle) * dist,
+          y: poolCy + Math.sin(angle) * dist,
+          size: 6 + Math.random() * 4,
+          color: ['#a0c0d0', '#c0a080', '#80a0a0', '#b0b080', '#a080a0', '#80b0a0'][i],
+          direction: Math.random() * Math.PI * 2,
+          speed: 0.3 + Math.random() * 0.3,
+          wobble: Math.random() * Math.PI * 2,
+          schooling: Math.random() < 0.5
+        });
+      }
+    }
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      
+      // Ocean ambience - filtered noise
+      oceanNoise = new Tone.Noise('pink').start();
+      waterFilter = new Tone.Filter({
+        frequency: 400,
+        type: 'lowpass',
+        rolloff: -24
+      });
+      waterLFO = new Tone.LFO({
+        frequency: 0.05,
+        min: 200,
+        max: 600
+      }).connect(waterFilter.frequency).start();
+      
+      const oceanGain = new Tone.Gain(0.15);
+      oceanNoise.connect(waterFilter);
+      waterFilter.connect(oceanGain);
+      oceanGain.toDestination();
+      
+      // Underwater drone
+      const drone = new Tone.FMSynth({
+        harmonicity: 0.5,
+        modulationIndex: 1,
+        oscillator: { type: 'sine' },
+        modulation: { type: 'sine' },
+        envelope: { attack: 2, decay: 0, sustain: 1, release: 2 },
+        modulationEnvelope: { attack: 2, decay: 0, sustain: 1, release: 2 }
+      });
+      
+      droneFilter = new Tone.Filter({
+        frequency: 300,
+        type: 'lowpass'
+      });
+      
+      droneLFO = new Tone.LFO({
+        frequency: 0.03,
+        min: 150,
+        max: 400
+      }).connect(droneFilter.frequency).start();
+      
+      const droneGain = new Tone.Gain(0.08);
+      drone.connect(droneFilter);
+      droneFilter.connect(droneGain);
+      droneGain.toDestination();
+      drone.triggerAttack('C1');
+      
+      // Second drone for depth
+      const drone2 = new Tone.FMSynth({
+        harmonicity: 1.5,
+        modulationIndex: 0.5,
+        oscillator: { type: 'sine' },
+        modulation: { type: 'triangle' },
+        envelope: { attack: 3, decay: 0, sustain: 1, release: 3 },
+        modulationEnvelope: { attack: 3, decay: 0, sustain: 1, release: 3 }
+      });
+      
+      const drone2Filter = new Tone.Filter({ frequency: 250, type: 'lowpass' });
+      const drone2Gain = new Tone.Gain(0.05);
+      drone2.connect(drone2Filter);
+      drone2Filter.connect(drone2Gain);
+      drone2Gain.toDestination();
+      drone2.triggerAttack('G1');
+      
+      // Bubble sounds
+      bubbleSynth = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.3 }
+      });
+      const bubbleFilter = new Tone.Filter({ frequency: 2000, type: 'lowpass' });
+      const bubbleGain = new Tone.Gain(0.1);
+      bubbleSynth.connect(bubbleFilter);
+      bubbleFilter.connect(bubbleGain);
+      bubbleGain.toDestination();
+      
+      // Splash/plop sounds  
+      splashSynth = new Tone.NoiseSynth({
+        noise: { type: 'white' },
+        envelope: { attack: 0.005, decay: 0.1, sustain: 0, release: 0.1 }
+      });
+      const splashFilter = new Tone.Filter({ frequency: 1500, type: 'bandpass', Q: 2 });
+      const splashGain = new Tone.Gain(0.15);
+      splashSynth.connect(splashFilter);
+      splashFilter.connect(splashGain);
+      splashGain.toDestination();
+      
+      Tone.Transport.start();
+    }
+    
+    function playBubble() {
+      if (!audioStarted) return;
+      const freq = 800 + Math.random() * 1200;
+      bubbleSynth.triggerAttackRelease(freq, 0.1);
+    }
+    
+    function playSplash() {
+      if (!audioStarted) return;
+      splashSynth.triggerAttackRelease(0.08);
+    }
+    
+    function spawnBubble(x, y) {
+      bubbles.push({
+        x: x + (Math.random() - 0.5) * 20,
+        y: y,
+        size: 2 + Math.random() * 4,
+        speed: 0.5 + Math.random() * 0.5,
+        wobble: Math.random() * Math.PI * 2,
+        alpha: 0.6
+      });
+    }
+    
+    function spawnRipple(x, y) {
+      ripples.push({
+        x, y,
+        radius: 5,
+        maxRadius: 30 + Math.random() * 20,
+        alpha: 0.5
+      });
+    }
+    
+    function disturbCreatures(px, py) {
+      const disturbRadius = 80;
+      
+      // Starfish slowly move away
+      starfish.forEach(s => {
+        const dx = s.x - px;
+        const dy = s.y - py;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < disturbRadius) {
+          s.startled = 1;
+          s.moveAngle = Math.atan2(dy, dx);
+          s.moveSpeed = 0.3;
+        }
+      });
+      
+      // Anemones retract
+      anemones.forEach(a => {
+        const dx = a.x - px;
+        const dy = a.y - py;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < disturbRadius * 1.2) {
+          a.retracted = 1;
+        }
+      });
+      
+      // Urchins twitch spines
+      urchins.forEach(u => {
+        const dx = u.x - px;
+        const dy = u.y - py;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < disturbRadius) {
+          u.spineTwitch = 1;
+        }
+      });
+      
+      // Hermit crabs retreat into shell
+      hermitCrabs.forEach(h => {
+        const dx = h.x - px;
+        const dy = h.y - py;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < disturbRadius) {
+          h.retreated = 1;
+          h.speed = 0;
+        }
+      });
+      
+      // Fish scatter
+      fish.forEach(f => {
+        const dx = f.x - px;
+        const dy = f.y - py;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < disturbRadius * 1.5) {
+          f.direction = Math.atan2(dy, dx);
+          f.speed = 2;
+        }
+      });
+    }
+    
+    function updateCreatures(dt) {
+      const poolCx = cx;
+      const poolCy = cy;
+      const poolR = Math.min(W, H) * 0.4;
+      
+      // Update starfish
+      starfish.forEach(s => {
+        s.rotation += s.rotationSpeed;
+        s.startled *= 0.995;
+        
+        if (s.moveSpeed > 0.01) {
+          s.x += Math.cos(s.moveAngle) * s.moveSpeed;
+          s.y += Math.sin(s.moveAngle) * s.moveSpeed;
+          s.moveSpeed *= 0.99;
+        }
+        
+        // Keep in pool
+        const dx = s.x - poolCx;
+        const dy = s.y - poolCy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > poolR * 0.8) {
+          s.moveAngle = Math.atan2(-dy, -dx);
+          s.moveSpeed = 0.2;
+        }
+      });
+      
+      // Update anemones
+      anemones.forEach(a => {
+        a.phase += 0.02;
+        a.retracted *= 0.99;
+      });
+      
+      // Update urchins
+      urchins.forEach(u => {
+        u.spineTwitch *= 0.97;
+      });
+      
+      // Update hermit crabs
+      hermitCrabs.forEach(h => {
+        h.retreated *= 0.995;
+        h.pauseTime -= dt;
+        
+        if (h.retreated < 0.3 && h.pauseTime <= 0) {
+          if (Math.random() < 0.01) {
+            h.targetX = poolCx + (Math.random() - 0.5) * poolR;
+            h.targetY = poolCy + (Math.random() - 0.5) * poolR;
+            h.speed = 0.2;
+          }
+        }
+        
+        if (h.speed > 0.01 && h.retreated < 0.3) {
+          const dx = h.targetX - h.x;
+          const dy = h.targetY - h.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist > 5) {
+            h.direction = Math.atan2(dy, dx);
+            h.x += Math.cos(h.direction) * h.speed;
+            h.y += Math.sin(h.direction) * h.speed;
+          } else {
+            h.speed = 0;
+            h.pauseTime = 2000 + Math.random() * 3000;
+          }
+        }
+      });
+      
+      // Update fish
+      fish.forEach(f => {
+        f.wobble += 0.15;
+        f.speed *= 0.995;
+        f.speed = Math.max(f.speed, 0.3 + Math.random() * 0.1);
+        
+        f.x += Math.cos(f.direction) * f.speed;
+        f.y += Math.sin(f.direction) * f.speed + Math.sin(f.wobble) * 0.2;
+        
+        // Wander
+        if (Math.random() < 0.02) {
+          f.direction += (Math.random() - 0.5) * 0.5;
+        }
+        
+        // Stay in pool
+        const dx = f.x - poolCx;
+        const dy = f.y - poolCy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > poolR * 0.7) {
+          f.direction = Math.atan2(-dy, -dx) + (Math.random() - 0.5) * 0.5;
+        }
+      });
+      
+      // Update bubbles
+      bubbles.forEach(b => {
+        b.y -= b.speed;
+        b.x += Math.sin(b.wobble) * 0.3;
+        b.wobble += 0.1;
+        b.alpha -= 0.005;
+      });
+      bubbles = bubbles.filter(b => b.alpha > 0);
+      
+      // Update ripples
+      ripples.forEach(r => {
+        r.radius += 0.5;
+        r.alpha = 0.5 * (1 - r.radius / r.maxRadius);
+      });
+      ripples = ripples.filter(r => r.radius < r.maxRadius);
+      
+      // Random bubbles from creatures
+      if (Math.random() < 0.02) {
+        const creature = anemones[Math.floor(Math.random() * anemones.length)];
+        if (creature) {
+          spawnBubble(creature.x, creature.y);
+          if (Math.random() < 0.3) playBubble();
+        }
+      }
+    }
+    
+    function drawPool() {
+      const poolCx = cx;
+      const poolCy = cy;
+      const poolR = Math.min(W, H) * 0.4;
+      
+      // Rocky edge
+      ctx.save();
+      
+      // Outer rock shadow
+      const rockGrad = ctx.createRadialGradient(poolCx, poolCy, poolR * 0.85, poolCx, poolCy, poolR * 1.1);
+      rockGrad.addColorStop(0, 'transparent');
+      rockGrad.addColorStop(0.3, '#3a4a5a');
+      rockGrad.addColorStop(0.6, '#2a3a4a');
+      rockGrad.addColorStop(1, '#1a2a3a');
+      
+      ctx.beginPath();
+      ctx.arc(poolCx, poolCy, poolR * 1.1, 0, Math.PI * 2);
+      ctx.fillStyle = rockGrad;
+      ctx.fill();
+      
+      // Pool water base
+      const waterGrad = ctx.createRadialGradient(poolCx, poolCy - poolR * 0.3, 0, poolCx, poolCy, poolR);
+      waterGrad.addColorStop(0, '#4a7a8a');
+      waterGrad.addColorStop(0.5, '#3a6a7a');
+      waterGrad.addColorStop(1, '#2a5a6a');
+      
+      ctx.beginPath();
+      ctx.arc(poolCx, poolCy, poolR, 0, Math.PI * 2);
+      ctx.fillStyle = waterGrad;
+      ctx.fill();
+      
+      // Sandy bottom patches
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 + time * 0.0001;
+        const dist = poolR * (0.3 + Math.random() * 0.4);
+        const px = poolCx + Math.cos(angle) * dist;
+        const py = poolCy + Math.sin(angle) * dist;
+        const sandGrad = ctx.createRadialGradient(px, py, 0, px, py, 30 + Math.random() * 20);
+        sandGrad.addColorStop(0, 'rgba(140, 130, 100, 0.3)');
+        sandGrad.addColorStop(1, 'transparent');
+        ctx.beginPath();
+        ctx.arc(px, py, 40, 0, Math.PI * 2);
+        ctx.fillStyle = sandGrad;
+        ctx.fill();
+      }
+      
+      // Small rocks on bottom
+      ctx.fillStyle = '#3a4a4a';
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2 + 0.3;
+        const dist = poolR * (0.5 + (i % 3) * 0.15);
+        const px = poolCx + Math.cos(angle) * dist;
+        const py = poolCy + Math.sin(angle) * dist;
+        ctx.beginPath();
+        ctx.ellipse(px, py, 8 + (i % 4) * 3, 5 + (i % 3) * 2, angle, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+    
+    function drawStarfish(s) {
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.rotation);
+      
+      const armLength = s.size;
+      const arms = s.arms;
+      
+      // Body center
+      ctx.beginPath();
+      ctx.arc(0, 0, s.size * 0.3, 0, Math.PI * 2);
+      ctx.fillStyle = s.color;
+      ctx.fill();
+      
+      // Arms
+      for (let i = 0; i < arms; i++) {
+        const angle = (i / arms) * Math.PI * 2;
+        const startled = s.startled * Math.sin(time * 0.01 + i);
+        
+        ctx.save();
+        ctx.rotate(angle);
+        
+        ctx.beginPath();
+        ctx.moveTo(0, -s.size * 0.25);
+        ctx.quadraticCurveTo(
+          armLength * 0.5 + startled * 3, -s.size * 0.15,
+          armLength, 0
+        );
+        ctx.quadraticCurveTo(
+          armLength * 0.5 + startled * 3, s.size * 0.15,
+          0, s.size * 0.25
+        );
+        ctx.fillStyle = s.color;
+        ctx.fill();
+        
+        // Texture dots
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        for (let j = 1; j < 4; j++) {
+          ctx.beginPath();
+          ctx.arc(armLength * j * 0.25, 0, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        ctx.restore();
+      }
+      
+      ctx.restore();
+    }
+    
+    function drawAnemone(a) {
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      
+      const retractFactor = 1 - a.retracted * 0.7;
+      const baseSize = a.size * 0.4;
+      
+      // Base/foot
+      ctx.beginPath();
+      ctx.ellipse(0, baseSize * 0.3, baseSize, baseSize * 0.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = a.color;
+      ctx.fill();
+      
+      // Tentacles
+      for (let i = 0; i < a.tentacles; i++) {
+        const angle = (i / a.tentacles) * Math.PI * 2;
+        const tentLen = (a.size * 0.6 + Math.sin(a.phase + i * 0.5) * 5) * retractFactor;
+        const sway = Math.sin(time * 0.002 + i * 0.3 + a.phase) * 10 * retractFactor;
+        
+        const tx = Math.cos(angle) * baseSize * 0.8;
+        const ty = -baseSize * 0.3;
+        const ex = tx + Math.cos(angle) * tentLen + sway;
+        const ey = ty - tentLen * 0.8;
+        
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.quadraticCurveTo(
+          tx + (ex - tx) * 0.5 + sway * 0.5,
+          ty + (ey - ty) * 0.3,
+          ex, ey
+        );
+        ctx.strokeStyle = a.color;
+        ctx.lineWidth = 3 * retractFactor;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        
+        // Tip
+        ctx.beginPath();
+        ctx.arc(ex, ey, 2 * retractFactor, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fill();
+      }
+      
+      // Center mouth
+      ctx.beginPath();
+      ctx.arc(0, 0, baseSize * 0.3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    function drawUrchin(u) {
+      ctx.save();
+      ctx.translate(u.x, u.y);
+      
+      // Body
+      ctx.beginPath();
+      ctx.arc(0, 0, u.size, 0, Math.PI * 2);
+      ctx.fillStyle = u.color;
+      ctx.fill();
+      
+      // Spines
+      for (let i = 0; i < u.spines; i++) {
+        const angle = (i / u.spines) * Math.PI * 2;
+        const twitch = u.spineTwitch * Math.sin(time * 0.02 + i);
+        const spineLen = u.size * 1.5 + twitch * 5;
+        
+        ctx.beginPath();
+        ctx.moveTo(
+          Math.cos(angle) * u.size * 0.8,
+          Math.sin(angle) * u.size * 0.8
+        );
+        ctx.lineTo(
+          Math.cos(angle + twitch * 0.1) * spineLen,
+          Math.sin(angle + twitch * 0.1) * spineLen
+        );
+        ctx.strokeStyle = '#1a0a1a';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      
+      ctx.restore();
+    }
+    
+    function drawHermitCrab(h) {
+      ctx.save();
+      ctx.translate(h.x, h.y);
+      ctx.rotate(h.direction);
+      
+      const retreatFactor = 1 - h.retreated * 0.8;
+      
+      // Shell
+      ctx.beginPath();
+      ctx.arc(-h.size * 0.3, 0, h.size, 0, Math.PI * 2);
+      ctx.fillStyle = h.shellColor;
+      ctx.fill();
+      
+      // Shell spiral
+      ctx.beginPath();
+      ctx.arc(-h.size * 0.3, 0, h.size * 0.6, 0, Math.PI * 1.5);
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      if (retreatFactor > 0.3) {
+        // Legs
+        ctx.fillStyle = '#a06040';
+        for (let i = 0; i < 3; i++) {
+          const legAngle = -0.3 + i * 0.3;
+          const legLen = h.size * 0.8 * retreatFactor;
+          const legX = Math.cos(legAngle) * legLen;
+          const legY = Math.sin(legAngle) * legLen * 0.5 + (i - 1) * 4;
+          
+          ctx.beginPath();
+          ctx.moveTo(h.size * 0.3, (i - 1) * 3);
+          ctx.lineTo(h.size * 0.3 + legX, legY);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#a06040';
+          ctx.stroke();
+        }
+        
+        // Claws
+        ctx.beginPath();
+        ctx.arc(h.size * 0.7 * retreatFactor, -h.size * 0.3, h.size * 0.25, 0, Math.PI * 2);
+        ctx.arc(h.size * 0.7 * retreatFactor, h.size * 0.3, h.size * 0.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#c08060';
+        ctx.fill();
+        
+        // Eyes
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(h.size * 0.6 * retreatFactor, -h.size * 0.15, 2, 0, Math.PI * 2);
+        ctx.arc(h.size * 0.6 * retreatFactor, h.size * 0.15, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+    
+    function drawFish(f) {
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.direction);
+      
+      const tailWag = Math.sin(f.wobble) * 0.3;
+      
+      // Body
+      ctx.beginPath();
+      ctx.ellipse(0, 0, f.size, f.size * 0.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = f.color;
+      ctx.fill();
+      
+      // Tail
+      ctx.beginPath();
+      ctx.moveTo(-f.size, 0);
+      ctx.lineTo(-f.size * 1.8, -f.size * 0.6 + tailWag * f.size);
+      ctx.lineTo(-f.size * 1.8, f.size * 0.6 + tailWag * f.size);
+      ctx.closePath();
+      ctx.fillStyle = f.color;
+      ctx.fill();
+      
+      // Eye
+      ctx.beginPath();
+      ctx.arc(f.size * 0.4, -f.size * 0.1, f.size * 0.15, 0, Math.PI * 2);
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    function drawBubble(b) {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200, 230, 255, ${b.alpha * 0.3})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${b.alpha * 0.5})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      
+      // Highlight
+      ctx.beginPath();
+      ctx.arc(b.x - b.size * 0.3, b.y - b.size * 0.3, b.size * 0.2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${b.alpha * 0.7})`;
+      ctx.fill();
+    }
+    
+    function drawRipple(r) {
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(200, 230, 255, ${r.alpha})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    
+    function drawWaterSurface() {
+      const poolCx = cx;
+      const poolCy = cy;
+      const poolR = Math.min(W, H) * 0.4;
+      
+      // Caustics/light patterns
+      ctx.save();
+      ctx.globalCompositeOperation = 'overlay';
+      
+      for (let i = 0; i < 8; i++) {
+        const angle = time * 0.0003 + i * 0.8;
+        const dist = poolR * 0.5;
+        const px = poolCx + Math.cos(angle) * dist * Math.sin(time * 0.001 + i);
+        const py = poolCy + Math.sin(angle) * dist * Math.cos(time * 0.0015 + i);
+        
+        const causticGrad = ctx.createRadialGradient(px, py, 0, px, py, 60);
+        causticGrad.addColorStop(0, 'rgba(150, 200, 220, 0.15)');
+        causticGrad.addColorStop(0.5, 'rgba(150, 200, 220, 0.05)');
+        causticGrad.addColorStop(1, 'transparent');
+        
+        ctx.beginPath();
+        ctx.arc(px, py, 60, 0, Math.PI * 2);
+        ctx.fillStyle = causticGrad;
+        ctx.fill();
+      }
+      
+      ctx.restore();
+      
+      // Surface shimmer
+      ctx.save();
+      ctx.globalAlpha = 0.1;
+      ctx.beginPath();
+      ctx.arc(poolCx, poolCy, poolR, 0, Math.PI * 2);
+      ctx.clip();
+      
+      for (let i = 0; i < 5; i++) {
+        const y = poolCy - poolR + (time * 0.02 + i * poolR * 0.4) % (poolR * 2);
+        ctx.beginPath();
+        ctx.moveTo(poolCx - poolR, y);
+        
+        for (let x = poolCx - poolR; x < poolCx + poolR; x += 20) {
+          ctx.lineTo(x, y + Math.sin(x * 0.02 + time * 0.002) * 3);
+        }
+        
+        ctx.strokeStyle = 'rgba(200, 230, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      
+      ctx.restore();
+    }
+    
+    function draw() {
+      // Clear
+      ctx.fillStyle = '#1a2a3a';
+      ctx.fillRect(0, 0, W, H);
+      
+      // Draw pool
+      drawPool();
+      
+      // Draw creatures (back to front)
+      urchins.forEach(drawUrchin);
+      anemones.forEach(drawAnemone);
+      starfish.forEach(drawStarfish);
+      hermitCrabs.forEach(drawHermitCrab);
+      fish.forEach(drawFish);
+      
+      // Draw bubbles
+      bubbles.forEach(drawBubble);
+      
+      // Draw water surface effects
+      drawWaterSurface();
+      
+      // Draw ripples
+      ripples.forEach(drawRipple);
+    }
+    
+    function loop(ts) {
+      const dt = ts - time;
+      time = ts;
+      
+      updateCreatures(dt);
+      draw();
+      
+      requestAnimationFrame(loop);
+    }
+    
+    // Events
+    function handlePointer(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.touches ? e.touches[0].clientX : e.clientX);
+      const y = (e.touches ? e.touches[0].clientY : e.clientY);
+      
+      pointerX = x;
+      pointerY = y;
+      
+      if (!audioStarted) {
+        Tone.start();
+        initAudio();
+        info.classList.add('hidden');
+      }
+      
+      // Check if in pool
+      const poolCx = cx;
+      const poolCy = cy;
+      const poolR = Math.min(W, H) * 0.4;
+      const dx = x - poolCx;
+      const dy = y - poolCy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist < poolR) {
+        const now = Date.now();
+        if (now - lastPoke > 200) {
+          disturbCreatures(x, y);
+          spawnRipple(x, y);
+          
+          for (let i = 0; i < 2 + Math.random() * 3; i++) {
+            spawnBubble(x, y);
+          }
+          
+          playSplash();
+          lastPoke = now;
+        }
+      }
+    }
+    
+    canvas.addEventListener('mousedown', handlePointer);
+    canvas.addEventListener('touchstart', handlePointer, { passive: true });
+    canvas.addEventListener('mousemove', (e) => {
+      if (e.buttons) handlePointer(e);
+    });
+    canvas.addEventListener('touchmove', handlePointer, { passive: true });
+    
+    // Navigation
+    document.getElementById('nav-btn').addEventListener('click', () => {
+      window.location.href = '/';
+    });
+    
+    document.getElementById('info-btn').addEventListener('click', () => {
+      document.getElementById('overlay').classList.add('visible');
+    });
+    
+    document.getElementById('close-overlay').addEventListener('click', () => {
+      document.getElementById('overlay').classList.remove('visible');
+      if (!audioStarted) {
+        Tone.start();
+        initAudio();
+        info.classList.add('hidden');
+      }
+    });
+    
+    // Init
+    window.addEventListener('resize', () => {
+      resize();
+      starfish = [];
+      anemones = [];
+      urchins = [];
+      hermitCrabs = [];
+      fish = [];
+      initCreatures();
+    });
+    
+    resize();
+    initCreatures();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
