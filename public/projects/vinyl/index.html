@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>vinyl — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #1a1614;
+      overflow: hidden; 
+      touch-action: none;
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; cursor: pointer; }
+    
+    #info-btn, #nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+    #info-btn:hover, #nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    #info-btn { right: 20px; }
+    #nav-btn { right: 66px; font-size: 14px; }
+    
+    #info-panel {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(20,18,15,0.95);
+      color: #c9b896;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      padding: 40px;
+    }
+    #info-panel.visible { display: flex; }
+    #info-content {
+      max-width: 500px;
+      line-height: 1.8;
+    }
+    #info-content h1 { 
+      font-size: 28px; 
+      margin-bottom: 20px;
+      font-weight: normal;
+      color: #d4a857;
+    }
+    #info-content p { 
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    #info-content .quote {
+      font-style: italic;
+      border-left: 2px solid #d4a857;
+      padding-left: 16px;
+      margin: 24px 0;
+      color: #a89070;
+    }
+    #info-content .close {
+      margin-top: 30px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+    }
+    
+    #hint {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      pointer-events: none;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <button id="nav-btn" title="Back to gallery">←</button>
+  <button id="info-btn" title="About this piece">?</button>
+  
+  <div id="info-panel">
+    <div id="info-content">
+      <h1>vinyl</h1>
+      <p>A record spinning at 33⅓ revolutions per minute. The needle traces a spiral groove, reading vibrations pressed into plastic decades ago.</p>
+      <p>The crackle is not a flaw — it's the sound of time. Every pop is a speck of dust, a scratch from careless handling, a moment of history.</p>
+      <div class="quote">"The music is not in the groove. The music is in the ritual."<br>— Unknown</div>
+      <p>Click anywhere to drop or lift the needle.</p>
+      <p class="close">tap anywhere to return</p>
+    </div>
+  </div>
+  
+  <div id="hint">click to drop the needle</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+    
+    let W, H, centerX, centerY, scale;
+    
+    // Turntable state
+    let isPlaying = false;
+    let recordAngle = 0;
+    let armAngle = -0.3; // radians from rest position
+    let armTargetAngle = -0.3;
+    let needleDown = false;
+    let playProgress = 0; // 0-1 across the record
+    
+    // Dust particles
+    const dustParticles = [];
+    
+    // Audio
+    let audioCtx = null;
+    let crackleNode = null;
+    let musicNode = null;
+    let masterGain = null;
+    let isAudioStarted = false;
+    
+    // Music - a simple lo-fi chord progression
+    let musicOscillators = [];
+    let musicGain = null;
+    let chordIndex = 0;
+    let lastChordTime = 0;
+    
+    // Chord progression (jazz-ish, melancholic)
+    const chords = [
+      [261.63, 329.63, 392.00, 493.88], // Cmaj7
+      [220.00, 277.18, 329.63, 415.30], // Am7
+      [246.94, 311.13, 369.99, 466.16], // Dm7
+      [196.00, 246.94, 293.66, 369.99], // G7
+    ];
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      centerX = W / 2;
+      centerY = H / 2;
+      scale = Math.min(W, H) / 500;
+      
+      // Initialize dust
+      dustParticles.length = 0;
+      for (let i = 0; i < 30; i++) {
+        dustParticles.push({
+          angle: Math.random() * Math.PI * 2,
+          radius: 50 + Math.random() * 100,
+          size: 0.5 + Math.random() * 1.5,
+          alpha: 0.1 + Math.random() * 0.3,
+          drift: (Math.random() - 0.5) * 0.001
+        });
+      }
+    }
+    
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.5;
+      masterGain.connect(audioCtx.destination);
+      
+      // Lo-fi filter
+      const lofiFilter = audioCtx.createBiquadFilter();
+      lofiFilter.type = 'lowpass';
+      lofiFilter.frequency.value = 3000;
+      lofiFilter.Q.value = 1;
+      lofiFilter.connect(masterGain);
+      
+      // Music gain
+      musicGain = audioCtx.createGain();
+      musicGain.gain.value = 0;
+      musicGain.connect(lofiFilter);
+      
+      isAudioStarted = true;
+    }
+    
+    function startCrackle() {
+      if (!audioCtx || crackleNode) return;
+      
+      // Create crackle using noise + filtering
+      const bufferSize = audioCtx.sampleRate * 2;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      
+      for (let i = 0; i < bufferSize; i++) {
+        // Mostly silence with occasional crackles
+        if (Math.random() < 0.001) {
+          output[i] = (Math.random() - 0.5) * 0.5;
+        } else if (Math.random() < 0.0001) {
+          // Louder pop
+          output[i] = (Math.random() - 0.5) * 1.5;
+        } else {
+          output[i] = (Math.random() - 0.5) * 0.02; // subtle hiss
+        }
+      }
+      
+      crackleNode = audioCtx.createBufferSource();
+      crackleNode.buffer = noiseBuffer;
+      crackleNode.loop = true;
+      
+      const crackleGain = audioCtx.createGain();
+      crackleGain.gain.value = 0.15;
+      
+      const crackleFilter = audioCtx.createBiquadFilter();
+      crackleFilter.type = 'bandpass';
+      crackleFilter.frequency.value = 1000;
+      crackleFilter.Q.value = 0.5;
+      
+      crackleNode.connect(crackleFilter);
+      crackleFilter.connect(crackleGain);
+      crackleGain.connect(masterGain);
+      crackleNode.start();
+    }
+    
+    function stopCrackle() {
+      if (crackleNode) {
+        crackleNode.stop();
+        crackleNode = null;
+      }
+    }
+    
+    function playChord(frequencies) {
+      // Clear old oscillators
+      musicOscillators.forEach(osc => {
+        try { osc.stop(); } catch(e) {}
+      });
+      musicOscillators = [];
+      
+      if (!audioCtx) return;
+      
+      frequencies.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        
+        const oscGain = audioCtx.createGain();
+        oscGain.gain.value = 0.1 - (i * 0.02); // lower notes louder
+        
+        osc.connect(oscGain);
+        oscGain.connect(musicGain);
+        osc.start();
+        
+        musicOscillators.push(osc);
+      });
+    }
+    
+    function updateMusic() {
+      if (!isPlaying || !audioCtx) return;
+      
+      const now = Date.now();
+      if (now - lastChordTime > 3000) { // Change chord every 3 seconds
+        playChord(chords[chordIndex % chords.length]);
+        chordIndex++;
+        lastChordTime = now;
+      }
+    }
+    
+    function playNeedleSound(down) {
+      if (!audioCtx) return;
+      
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.value = down ? 60 : 80;
+      
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
+      
+      // Scratch sound
+      const noise = audioCtx.createOscillator();
+      const noiseGain = audioCtx.createGain();
+      noise.type = 'sawtooth';
+      noise.frequency.value = 150;
+      noiseGain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+      noise.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      noise.start();
+      noise.stop(audioCtx.currentTime + 0.05);
+    }
+    
+    function startPlayback() {
+      isPlaying = true;
+      needleDown = true;
+      armTargetAngle = 0.1 + playProgress * 0.4;
+      
+      startCrackle();
+      if (musicGain) {
+        musicGain.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 0.5);
+      }
+      playChord(chords[chordIndex % chords.length]);
+      lastChordTime = Date.now();
+      
+      playNeedleSound(true);
+      hint.textContent = 'click to lift the needle';
+    }
+    
+    function stopPlayback() {
+      isPlaying = false;
+      needleDown = false;
+      armTargetAngle = -0.3;
+      
+      stopCrackle();
+      if (musicGain) {
+        musicGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+      }
+      musicOscillators.forEach(osc => {
+        try { osc.stop(audioCtx.currentTime + 0.3); } catch(e) {}
+      });
+      musicOscillators = [];
+      
+      playNeedleSound(false);
+      hint.textContent = 'click to drop the needle';
+    }
+    
+    function togglePlayback() {
+      initAudio();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      
+      if (isPlaying) {
+        stopPlayback();
+      } else {
+        startPlayback();
+      }
+    }
+    
+    function update() {
+      // Record rotation (33 1/3 RPM)
+      if (isPlaying) {
+        recordAngle += 0.035; // ~33 RPM feel
+        playProgress += 0.00002; // slowly move across record
+        if (playProgress > 1) playProgress = 0;
+        armTargetAngle = 0.1 + playProgress * 0.4;
+      }
+      
+      // Arm movement (smooth follow)
+      armAngle += (armTargetAngle - armAngle) * 0.05;
+      
+      // Dust drift
+      dustParticles.forEach(p => {
+        if (isPlaying) {
+          p.angle += 0.035; // spin with record
+        }
+        p.angle += p.drift;
+      });
+      
+      updateMusic();
+    }
+    
+    function drawTurntable() {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.scale(scale, scale);
+      
+      // Plinth (base)
+      ctx.fillStyle = '#2a2420';
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 30;
+      ctx.shadowOffsetY = 10;
+      roundRect(-200, -180, 400, 360, 10);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      
+      // Platter
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 150, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Record
+      ctx.save();
+      ctx.rotate(recordAngle);
+      
+      // Vinyl surface
+      const recordGrad = ctx.createRadialGradient(0, 0, 20, 0, 0, 140);
+      recordGrad.addColorStop(0, '#1a1a1a');
+      recordGrad.addColorStop(0.15, '#0a0a0a');
+      recordGrad.addColorStop(0.85, '#0a0a0a');
+      recordGrad.addColorStop(1, '#1a1a1a');
+      
+      ctx.fillStyle = recordGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, 140, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Grooves
+      ctx.strokeStyle = 'rgba(30, 30, 30, 0.5)';
+      ctx.lineWidth = 0.5;
+      for (let r = 35; r < 135; r += 2) {
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      
+      // Groove highlights (light reflection)
+      ctx.strokeStyle = 'rgba(60, 60, 60, 0.3)';
+      ctx.lineWidth = 0.3;
+      for (let r = 40; r < 130; r += 8) {
+        ctx.beginPath();
+        ctx.arc(0, 0, r, -0.3, 0.3);
+        ctx.stroke();
+      }
+      
+      // Label
+      const labelGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 30);
+      labelGrad.addColorStop(0, '#d4a857');
+      labelGrad.addColorStop(0.7, '#b8923c');
+      labelGrad.addColorStop(1, '#8a6a20');
+      
+      ctx.fillStyle = labelGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, 30, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Label text
+      ctx.fillStyle = '#3a2a1a';
+      ctx.font = 'bold 6px Georgia';
+      ctx.textAlign = 'center';
+      ctx.fillText('STARFISH', 0, -10);
+      ctx.font = '4px Georgia';
+      ctx.fillText('RECORDS', 0, -3);
+      ctx.fillText('33⅓ RPM', 0, 12);
+      
+      // Center spindle hole
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Dust particles on record
+      dustParticles.forEach(p => {
+        ctx.fillStyle = `rgba(255, 255, 240, ${p.alpha})`;
+        ctx.beginPath();
+        ctx.arc(
+          Math.cos(p.angle) * p.radius,
+          Math.sin(p.angle) * p.radius,
+          p.size,
+          0, Math.PI * 2
+        );
+        ctx.fill();
+      });
+      
+      ctx.restore(); // End record rotation
+      
+      // Tonearm
+      const armPivotX = 160;
+      const armPivotY = -100;
+      
+      ctx.save();
+      ctx.translate(armPivotX, armPivotY);
+      ctx.rotate(armAngle);
+      
+      // Arm base
+      ctx.fillStyle = '#4a4a4a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Arm tube
+      ctx.strokeStyle = '#6a6a6a';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-180, 100);
+      ctx.stroke();
+      
+      // Arm highlight
+      ctx.strokeStyle = '#8a8a8a';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-2, 2);
+      ctx.lineTo(-178, 98);
+      ctx.stroke();
+      
+      // Headshell
+      ctx.fillStyle = '#5a5a5a';
+      ctx.save();
+      ctx.translate(-180, 100);
+      ctx.rotate(0.3);
+      ctx.fillRect(-20, -6, 25, 12);
+      
+      // Cartridge
+      ctx.fillStyle = '#3a3a3a';
+      ctx.fillRect(-18, -4, 15, 8);
+      
+      // Stylus (needle)
+      ctx.strokeStyle = needleDown ? '#ffd700' : '#aaa';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-10, 4);
+      ctx.lineTo(-10, needleDown ? 12 : 8);
+      ctx.stroke();
+      
+      // Needle tip
+      ctx.fillStyle = needleDown ? '#ffd700' : '#888';
+      ctx.beginPath();
+      ctx.arc(-10, needleDown ? 12 : 8, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore(); // headshell
+      ctx.restore(); // tonearm
+      
+      // Speed selector
+      ctx.fillStyle = '#3a3a3a';
+      ctx.beginPath();
+      ctx.arc(-160, 140, 15, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.fillStyle = '#c9a857';
+      ctx.font = '8px Georgia';
+      ctx.textAlign = 'center';
+      ctx.fillText('33', -160, 143);
+      
+      // Power light
+      ctx.fillStyle = isPlaying ? '#4ade80' : '#555';
+      ctx.shadowColor = isPlaying ? '#4ade80' : 'transparent';
+      ctx.shadowBlur = isPlaying ? 10 : 0;
+      ctx.beginPath();
+      ctx.arc(160, 140, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      
+      ctx.restore();
+    }
+    
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+    
+    function draw() {
+      // Background - wood grain suggestion
+      const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+      bgGrad.addColorStop(0, '#1a1614');
+      bgGrad.addColorStop(0.5, '#1e1a17');
+      bgGrad.addColorStop(1, '#1a1614');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+      
+      update();
+      drawTurntable();
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Interaction
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      // Check if clicking on info panel area
+      if (document.getElementById('info-panel').classList.contains('visible')) {
+        return;
+      }
+      
+      togglePlayback();
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      togglePlayback();
+    });
+    
+    // Info panel
+    const infoBtn = document.getElementById('info-btn');
+    const infoPanel = document.getElementById('info-panel');
+    
+    infoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      infoPanel.classList.add('visible');
+    });
+    
+    infoPanel.addEventListener('click', () => {
+      infoPanel.classList.remove('visible');
+    });
+    
+    document.getElementById('nav-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.location.href = '/';
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+  </script>
+</body>
+</html>

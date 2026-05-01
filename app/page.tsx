@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 1, 2026 ===
     {
+      name: "Vinyl",
+      description: "A record spinning at 33⅓. The needle traces the groove, reading vibrations pressed into plastic decades ago. The crackle isn't a flaw — it's the sound of time",
+      date: "May 1",
+      href: "/projects/vinyl/"
+    },
+    {
       name: "Tidepool",
       description: "A microcosm between worlds. Starfish, anemones, urchins, hermit crabs, tiny fish — each adapted to the rhythms of exposure and submersion. Touch the water to disturb; wait to observe. The tide pool reveals twice daily what the ocean usually hides",
       date: "May 1",
