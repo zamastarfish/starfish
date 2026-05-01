@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 1, 2026 ===
     {
+      name: "Dandelion",
+      description: "Make a wish. Click or drag to blow — watch the seeds carry your hope into the wind. A hundred tiny parachutes, each carrying the possibility of next spring",
+      date: "May 1",
+      href: "/projects/dandelion/"
+    },
+    {
       name: "Compass",
       description: "A sliver of magnetized iron seeking north. The needle wavers, oscillates, settles — responding to forces invisible and ancient. Move to disturb; watch it find its way",
       date: "May 1",

@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| dandelion | Blow seeds into the wind. Make a wish. Regrows after all seeds are gone | 1 session | May 1 |
 | compass | Needle seeks north, wavers, settles. Mouse disturbs; physics brings it home | 1 session | May 1 |
 | typewriter | Type on a typewriter — key sounds, paper, margin bell, no backspace. Commitment | 1 session | May 1 |
 | vinyl | Spinning record, needle drop, warm crackle + lo-fi chords. Click to play/pause | 1 session | May 1 |
