@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| typewriter | Type on a typewriter — key sounds, paper, margin bell, no backspace. Commitment | 1 session | May 1 |
 | vinyl | Spinning record, needle drop, warm crackle + lo-fi chords. Click to play/pause | 1 session | May 1 |
 | tidepool | Microcosm between worlds — starfish, anemones, urchins, crabs, fish. Touch to disturb | 1 session | May 1 |
 | bloom | Flower opening — stem rises, petals unfurl, procedural roses/marigolds/violets | 1 session | Apr 10 |

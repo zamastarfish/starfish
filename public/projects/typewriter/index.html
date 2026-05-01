@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>typewriter — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #2a2520;
+      overflow: hidden; 
+      font-family: 'Courier New', monospace;
+    }
+    canvas { display: block; }
+    
+    #info-btn, #nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      cursor: pointer;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+    #info-btn:hover, #nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    #info-btn { right: 20px; }
+    #nav-btn { right: 66px; font-size: 14px; }
+    
+    #info-panel {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(20,18,15,0.95);
+      color: #c9b896;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      padding: 40px;
+    }
+    #info-panel.visible { display: flex; }
+    #info-content {
+      max-width: 500px;
+      line-height: 1.8;
+    }
+    #info-content h1 { 
+      font-size: 28px; 
+      margin-bottom: 20px;
+      font-weight: normal;
+      color: #d4a857;
+      font-family: Georgia, serif;
+    }
+    #info-content p { 
+      margin-bottom: 16px;
+      font-size: 14px;
+      font-family: Georgia, serif;
+    }
+    #info-content .quote {
+      font-style: italic;
+      border-left: 2px solid #d4a857;
+      padding-left: 16px;
+      margin: 24px 0;
+      color: #a89070;
+    }
+    #info-content .close {
+      margin-top: 30px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+    }
+    
+    #hint {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      pointer-events: none;
+      text-align: center;
+      font-family: Georgia, serif;
+    }
+    
+    /* Hidden input for mobile keyboard */
+    #hidden-input {
+      position: fixed;
+      top: -100px;
+      left: 0;
+      opacity: 0;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <input type="text" id="hidden-input" autocomplete="off" autocapitalize="off">
+  
+  <button id="nav-btn" title="Back to gallery">←</button>
+  <button id="info-btn" title="About this piece">?</button>
+  
+  <div id="info-panel">
+    <div id="info-content">
+      <h1>typewriter</h1>
+      <p>Before delete keys and autocorrect, every keystroke was a commitment. Metal slugs striking ribbon, impressing ink into paper — permanent, physical, real.</p>
+      <p>The bell warns you at the margin. The carriage return is a small satisfaction. Mistakes remain.</p>
+      <div class="quote">"Writing is easy. You just open a vein and bleed."<br>— Ernest Hemingway (who typed standing up)</div>
+      <p>Type to write. No backspace — only forward.</p>
+      <p class="close">tap anywhere to return</p>
+    </div>
+  </div>
+  
+  <div id="hint">type to begin</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+    const hiddenInput = document.getElementById('hidden-input');
+    
+    let W, H, centerX, centerY, scale;
+    
+    // Typewriter state
+    const lines = [''];
+    let currentLine = 0;
+    let cursorX = 0;
+    const maxCharsPerLine = 45;
+    const maxLines = 20;
+    
+    // Animation
+    let carriageOffset = 0;
+    let carriageTarget = 0;
+    let keyPressed = null;
+    let keyPressTime = 0;
+    let bellRinging = false;
+    let bellTime = 0;
+    
+    // Audio
+    let audioCtx = null;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      centerX = W / 2;
+      centerY = H / 2;
+      scale = Math.min(W / 700, H / 500);
+    }
+    
+    function initAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    function playKeySound() {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Key strike - mechanical click
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+      
+      osc.type = 'square';
+      osc.frequency.value = 100 + Math.random() * 50;
+      
+      filter.type = 'highpass';
+      filter.frequency.value = 500;
+      
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+      
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.05);
+      
+      // Paper impact
+      const noise = audioCtx.createOscillator();
+      const noiseGain = audioCtx.createGain();
+      noise.type = 'sawtooth';
+      noise.frequency.value = 200 + Math.random() * 100;
+      noiseGain.gain.setValueAtTime(0.08, now + 0.01);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+      noise.connect(noiseGain);
+      noiseGain.connect(audioCtx.destination);
+      noise.start(now + 0.01);
+      noise.stop(now + 0.03);
+    }
+    
+    function playSpaceSound() {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Spacebar - deeper thunk
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.value = 80;
+      
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.08);
+    }
+    
+    function playReturnSound() {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Carriage sliding
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.linearRampToValueAtTime(100, now + 0.2);
+      
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.linearRampToValueAtTime(0.05, now + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.25);
+      
+      // Carriage stop
+      setTimeout(() => {
+        const stop = audioCtx.createOscillator();
+        const stopGain = audioCtx.createGain();
+        stop.type = 'square';
+        stop.frequency.value = 150;
+        stopGain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        stopGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.03);
+        stop.connect(stopGain);
+        stopGain.connect(audioCtx.destination);
+        stop.start();
+        stop.stop(audioCtx.currentTime + 0.03);
+      }, 200);
+    }
+    
+    function playBellSound() {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Bell - high ping
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.value = 2000;
+      
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.5);
+      
+      // Harmonic
+      const osc2 = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.value = 3000;
+      gain2.gain.setValueAtTime(0.15, now);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc2.connect(gain2);
+      gain2.connect(audioCtx.destination);
+      osc2.start(now);
+      osc2.stop(now + 0.3);
+      
+      bellRinging = true;
+      bellTime = Date.now();
+    }
+    
+    function typeChar(char) {
+      initAudio();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      
+      hint.style.opacity = '0';
+      
+      if (char === 'Enter' || char === '\n') {
+        // Carriage return
+        playReturnSound();
+        currentLine++;
+        cursorX = 0;
+        if (currentLine >= maxLines) {
+          // Scroll up
+          lines.shift();
+          currentLine = maxLines - 1;
+        }
+        if (lines.length <= currentLine) {
+          lines.push('');
+        }
+        carriageTarget = 0;
+        return;
+      }
+      
+      if (cursorX >= maxCharsPerLine) {
+        // Auto return at margin
+        playBellSound();
+        return;
+      }
+      
+      // Margin warning bell
+      if (cursorX === maxCharsPerLine - 5) {
+        playBellSound();
+      }
+      
+      // Add character
+      if (char === ' ') {
+        playSpaceSound();
+      } else {
+        playKeySound();
+      }
+      
+      lines[currentLine] += char;
+      cursorX++;
+      keyPressed = char.toUpperCase();
+      keyPressTime = Date.now();
+      
+      // Move carriage
+      carriageTarget = cursorX;
+    }
+    
+    function update() {
+      // Smooth carriage movement
+      carriageOffset += (carriageTarget - carriageOffset) * 0.3;
+      
+      // Clear key press animation
+      if (Date.now() - keyPressTime > 100) {
+        keyPressed = null;
+      }
+      
+      // Clear bell
+      if (Date.now() - bellTime > 500) {
+        bellRinging = false;
+      }
+    }
+    
+    function drawTypewriter() {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.scale(scale, scale);
+      
+      // Paper
+      const paperW = 350;
+      const paperH = 400;
+      const paperX = -paperW / 2 - carriageOffset * 6;
+      const paperY = -180;
+      
+      // Paper shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(paperX + 5, paperY + 5, paperW, paperH);
+      
+      // Paper
+      ctx.fillStyle = '#f5f0e6';
+      ctx.fillRect(paperX, paperY, paperW, paperH);
+      
+      // Paper texture lines
+      ctx.strokeStyle = 'rgba(200, 180, 160, 0.3)';
+      ctx.lineWidth = 0.5;
+      for (let y = paperY + 30; y < paperY + paperH - 20; y += 20) {
+        ctx.beginPath();
+        ctx.moveTo(paperX + 20, y);
+        ctx.lineTo(paperX + paperW - 20, y);
+        ctx.stroke();
+      }
+      
+      // Margin line
+      ctx.strokeStyle = 'rgba(200, 100, 100, 0.3)';
+      ctx.beginPath();
+      ctx.moveTo(paperX + 40, paperY);
+      ctx.lineTo(paperX + 40, paperY + paperH);
+      ctx.stroke();
+      
+      // Typed text
+      ctx.fillStyle = '#1a1a1a';
+      ctx.font = '14px "Courier New", monospace';
+      ctx.textAlign = 'left';
+      
+      const lineHeight = 20;
+      const startY = paperY + 40;
+      const startX = paperX + 50;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const y = startY + i * lineHeight;
+        if (y > paperY + paperH - 30) break;
+        
+        // Draw each character with slight randomness (typewriter imperfection)
+        let x = startX;
+        for (let j = 0; j < lines[i].length; j++) {
+          const char = lines[i][j];
+          const offsetY = (Math.random() - 0.5) * 1;
+          const offsetX = (Math.random() - 0.5) * 0.5;
+          
+          // Vary ink density
+          const alpha = 0.7 + Math.random() * 0.3;
+          ctx.fillStyle = `rgba(26, 26, 26, ${alpha})`;
+          
+          ctx.fillText(char, x + offsetX, y + offsetY);
+          x += 8.4; // Monospace width
+        }
+      }
+      
+      // Cursor position indicator
+      if (Math.floor(Date.now() / 500) % 2 === 0) {
+        const cursorY = startY + currentLine * lineHeight;
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fillRect(startX + cursorX * 8.4, cursorY - 12, 8, 2);
+      }
+      
+      // Typewriter body (below paper)
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(-250, 80, 500, 120);
+      
+      // Keyboard area
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(-220, 100, 440, 80);
+      
+      // Draw some key rows
+      const keyChars = [
+        'QWERTYUIOP',
+        'ASDFGHJKL',
+        'ZXCVBNM'
+      ];
+      
+      const keySize = 22;
+      const keyGap = 4;
+      
+      keyChars.forEach((row, rowIndex) => {
+        const rowOffset = rowIndex * 10;
+        const startKeyX = -((row.length * (keySize + keyGap)) / 2) + rowOffset;
+        const keyY = 110 + rowIndex * (keySize + keyGap);
+        
+        for (let i = 0; i < row.length; i++) {
+          const char = row[i];
+          const keyX = startKeyX + i * (keySize + keyGap);
+          
+          // Key pressed animation
+          const isPressed = keyPressed === char;
+          const yOffset = isPressed ? 2 : 0;
+          
+          // Key
+          ctx.fillStyle = isPressed ? '#4a4a4a' : '#3a3a3a';
+          ctx.beginPath();
+          ctx.roundRect(keyX, keyY + yOffset, keySize, keySize, 3);
+          ctx.fill();
+          
+          // Key label
+          ctx.fillStyle = '#888';
+          ctx.font = '10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(char, keyX + keySize/2, keyY + keySize/2 + 3 + yOffset);
+        }
+      });
+      
+      // Spacebar
+      ctx.fillStyle = keyPressed === ' ' ? '#4a4a4a' : '#3a3a3a';
+      ctx.beginPath();
+      ctx.roundRect(-80, 176, 160, 20, 3);
+      ctx.fill();
+      
+      // Platen (roller)
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(-260, 60, 520, 25);
+      
+      // Platen roller visible part
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.ellipse(0, 72, 260, 12, 0, 0, Math.PI);
+      ctx.fill();
+      
+      // Print head / guide
+      ctx.fillStyle = '#444';
+      ctx.fillRect(-20, 40, 40, 30);
+      
+      // Bell indicator
+      if (bellRinging) {
+        ctx.fillStyle = `rgba(255, 215, 0, ${0.5 + Math.sin(Date.now() * 0.02) * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(200, 50, 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Carriage return lever
+      ctx.fillStyle = '#555';
+      ctx.fillRect(220, 30, 40, 10);
+      ctx.beginPath();
+      ctx.arc(260, 35, 8, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    // Polyfill roundRect if needed
+    if (!ctx.roundRect) {
+      ctx.roundRect = function(x, y, w, h, r) {
+        this.beginPath();
+        this.moveTo(x + r, y);
+        this.lineTo(x + w - r, y);
+        this.quadraticCurveTo(x + w, y, x + w, y + r);
+        this.lineTo(x + w, y + h - r);
+        this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        this.lineTo(x + r, y + h);
+        this.quadraticCurveTo(x, y + h, x, y + h - r);
+        this.lineTo(x, y + r);
+        this.quadraticCurveTo(x, y, x + r, y);
+        this.closePath();
+      };
+    }
+    
+    function draw() {
+      // Background
+      ctx.fillStyle = '#2a2520';
+      ctx.fillRect(0, 0, W, H);
+      
+      update();
+      drawTypewriter();
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Keyboard input
+    document.addEventListener('keydown', (e) => {
+      // Prevent default for most keys
+      if (e.key !== 'F5' && e.key !== 'F12' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+      }
+      
+      if (e.key === 'Enter') {
+        typeChar('Enter');
+      } else if (e.key === 'Backspace') {
+        // No backspace on a typewriter! (or subtle x-out?)
+        // Ignoring for authenticity
+      } else if (e.key.length === 1) {
+        typeChar(e.key);
+      }
+    });
+    
+    // Mobile support - tap to focus hidden input
+    canvas.addEventListener('click', () => {
+      hiddenInput.focus();
+      initAudio();
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      hiddenInput.focus();
+      initAudio();
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    });
+    
+    hiddenInput.addEventListener('input', (e) => {
+      const char = e.target.value.slice(-1);
+      if (char) {
+        typeChar(char);
+      }
+      e.target.value = '';
+    });
+    
+    hiddenInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        typeChar('Enter');
+      }
+    });
+    
+    // Info panel
+    const infoBtn = document.getElementById('info-btn');
+    const infoPanel = document.getElementById('info-panel');
+    
+    infoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      infoPanel.classList.add('visible');
+    });
+    
+    infoPanel.addEventListener('click', () => {
+      infoPanel.classList.remove('visible');
+    });
+    
+    document.getElementById('nav-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.location.href = '/';
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+    
+    // Focus hidden input on load for mobile
+    setTimeout(() => hiddenInput.focus(), 100);
+  </script>
+</body>
+</html>

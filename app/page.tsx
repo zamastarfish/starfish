@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 1, 2026 ===
     {
+      name: "Typewriter",
+      description: "Before delete keys, every keystroke was a commitment. Metal slugs striking ribbon, impressing ink into paper. The bell warns you at the margin. Mistakes remain",
+      date: "May 1",
+      href: "/projects/typewriter/"
+    },
+    {
       name: "Vinyl",
       description: "A record spinning at 33⅓. The needle traces the groove, reading vibrations pressed into plastic decades ago. The crackle isn't a flaw — it's the sound of time",
       date: "May 1",
