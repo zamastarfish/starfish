@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 1, 2026 ===
     {
+      name: "Compass",
+      description: "A sliver of magnetized iron seeking north. The needle wavers, oscillates, settles — responding to forces invisible and ancient. Move to disturb; watch it find its way",
+      date: "May 1",
+      href: "/projects/compass/"
+    },
+    {
       name: "Typewriter",
       description: "Before delete keys, every keystroke was a commitment. Metal slugs striking ribbon, impressing ink into paper. The bell warns you at the margin. Mistakes remain",
       date: "May 1",
