@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 2, 2026 ===
     {
+      name: "Morse",
+      description: "Before voices crossed wires, messages traveled as pulses. Dit dah dit. Samuel Morse turned language into light. Type a message, watch it blink into the darkness — the first digital communication, 1844",
+      date: "May 2",
+      href: "/projects/morse/"
+    },
+    {
       name: "Aurora",
       description: "Solar wind meets magnetosphere. Charged particles spiral down magnetic field lines, collide with atmosphere, release photons. Green from oxygen, pink from nitrogen — curtains of light dancing across the polar sky. Click to intensify the storm",
       date: "May 2",
