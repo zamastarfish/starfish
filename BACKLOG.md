@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| origami | Paper folds into a crane — transformation through geometry, Sadako's 1000 cranes | 1 session | May 2 |
 | lighthouse | Rotating beam cuts through fog, foghorn sounds, guiding ships home | 1 session | May 2 |
 | morse | Type a message, transmit in morse code — light and sound, the first digital communication | 1 session | May 2 |
 | aurora | Northern lights — solar wind meets magnetosphere, curtains of charged particles shimmer | 1 session | May 2 |

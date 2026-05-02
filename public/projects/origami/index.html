@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>origami — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #f5f0e8; 
+      overflow: hidden; 
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    
+    #canvas-container {
+      position: relative;
+    }
+    
+    canvas { 
+      display: block;
+      filter: drop-shadow(0 10px 30px rgba(0,0,0,0.1));
+    }
+    
+    #progress {
+      position: fixed;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+    }
+    
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ccc;
+      transition: all 0.3s;
+    }
+    
+    .step-dot.active {
+      background: #d44;
+      transform: scale(1.2);
+    }
+    
+    .step-dot.complete {
+      background: #888;
+    }
+    
+    #step-name {
+      position: fixed;
+      bottom: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(0,0,0,0.4);
+      font-size: 12px;
+      max-width: 300px;
+      line-height: 1.5;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    
+    #info.visible { opacity: 1; }
+    
+    .nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.1);
+      background: rgba(255,255,255,0.8);
+      color: rgba(0,0,0,0.4);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    
+    .nav-btn:hover {
+      background: rgba(255,255,255,1);
+      border-color: rgba(0,0,0,0.2);
+      color: rgba(0,0,0,0.6);
+    }
+    
+    #home-btn { left: 20px; }
+    #info-btn { right: 20px; }
+    
+    #restart {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 20px;
+      font-size: 11px;
+      background: transparent;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      color: #888;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      transition: all 0.3s;
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    #restart.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    #restart:hover {
+      border-color: #999;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+  <button class="nav-btn" id="info-btn" title="About this piece">?</button>
+  
+  <div id="info">
+    <strong>origami</strong><br><br>
+    From the Japanese: <em>ori</em> (folding) + <em>kami</em> (paper).
+    A flat sheet becomes a crane through nothing but geometry.<br><br>
+    Legend says folding 1,000 cranes grants a wish. Sadako Sasaki 
+    folded 644 before she died. Her friends finished the rest.<br><br>
+    Click to advance each fold.<br><br>
+    <em>Transformation through constraint.</em>
+  </div>
+  
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+  
+  <div id="step-name">Square</div>
+  <div id="progress"></div>
+  <button id="restart">Fold Again</button>
+  
+  <script>
+    // Navigation
+    document.getElementById('home-btn').onclick = () => window.location.href = '/';
+    document.getElementById('info-btn').onclick = () => {
+      document.getElementById('info').classList.toggle('visible');
+    };
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const progressEl = document.getElementById('progress');
+    const stepNameEl = document.getElementById('step-name');
+    const restartBtn = document.getElementById('restart');
+    
+    const SIZE = Math.min(400, window.innerWidth - 40);
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    
+    let audioCtx;
+    let audioStarted = false;
+    
+    // Fold steps with names
+    const STEPS = [
+      { name: 'Square', duration: 0 },
+      { name: 'Triangle', duration: 800 },
+      { name: 'Diamond', duration: 800 },
+      { name: 'Kite Base', duration: 800 },
+      { name: 'Bird Base', duration: 1000 },
+      { name: 'Petal Fold', duration: 800 },
+      { name: 'Reverse Fold', duration: 800 },
+      { name: 'Head Fold', duration: 600 },
+      { name: 'Wings', duration: 800 },
+      { name: 'Crane', duration: 1000 }
+    ];
+    
+    let currentStep = 0;
+    let animProgress = 1;
+    let isAnimating = false;
+    
+    // Create progress dots
+    STEPS.forEach((step, i) => {
+      const dot = document.createElement('div');
+      dot.className = 'step-dot' + (i === 0 ? ' active' : '');
+      progressEl.appendChild(dot);
+    });
+    
+    function updateProgress() {
+      const dots = progressEl.querySelectorAll('.step-dot');
+      dots.forEach((dot, i) => {
+        dot.className = 'step-dot';
+        if (i < currentStep) dot.classList.add('complete');
+        if (i === currentStep) dot.classList.add('active');
+      });
+      stepNameEl.textContent = STEPS[currentStep].name;
+      
+      if (currentStep === STEPS.length - 1 && animProgress >= 1) {
+        restartBtn.classList.add('visible');
+      }
+    }
+    
+    // Paper colors
+    const PAPER_FRONT = '#e8e0d5';
+    const PAPER_BACK = '#c85050';
+    const SHADOW = 'rgba(0,0,0,0.08)';
+    const CREASE = 'rgba(0,0,0,0.1)';
+    
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+    
+    function easeInOut(t) {
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+    
+    function drawPaper(points, color, shadowOffset = 0) {
+      if (shadowOffset > 0) {
+        ctx.fillStyle = SHADOW;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x + shadowOffset, points[0].y + shadowOffset);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x + shadowOffset, points[i].y + shadowOffset);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+      
+      ctx.fillStyle = color;
+      ctx.strokeStyle = CREASE;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    
+    function draw() {
+      ctx.clearRect(0, 0, SIZE, SIZE);
+      
+      const cx = SIZE / 2;
+      const cy = SIZE / 2;
+      const s = SIZE * 0.35; // Base size
+      const t = easeInOut(animProgress);
+      
+      ctx.save();
+      ctx.translate(cx, cy);
+      
+      switch(currentStep) {
+        case 0: // Square
+          drawPaper([
+            {x: -s, y: -s}, {x: s, y: -s}, {x: s, y: s}, {x: -s, y: s}
+          ], PAPER_FRONT, 5);
+          break;
+          
+        case 1: // Fold to triangle
+          const foldY = lerp(s, 0, t);
+          // Bottom half folds up
+          if (t < 1) {
+            drawPaper([
+              {x: -s, y: -s}, {x: s, y: -s}, {x: s, y: 0}, {x: -s, y: 0}
+            ], PAPER_FRONT, 5);
+            // Folding portion
+            const angle = lerp(0, Math.PI, t);
+            ctx.save();
+            ctx.translate(0, 0);
+            ctx.rotate(angle);
+            drawPaper([
+              {x: -s, y: 0}, {x: s, y: 0}, {x: s, y: -foldY}, {x: -s, y: -foldY}
+            ], t > 0.5 ? PAPER_BACK : PAPER_FRONT, 3);
+            ctx.restore();
+          } else {
+            // Triangle complete
+            drawPaper([
+              {x: -s, y: 0}, {x: s, y: 0}, {x: 0, y: -s}
+            ], PAPER_BACK, 5);
+          }
+          break;
+          
+        case 2: // Rotate to diamond
+          ctx.rotate(lerp(0, Math.PI/4, t));
+          drawPaper([
+            {x: -s, y: 0}, {x: 0, y: -s}, {x: s, y: 0}, {x: 0, y: s * 0.5}
+          ], PAPER_BACK, 5);
+          break;
+          
+        case 3: // Kite base - fold corners in
+          const kiteIn = lerp(0, s * 0.5, t);
+          ctx.rotate(Math.PI/4);
+          drawPaper([
+            {x: -s + kiteIn, y: 0}, 
+            {x: 0, y: -s + kiteIn * 0.5}, 
+            {x: s - kiteIn, y: 0}, 
+            {x: 0, y: s * 0.5}
+          ], PAPER_BACK, 5);
+          // Overlay flaps
+          if (t > 0) {
+            ctx.fillStyle = PAPER_FRONT;
+            ctx.beginPath();
+            ctx.moveTo(-s * 0.5 + kiteIn * 0.3, 0);
+            ctx.lineTo(0, -s * 0.4);
+            ctx.lineTo(0, s * 0.2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(s * 0.5 - kiteIn * 0.3, 0);
+            ctx.lineTo(0, -s * 0.4);
+            ctx.lineTo(0, s * 0.2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          }
+          break;
+          
+        case 4: // Bird base - complex fold
+          ctx.rotate(Math.PI/4);
+          const baseH = s * 0.7;
+          // Main body
+          drawPaper([
+            {x: -s * 0.3, y: -baseH * 0.3},
+            {x: 0, y: -baseH},
+            {x: s * 0.3, y: -baseH * 0.3},
+            {x: s * 0.15, y: baseH * 0.5},
+            {x: 0, y: baseH * 0.7},
+            {x: -s * 0.15, y: baseH * 0.5}
+          ], PAPER_BACK, 5);
+          // Wing flaps
+          const wingSpread = lerp(0, s * 0.25, t);
+          ctx.fillStyle = PAPER_FRONT;
+          ctx.beginPath();
+          ctx.moveTo(-wingSpread, 0);
+          ctx.lineTo(0, -baseH * 0.6);
+          ctx.lineTo(0, baseH * 0.3);
+          ctx.closePath();
+          ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(wingSpread, 0);
+          ctx.lineTo(0, -baseH * 0.6);
+          ctx.lineTo(0, baseH * 0.3);
+          ctx.closePath();
+          ctx.fill();
+          break;
+          
+        case 5: // Petal fold
+          ctx.rotate(Math.PI/4);
+          const petalH = s * 0.8;
+          drawPaper([
+            {x: -s * 0.2, y: -petalH * 0.2},
+            {x: 0, y: -petalH},
+            {x: s * 0.2, y: -petalH * 0.2},
+            {x: s * 0.1, y: petalH * 0.6},
+            {x: 0, y: petalH * 0.8},
+            {x: -s * 0.1, y: petalH * 0.6}
+          ], PAPER_BACK, 5);
+          // Elongating center
+          const petalStretch = lerp(0, s * 0.3, t);
+          ctx.fillStyle = PAPER_FRONT;
+          ctx.beginPath();
+          ctx.moveTo(0, -petalH * 0.5 - petalStretch);
+          ctx.lineTo(-s * 0.1, 0);
+          ctx.lineTo(0, petalH * 0.4);
+          ctx.lineTo(s * 0.1, 0);
+          ctx.closePath();
+          ctx.fill();
+          break;
+          
+        case 6: // Reverse fold - neck and tail
+          ctx.rotate(Math.PI/4);
+          // Body
+          drawPaper([
+            {x: -s * 0.15, y: -s * 0.1},
+            {x: s * 0.15, y: -s * 0.1},
+            {x: s * 0.1, y: s * 0.2},
+            {x: -s * 0.1, y: s * 0.2}
+          ], PAPER_BACK, 3);
+          // Neck going up
+          const neckAngle = lerp(Math.PI/4, -Math.PI/6, t);
+          ctx.save();
+          ctx.translate(0, -s * 0.1);
+          ctx.rotate(neckAngle);
+          drawPaper([
+            {x: -s * 0.05, y: 0},
+            {x: s * 0.05, y: 0},
+            {x: s * 0.03, y: -s * 0.5},
+            {x: -s * 0.03, y: -s * 0.5}
+          ], PAPER_FRONT, 2);
+          ctx.restore();
+          // Tail going down
+          const tailAngle = lerp(-Math.PI/4, Math.PI/6, t);
+          ctx.save();
+          ctx.translate(0, s * 0.2);
+          ctx.rotate(tailAngle);
+          drawPaper([
+            {x: -s * 0.04, y: 0},
+            {x: s * 0.04, y: 0},
+            {x: s * 0.02, y: s * 0.4},
+            {x: -s * 0.02, y: s * 0.4}
+          ], PAPER_FRONT, 2);
+          ctx.restore();
+          break;
+          
+        case 7: // Head fold
+          ctx.rotate(Math.PI/4);
+          // Body
+          drawPaper([
+            {x: -s * 0.15, y: -s * 0.05},
+            {x: s * 0.15, y: -s * 0.05},
+            {x: s * 0.1, y: s * 0.15},
+            {x: -s * 0.1, y: s * 0.15}
+          ], PAPER_BACK, 3);
+          // Neck
+          ctx.save();
+          ctx.translate(0, -s * 0.05);
+          ctx.rotate(-Math.PI/6);
+          drawPaper([
+            {x: -s * 0.05, y: 0},
+            {x: s * 0.05, y: 0},
+            {x: s * 0.03, y: -s * 0.45},
+            {x: -s * 0.03, y: -s * 0.45}
+          ], PAPER_FRONT, 2);
+          // Head fold
+          ctx.save();
+          ctx.translate(0, -s * 0.45);
+          const headBend = lerp(0, Math.PI/3, t);
+          ctx.rotate(headBend);
+          drawPaper([
+            {x: -s * 0.03, y: 0},
+            {x: s * 0.03, y: 0},
+            {x: 0, y: -s * 0.12}
+          ], PAPER_BACK, 1);
+          ctx.restore();
+          ctx.restore();
+          // Tail
+          ctx.save();
+          ctx.translate(0, s * 0.15);
+          ctx.rotate(Math.PI/6);
+          drawPaper([
+            {x: -s * 0.04, y: 0},
+            {x: s * 0.04, y: 0},
+            {x: s * 0.02, y: s * 0.35},
+            {x: -s * 0.02, y: s * 0.35}
+          ], PAPER_FRONT, 2);
+          ctx.restore();
+          break;
+          
+        case 8: // Wings spread
+        case 9: // Final crane
+          const finalT = currentStep === 8 ? t : 1;
+          ctx.rotate(Math.PI/4 + lerp(0, -Math.PI/4, finalT));
+          ctx.translate(0, lerp(0, -s * 0.1, finalT));
+          
+          // Body
+          const bodyW = s * 0.12;
+          drawPaper([
+            {x: -bodyW, y: -s * 0.05},
+            {x: bodyW, y: -s * 0.05},
+            {x: bodyW * 0.7, y: s * 0.1},
+            {x: -bodyW * 0.7, y: s * 0.1}
+          ], PAPER_BACK, 3);
+          
+          // Wings spreading
+          const wingAngle = lerp(0, Math.PI/4, finalT);
+          // Left wing
+          ctx.save();
+          ctx.translate(-bodyW * 0.8, 0);
+          ctx.rotate(-wingAngle);
+          drawPaper([
+            {x: 0, y: -s * 0.03},
+            {x: 0, y: s * 0.08},
+            {x: -s * 0.4, y: s * 0.02}
+          ], PAPER_FRONT, 2);
+          ctx.restore();
+          // Right wing
+          ctx.save();
+          ctx.translate(bodyW * 0.8, 0);
+          ctx.rotate(wingAngle);
+          drawPaper([
+            {x: 0, y: -s * 0.03},
+            {x: 0, y: s * 0.08},
+            {x: s * 0.4, y: s * 0.02}
+          ], PAPER_FRONT, 2);
+          ctx.restore();
+          
+          // Neck
+          ctx.save();
+          ctx.translate(0, -s * 0.05);
+          ctx.rotate(-Math.PI/6);
+          drawPaper([
+            {x: -s * 0.04, y: 0},
+            {x: s * 0.04, y: 0},
+            {x: s * 0.02, y: -s * 0.4},
+            {x: -s * 0.02, y: -s * 0.4}
+          ], PAPER_FRONT, 2);
+          // Head
+          ctx.save();
+          ctx.translate(0, -s * 0.4);
+          ctx.rotate(Math.PI/3);
+          drawPaper([
+            {x: -s * 0.03, y: 0},
+            {x: s * 0.03, y: 0},
+            {x: 0, y: -s * 0.1}
+          ], PAPER_BACK, 1);
+          ctx.restore();
+          ctx.restore();
+          
+          // Tail
+          ctx.save();
+          ctx.translate(0, s * 0.1);
+          ctx.rotate(Math.PI/5);
+          drawPaper([
+            {x: -s * 0.03, y: 0},
+            {x: s * 0.03, y: 0},
+            {x: 0, y: s * 0.3}
+          ], PAPER_FRONT, 2);
+          ctx.restore();
+          break;
+      }
+      
+      ctx.restore();
+      
+      requestAnimationFrame(draw);
+    }
+    
+    function nextStep() {
+      if (isAnimating || currentStep >= STEPS.length - 1) return;
+      
+      currentStep++;
+      isAnimating = true;
+      animProgress = 0;
+      
+      const duration = STEPS[currentStep].duration;
+      const startTime = performance.now();
+      
+      playFoldSound();
+      
+      function animate(now) {
+        animProgress = Math.min(1, (now - startTime) / duration);
+        updateProgress();
+        
+        if (animProgress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          isAnimating = false;
+        }
+      }
+      
+      requestAnimationFrame(animate);
+    }
+    
+    function restart() {
+      currentStep = 0;
+      animProgress = 1;
+      isAnimating = false;
+      restartBtn.classList.remove('visible');
+      updateProgress();
+    }
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    function playFoldSound() {
+      if (!audioCtx) return;
+      
+      // Paper folding sound - filtered noise burst
+      const bufferSize = audioCtx.sampleRate * 0.15;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      for (let i = 0; i < bufferSize; i++) {
+        const env = Math.exp(-i / (bufferSize * 0.2));
+        data[i] = (Math.random() * 2 - 1) * env * 0.3;
+      }
+      
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.value = 2000;
+      
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.4;
+      
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      source.start();
+    }
+    
+    canvas.addEventListener('click', () => {
+      initAudio();
+      nextStep();
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      initAudio();
+      nextStep();
+    });
+    
+    restartBtn.addEventListener('click', restart);
+    
+    updateProgress();
+    draw();
+  </script>
+</body>
+</html>

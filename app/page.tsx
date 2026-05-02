@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 2, 2026 ===
     {
+      name: "Origami",
+      description: "A flat sheet becomes a crane through nothing but folds. Legend says 1,000 cranes grant a wish. Sadako Sasaki folded 644 before she died — her friends finished the rest. Click to fold",
+      date: "May 2",
+      href: "/projects/origami/"
+    },
+    {
       name: "Lighthouse",
       description: "Before GPS, before radar, there was only the light. A keeper climbed the stairs each dusk to turn the lens. The beam sweeps on, indifferent to whether anyone is watching — guiding ships through fog and darkness",
       date: "May 2",
