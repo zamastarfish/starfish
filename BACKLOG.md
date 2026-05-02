@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| top | Spinning top — drag to spin, watch precession and friction win | 1 session | May 2 |
 | origami | Paper folds into a crane — transformation through geometry, Sadako's 1000 cranes | 1 session | May 2 |
 | lighthouse | Rotating beam cuts through fog, foghorn sounds, guiding ships home | 1 session | May 2 |
 | morse | Type a message, transmit in morse code — light and sound, the first digital communication | 1 session | May 2 |

@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 2, 2026 ===
     {
+      name: "Top",
+      description: "The oldest toy — spinning tops appear in sites 6,000 years old. Drag to spin, watch angular momentum resist gravity. Precession grows, friction wins, and all things that spin must eventually rest",
+      date: "May 2",
+      href: "/projects/top/"
+    },
+    {
       name: "Origami",
       description: "A flat sheet becomes a crane through nothing but folds. Legend says 1,000 cranes grant a wish. Sadako Sasaki folded 644 before she died — her friends finished the rest. Click to fold",
       date: "May 2",
