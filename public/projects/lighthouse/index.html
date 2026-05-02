@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>lighthouse — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a12; 
+      overflow: hidden; 
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      max-width: 300px;
+      line-height: 1.5;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    
+    #info.visible { opacity: 1; }
+    
+    .nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.3);
+      color: rgba(255,255,255,0.4);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    
+    .nav-btn:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.3);
+      color: rgba(255,255,255,0.7);
+    }
+    
+    #home-btn { left: 20px; }
+    #info-btn { right: 20px; }
+  </style>
+</head>
+<body>
+  <button class="nav-btn" id="home-btn" title="Back to gallery">←</button>
+  <button class="nav-btn" id="info-btn" title="About this piece">?</button>
+  
+  <div id="info">
+    <strong>lighthouse</strong><br><br>
+    Before GPS, before radar, there was only the light. A keeper 
+    climbed the stairs each dusk, lit the lamp, and turned the lens 
+    through the night.<br><br>
+    Each lighthouse had its signature — a pattern of flashes that 
+    told sailors exactly where they were.<br><br>
+    The beam sweeps on, indifferent to whether anyone is watching.<br><br>
+    <em>Fixed light, 8-second rotation. Est. 1847.</em>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script>
+    // Navigation
+    document.getElementById('home-btn').onclick = () => window.location.href = '/';
+    document.getElementById('info-btn').onclick = () => {
+      document.getElementById('info').classList.toggle('visible');
+    };
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let time = 0;
+    let audioStarted = false;
+    let audioCtx, masterGain;
+    let waveOsc, windGain;
+    
+    // Lighthouse properties
+    const ROTATION_PERIOD = 8000; // 8 seconds per rotation
+    let lighthouseX, lighthouseY;
+    let beamAngle = 0;
+    
+    // Fog particles
+    const fogParticles = [];
+    const NUM_FOG = 200;
+    
+    // Waves
+    const waves = [];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      
+      lighthouseX = width * 0.3;
+      lighthouseY = height * 0.75;
+      
+      initFog();
+    }
+    
+    function initFog() {
+      fogParticles.length = 0;
+      for (let i = 0; i < NUM_FOG; i++) {
+        fogParticles.push({
+          x: Math.random() * width,
+          y: Math.random() * height * 0.8,
+          size: 50 + Math.random() * 150,
+          speed: 0.2 + Math.random() * 0.3,
+          opacity: 0.02 + Math.random() * 0.04
+        });
+      }
+    }
+    
+    function noise(x) {
+      const i = Math.floor(x);
+      const f = x - i;
+      const u = f * f * (3 - 2 * f);
+      const hash = (n) => {
+        const s = Math.sin(n * 127.1) * 43758.5453;
+        return s - Math.floor(s);
+      };
+      return hash(i) * (1 - u) + hash(i + 1) * u;
+    }
+    
+    function draw() {
+      time += 16;
+      beamAngle = ((time % ROTATION_PERIOD) / ROTATION_PERIOD) * Math.PI * 2;
+      
+      // Dark sky with slight gradient
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
+      skyGrad.addColorStop(0, '#050508');
+      skyGrad.addColorStop(0.5, '#0a0a15');
+      skyGrad.addColorStop(1, '#0f1020');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Distant stars (few, dim)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      for (let i = 0; i < 50; i++) {
+        const sx = noise(i * 100) * width;
+        const sy = noise(i * 100 + 50) * height * 0.4;
+        const twinkle = Math.sin(time * 0.001 + i) * 0.3 + 0.5;
+        ctx.globalAlpha = twinkle * 0.4;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      
+      // Sea
+      const seaY = height * 0.7;
+      const seaGrad = ctx.createLinearGradient(0, seaY, 0, height);
+      seaGrad.addColorStop(0, '#0a1525');
+      seaGrad.addColorStop(1, '#050a15');
+      ctx.fillStyle = seaGrad;
+      ctx.fillRect(0, seaY, width, height - seaY);
+      
+      // Waves
+      for (let layer = 0; layer < 4; layer++) {
+        const layerY = seaY + layer * 25;
+        const waveHeight = 3 - layer * 0.5;
+        
+        ctx.beginPath();
+        ctx.moveTo(0, layerY);
+        
+        for (let x = 0; x <= width; x += 5) {
+          const y = layerY + 
+            Math.sin(x * 0.01 + time * 0.0008 + layer) * waveHeight +
+            Math.sin(x * 0.02 - time * 0.0005) * waveHeight * 0.5;
+          ctx.lineTo(x, y);
+        }
+        
+        ctx.lineTo(width, height);
+        ctx.lineTo(0, height);
+        ctx.closePath();
+        
+        ctx.fillStyle = `rgba(10, 20, 35, ${0.4 + layer * 0.15})`;
+        ctx.fill();
+      }
+      
+      // Lighthouse beam (before lighthouse so it appears behind the structure)
+      drawBeam();
+      
+      // Rocky island
+      ctx.fillStyle = '#151820';
+      ctx.beginPath();
+      ctx.moveTo(lighthouseX - 100, height);
+      ctx.quadraticCurveTo(lighthouseX - 80, seaY + 40, lighthouseX - 60, seaY + 20);
+      ctx.quadraticCurveTo(lighthouseX - 40, seaY, lighthouseX, seaY - 10);
+      ctx.quadraticCurveTo(lighthouseX + 40, seaY, lighthouseX + 60, seaY + 20);
+      ctx.quadraticCurveTo(lighthouseX + 80, seaY + 40, lighthouseX + 100, height);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Rock highlights
+      ctx.fillStyle = '#1a1d28';
+      ctx.beginPath();
+      ctx.ellipse(lighthouseX - 30, seaY + 10, 20, 8, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(lighthouseX + 25, seaY + 15, 15, 6, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Lighthouse tower
+      const towerBase = seaY - 10;
+      const towerHeight = 120;
+      const towerTop = towerBase - towerHeight;
+      const baseWidth = 35;
+      const topWidth = 25;
+      
+      // Tower body with stripes
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(lighthouseX - baseWidth/2, towerBase);
+      ctx.lineTo(lighthouseX - topWidth/2, towerTop);
+      ctx.lineTo(lighthouseX + topWidth/2, towerTop);
+      ctx.lineTo(lighthouseX + baseWidth/2, towerBase);
+      ctx.closePath();
+      ctx.clip();
+      
+      // Red and white stripes
+      const stripeHeight = 20;
+      for (let y = towerTop; y < towerBase; y += stripeHeight) {
+        const stripe = Math.floor((y - towerTop) / stripeHeight);
+        ctx.fillStyle = stripe % 2 === 0 ? '#cc3333' : '#e8e0d0';
+        ctx.fillRect(lighthouseX - baseWidth, y, baseWidth * 2, stripeHeight);
+      }
+      ctx.restore();
+      
+      // Tower outline
+      ctx.strokeStyle = '#2a2a35';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(lighthouseX - baseWidth/2, towerBase);
+      ctx.lineTo(lighthouseX - topWidth/2, towerTop);
+      ctx.lineTo(lighthouseX + topWidth/2, towerTop);
+      ctx.lineTo(lighthouseX + baseWidth/2, towerBase);
+      ctx.stroke();
+      
+      // Lantern room
+      const lanternY = towerTop;
+      const lanternHeight = 25;
+      const lanternWidth = 30;
+      
+      // Gallery (walkway)
+      ctx.fillStyle = '#1a1a22';
+      ctx.fillRect(lighthouseX - lanternWidth/2 - 5, lanternY, lanternWidth + 10, 4);
+      
+      // Railing
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(lighthouseX - lanternWidth/2 - 5, lanternY - 8);
+      ctx.lineTo(lighthouseX + lanternWidth/2 + 5, lanternY - 8);
+      ctx.stroke();
+      
+      // Lantern housing
+      ctx.fillStyle = '#2a2a35';
+      ctx.fillRect(lighthouseX - lanternWidth/2, lanternY - lanternHeight, lanternWidth, lanternHeight);
+      
+      // Glass panes (lit from within)
+      const glassGlow = 0.5 + Math.sin(time * 0.003) * 0.1;
+      ctx.fillStyle = `rgba(255, 240, 180, ${glassGlow})`;
+      ctx.fillRect(lighthouseX - lanternWidth/2 + 3, lanternY - lanternHeight + 3, lanternWidth - 6, lanternHeight - 8);
+      
+      // Dome roof
+      ctx.fillStyle = '#1a1a22';
+      ctx.beginPath();
+      ctx.arc(lighthouseX, lanternY - lanternHeight, lanternWidth/2 + 2, Math.PI, 0);
+      ctx.fill();
+      
+      // Fog
+      ctx.globalCompositeOperation = 'screen';
+      fogParticles.forEach(p => {
+        p.x += p.speed;
+        if (p.x > width + p.size) {
+          p.x = -p.size;
+          p.y = Math.random() * height * 0.8;
+        }
+        
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+        grad.addColorStop(0, `rgba(180, 190, 200, ${p.opacity})`);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+      });
+      ctx.globalCompositeOperation = 'source-over';
+      
+      requestAnimationFrame(draw);
+    }
+    
+    function drawBeam() {
+      const lanternY = lighthouseY - 120 - 12; // Center of lantern
+      const beamLength = Math.max(width, height) * 1.5;
+      const beamWidth = 0.15; // Radians
+      
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      
+      // Main beam
+      const grad = ctx.createRadialGradient(
+        lighthouseX, lanternY, 0,
+        lighthouseX, lanternY, beamLength
+      );
+      grad.addColorStop(0, 'rgba(255, 250, 220, 0.8)');
+      grad.addColorStop(0.02, 'rgba(255, 240, 180, 0.4)');
+      grad.addColorStop(0.1, 'rgba(255, 230, 150, 0.15)');
+      grad.addColorStop(0.3, 'rgba(255, 220, 120, 0.05)');
+      grad.addColorStop(1, 'transparent');
+      
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(lighthouseX, lanternY);
+      ctx.arc(lighthouseX, lanternY, beamLength, beamAngle - beamWidth/2, beamAngle + beamWidth/2);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Opposite beam (some lighthouses have two)
+      ctx.beginPath();
+      ctx.moveTo(lighthouseX, lanternY);
+      ctx.arc(lighthouseX, lanternY, beamLength, beamAngle + Math.PI - beamWidth/2, beamAngle + Math.PI + beamWidth/2);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Glow around lantern
+      const glowGrad = ctx.createRadialGradient(
+        lighthouseX, lanternY, 0,
+        lighthouseX, lanternY, 80
+      );
+      glowGrad.addColorStop(0, 'rgba(255, 240, 180, 0.3)');
+      glowGrad.addColorStop(0.5, 'rgba(255, 220, 150, 0.1)');
+      glowGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(lighthouseX, lanternY, 80, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    // Audio - ocean ambience
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.25;
+      masterGain.connect(audioCtx.destination);
+      
+      // Ocean waves (filtered noise)
+      const bufferSize = audioCtx.sampleRate * 2;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      // Brown noise
+      let lastOut = 0;
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        lastOut = (lastOut + (0.02 * white)) / 1.02;
+        data[i] = lastOut * 3.5;
+      }
+      
+      const noiseNode = audioCtx.createBufferSource();
+      noiseNode.buffer = buffer;
+      noiseNode.loop = true;
+      
+      const noiseFilter = audioCtx.createBiquadFilter();
+      noiseFilter.type = 'lowpass';
+      noiseFilter.frequency.value = 300;
+      
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.value = 0.4;
+      
+      noiseNode.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      noiseNode.start();
+      
+      // Deep drone
+      const drone = audioCtx.createOscillator();
+      const droneGain = audioCtx.createGain();
+      const droneFilter = audioCtx.createBiquadFilter();
+      
+      drone.type = 'sine';
+      drone.frequency.value = 55; // A1
+      
+      droneFilter.type = 'lowpass';
+      droneFilter.frequency.value = 100;
+      
+      droneGain.gain.value = 0.15;
+      
+      drone.connect(droneFilter);
+      droneFilter.connect(droneGain);
+      droneGain.connect(masterGain);
+      drone.start();
+      
+      // Wind
+      const windBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const windData = windBuffer.getChannelData(0);
+      
+      for (let i = 0; i < bufferSize; i++) {
+        windData[i] = Math.random() * 2 - 1;
+      }
+      
+      const windNode = audioCtx.createBufferSource();
+      windNode.buffer = windBuffer;
+      windNode.loop = true;
+      
+      const windFilter = audioCtx.createBiquadFilter();
+      windFilter.type = 'bandpass';
+      windFilter.frequency.value = 800;
+      windFilter.Q.value = 0.5;
+      
+      windGain = audioCtx.createGain();
+      windGain.gain.value = 0.08;
+      
+      // LFO for wind variation
+      const windLfo = audioCtx.createOscillator();
+      const windLfoGain = audioCtx.createGain();
+      windLfo.type = 'sine';
+      windLfo.frequency.value = 0.1;
+      windLfoGain.gain.value = 0.04;
+      windLfo.connect(windLfoGain);
+      windLfoGain.connect(windGain.gain);
+      windLfo.start();
+      
+      windNode.connect(windFilter);
+      windFilter.connect(windGain);
+      windGain.connect(masterGain);
+      windNode.start();
+      
+      // Foghorn (occasional)
+      scheduleFoghorn();
+    }
+    
+    function scheduleFoghorn() {
+      // Every 15-25 seconds
+      const delay = 15000 + Math.random() * 10000;
+      
+      setTimeout(() => {
+        if (!audioCtx) return;
+        
+        playFoghorn();
+        scheduleFoghorn();
+      }, delay);
+    }
+    
+    function playFoghorn() {
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+      
+      // Low foghorn frequencies
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = 82; // Low E
+      osc2.type = 'sawtooth';
+      osc2.frequency.value = 82.5; // Slight detune
+      
+      filter.type = 'lowpass';
+      filter.frequency.value = 200;
+      
+      const now = audioCtx.currentTime;
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.15, now + 0.3);
+      gain.gain.setValueAtTime(0.15, now + 1.5);
+      gain.gain.linearRampToValueAtTime(0, now + 2.2);
+      
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gain);
+      gain.connect(masterGain);
+      
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 2.5);
+      osc2.stop(now + 2.5);
+    }
+    
+    canvas.addEventListener('click', initAudio);
+    canvas.addEventListener('touchstart', initAudio);
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    draw();
+  </script>
+</body>
+</html>

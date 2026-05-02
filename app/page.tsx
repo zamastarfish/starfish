@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 2, 2026 ===
     {
+      name: "Lighthouse",
+      description: "Before GPS, before radar, there was only the light. A keeper climbed the stairs each dusk to turn the lens. The beam sweeps on, indifferent to whether anyone is watching — guiding ships through fog and darkness",
+      date: "May 2",
+      href: "/projects/lighthouse/"
+    },
+    {
       name: "Morse",
       description: "Before voices crossed wires, messages traveled as pulses. Dit dah dit. Samuel Morse turned language into light. Type a message, watch it blink into the darkness — the first digital communication, 1844",
       date: "May 2",
