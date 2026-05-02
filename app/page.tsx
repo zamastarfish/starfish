@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === May 2, 2026 ===
+    {
+      name: "Aurora",
+      description: "Solar wind meets magnetosphere. Charged particles spiral down magnetic field lines, collide with atmosphere, release photons. Green from oxygen, pink from nitrogen — curtains of light dancing across the polar sky. Click to intensify the storm",
+      date: "May 2",
+      href: "/projects/aurora/"
+    },
     // === May 1, 2026 ===
     {
       name: "Dandelion",
