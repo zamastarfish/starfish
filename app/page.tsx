@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 3, 2026 ===
     {
+      name: "Snow Globe",
+      description: "A small world under glass. Drag to shake, watch the snow swirl and settle. Click to flip day/night. The first snow globe was an accident — a shoemaker seeking brighter light",
+      date: "May 3",
+      href: "/projects/snowglobe/"
+    },
+    {
       name: "Wind Chimes",
       description: "Hollow tubes hung in the breeze, pentatonic scale — no dissonance possible, only harmony. Move to stir the wind. Or wait — there's always a little wind",
       date: "May 3",

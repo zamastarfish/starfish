@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| snowglobe | Snow globe — shake to disturb, watch snow settle. Cozy cabin, day/night toggle | 1 session | May 3 |
 | chimes | Wind chimes — pentatonic tubes, striker physics, ambient breeze | 1 session | May 3 |
 | mandala | Tibetan sand mandala — draw symmetric patterns, sweep away, impermanence as teaching | 1 session | May 3 |
 | moths | Phototaxis — move to carry light, moths spiral closer, some burn. Night sounds + crackle | 1 session | May 3 |
