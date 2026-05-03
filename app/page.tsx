@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 3, 2026 ===
     {
+      name: "Mandala",
+      description: "Tibetan monks spend weeks creating intricate sand patterns — then sweep them away. The destruction is the teaching. Draw to create, then let go. Begin again, or don't",
+      date: "May 3",
+      href: "/projects/mandala/"
+    },
+    {
       name: "Moths",
       description: "They cannot help themselves. Phototaxis — navigation by moon and stars — short-circuited by artificial light. Move to carry the flame. Watch them spiral closer. Some will burn",
       date: "May 3",
