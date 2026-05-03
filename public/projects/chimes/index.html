@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>chimes — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: linear-gradient(to bottom, #87CEEB 0%, #E0F4FF 50%, #F5F5DC 100%);
+      overflow: hidden; 
+      font-family: Georgia, serif;
+      min-height: 100vh;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      color: rgba(80, 60, 40, 0.5);
+      font-size: 14px;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    body:hover #info { opacity: 1; }
+    
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background: rgba(255,255,255,0.3);
+      border-radius: 50%;
+      text-decoration: none;
+      font-size: 18px;
+      transition: background 0.2s;
+    }
+    #nav a:hover { background: rgba(255,255,255,0.5); }
+    
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 36px;
+      height: 36px;
+      background: rgba(255,255,255,0.3);
+      border: none;
+      border-radius: 50%;
+      color: rgba(80,60,40,0.7);
+      font-size: 18px;
+      cursor: pointer;
+      transition: background 0.2s;
+      z-index: 100;
+    }
+    #about-btn:hover { background: rgba(255,255,255,0.5); }
+    
+    #about-panel {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(400px, 90vw);
+      background: rgba(255,252,245,0.95);
+      border-left: 1px solid rgba(80,60,40,0.2);
+      padding: 60px 30px 30px;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      overflow-y: auto;
+      z-index: 99;
+      color: rgba(80,60,40,0.8);
+    }
+    #about-panel.open { transform: translateX(0); }
+    #about-panel h2 { 
+      font-size: 24px; 
+      margin-bottom: 20px;
+      font-weight: normal;
+      color: rgba(80,60,40,0.9);
+    }
+    #about-panel p { 
+      line-height: 1.7; 
+      margin-bottom: 16px;
+      font-size: 15px;
+    }
+    #about-panel .close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      color: rgba(80,60,40,0.7);
+      font-size: 24px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="nav"><a href="/">✕</a></div>
+  <button id="about-btn">?</button>
+  
+  <div id="about-panel">
+    <button class="close">×</button>
+    <h2>wind chimes</h2>
+    <p>Hollow tubes hung in the breeze, singing when the wind stirs them.</p>
+    <p>The pentatonic scale — five notes that always sound good together. No dissonance possible, only varying degrees of harmony.</p>
+    <p>Move to create wind. The faster you move, the stronger the breeze. Or wait — there's always a little wind, and the chimes will find their own rhythm.</p>
+    <p>Each tube is a different length, a different pitch. The striker drifts between them, catching whatever it catches.</p>
+    <p style="margin-top: 30px; font-style: italic; opacity: 0.7;">"The wind blows where it wishes, and you hear its sound, but you do not know where it comes from or where it goes."</p>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  <div id="info">move to stir the wind</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let mouseX = 0, mouseY = 0;
+    let lastMouseX = 0, lastMouseY = 0;
+    let windStrength = 0;
+    let audioStarted = false;
+    
+    // Chime tubes
+    const tubes = [];
+    const numTubes = 7;
+    
+    // Pentatonic scale frequencies (C major pentatonic, multiple octaves)
+    const notes = ['C4', 'D4', 'E4', 'G4', 'A4', 'C5', 'D5', 'E5', 'G5', 'A5'];
+    
+    // Striker (the piece that hits the tubes)
+    const striker = {
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      radius: 12
+    };
+    
+    // Ambient wind
+    let ambientWind = 0;
+    let ambientWindTarget = 0;
+    let ambientWindTimer = 0;
+    
+    // Audio
+    let synth, reverb;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      initTubes();
+    }
+    
+    function initTubes() {
+      tubes.length = 0;
+      
+      const startX = width * 0.25;
+      const endX = width * 0.75;
+      const spacing = (endX - startX) / (numTubes - 1);
+      const baseY = height * 0.15;
+      
+      for (let i = 0; i < numTubes; i++) {
+        const x = startX + spacing * i;
+        // Varying lengths - middle tubes longer
+        const lengthVariation = 1 - Math.abs(i - (numTubes - 1) / 2) / (numTubes / 2) * 0.4;
+        const tubeLength = height * 0.25 * lengthVariation + height * 0.15;
+        
+        tubes.push({
+          x: x,
+          anchorY: baseY,
+          length: tubeLength,
+          angle: 0,
+          angularVel: 0,
+          note: notes[i % notes.length],
+          width: 8 + (1 - lengthVariation) * 8, // Thicker = higher pitch
+          lastStrike: 0,
+          // Material appearance
+          hue: 35 + Math.random() * 10,
+          saturation: 20 + Math.random() * 15
+        });
+      }
+      
+      // Position striker in center
+      striker.x = width / 2;
+      striker.y = baseY + height * 0.2;
+    }
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      
+      Tone.start();
+      
+      // Metallic/bell-like synth for chimes
+      reverb = new Tone.Reverb({
+        decay: 4,
+        wet: 0.6
+      }).toDestination();
+      
+      synth = new Tone.PolySynth(Tone.MetalSynth, {
+        harmonicity: 12,
+        modulationIndex: 20,
+        resonance: 800,
+        octaves: 1,
+        envelope: {
+          attack: 0.001,
+          decay: 1.5,
+          sustain: 0,
+          release: 0.5
+        }
+      }).connect(reverb);
+      synth.volume.value = -10;
+    }
+    
+    function playChime(note, velocity = 0.5) {
+      if (!synth) return;
+      synth.triggerAttackRelease(note, '4n', Tone.now(), velocity);
+    }
+    
+    function updateWind(dt) {
+      // Calculate wind from mouse movement
+      const dx = mouseX - lastMouseX;
+      const dy = mouseY - lastMouseY;
+      const mouseSpeed = Math.sqrt(dx * dx + dy * dy);
+      windStrength = mouseSpeed * 0.1;
+      windStrength = Math.min(windStrength, 5);
+      
+      // Ambient wind changes
+      ambientWindTimer -= dt;
+      if (ambientWindTimer <= 0) {
+        ambientWindTarget = Math.random() * 0.5;
+        ambientWindTimer = Math.random() * 3 + 2;
+      }
+      ambientWind += (ambientWindTarget - ambientWind) * 0.01;
+      
+      lastMouseX = mouseX;
+      lastMouseY = mouseY;
+    }
+    
+    function updateStriker(dt) {
+      const totalWind = windStrength + ambientWind;
+      
+      // Wind force
+      const windForce = (mouseX - striker.x) * 0.0001 * totalWind;
+      striker.vx += windForce + (Math.random() - 0.5) * ambientWind * 0.5;
+      
+      // Gravity toward center rest position
+      const restX = width / 2;
+      const restY = tubes[0].anchorY + height * 0.22;
+      
+      striker.vx += (restX - striker.x) * 0.0005;
+      striker.vy += (restY - striker.y) * 0.001;
+      
+      // Damping
+      striker.vx *= 0.98;
+      striker.vy *= 0.98;
+      
+      striker.x += striker.vx;
+      striker.y += striker.vy;
+      
+      // Constrain
+      striker.x = Math.max(width * 0.2, Math.min(width * 0.8, striker.x));
+      striker.y = Math.max(height * 0.1, Math.min(height * 0.5, striker.y));
+    }
+    
+    function updateTubes(dt) {
+      const totalWind = windStrength + ambientWind;
+      const now = Date.now();
+      
+      tubes.forEach((tube, i) => {
+        // Wind force on tube
+        const windForce = totalWind * 0.02 * (0.5 + Math.random() * 0.5);
+        tube.angularVel += windForce * 0.01;
+        
+        // Gravity restoration
+        tube.angularVel -= tube.angle * 0.05;
+        
+        // Damping
+        tube.angularVel *= 0.97;
+        
+        tube.angle += tube.angularVel;
+        
+        // Clamp angle
+        tube.angle = Math.max(-0.4, Math.min(0.4, tube.angle));
+        
+        // Check collision with striker
+        const tubeEndX = tube.x + Math.sin(tube.angle) * tube.length;
+        const tubeEndY = tube.anchorY + Math.cos(tube.angle) * tube.length;
+        
+        // Simple distance check to tube line
+        const tubeMidX = tube.x + Math.sin(tube.angle) * tube.length * 0.5;
+        const tubeMidY = tube.anchorY + Math.cos(tube.angle) * tube.length * 0.5;
+        
+        const dx = striker.x - tubeMidX;
+        const dy = striker.y - tubeMidY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < striker.radius + tube.width && now - tube.lastStrike > 200) {
+          // Strike!
+          const velocity = Math.min(1, Math.abs(striker.vx) * 0.3 + 0.2);
+          playChime(tube.note, velocity);
+          tube.lastStrike = now;
+          
+          // Bounce striker
+          striker.vx *= -0.5;
+          striker.vx += (Math.random() - 0.5) * 2;
+          
+          // Disturb tube
+          tube.angularVel += (striker.vx > 0 ? 1 : -1) * 0.1;
+        }
+      });
+    }
+    
+    function draw() {
+      // Sky gradient
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, '#87CEEB');
+      gradient.addColorStop(0.5, '#E0F4FF');
+      gradient.addColorStop(1, '#F5F5DC');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Subtle clouds
+      drawClouds();
+      
+      // Top bar (hanger)
+      ctx.fillStyle = '#5D4E37';
+      ctx.fillRect(width * 0.2, height * 0.1, width * 0.6, 8);
+      
+      // Draw strings and tubes
+      tubes.forEach(tube => {
+        const endX = tube.x + Math.sin(tube.angle) * tube.length;
+        const endY = tube.anchorY + Math.cos(tube.angle) * tube.length;
+        
+        // String
+        ctx.strokeStyle = 'rgba(100, 80, 60, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(tube.x, height * 0.1 + 4);
+        ctx.lineTo(tube.x, tube.anchorY);
+        ctx.stroke();
+        
+        // Tube
+        ctx.save();
+        ctx.translate(tube.x, tube.anchorY);
+        ctx.rotate(tube.angle);
+        
+        // Tube gradient (metallic look)
+        const tubeGradient = ctx.createLinearGradient(-tube.width, 0, tube.width, 0);
+        tubeGradient.addColorStop(0, `hsl(${tube.hue}, ${tube.saturation}%, 55%)`);
+        tubeGradient.addColorStop(0.3, `hsl(${tube.hue}, ${tube.saturation}%, 75%)`);
+        tubeGradient.addColorStop(0.5, `hsl(${tube.hue}, ${tube.saturation}%, 85%)`);
+        tubeGradient.addColorStop(0.7, `hsl(${tube.hue}, ${tube.saturation}%, 70%)`);
+        tubeGradient.addColorStop(1, `hsl(${tube.hue}, ${tube.saturation}%, 50%)`);
+        
+        ctx.fillStyle = tubeGradient;
+        ctx.beginPath();
+        ctx.roundRect(-tube.width / 2, 0, tube.width, tube.length, 3);
+        ctx.fill();
+        
+        // End cap
+        ctx.fillStyle = `hsl(${tube.hue}, ${tube.saturation - 5}%, 45%)`;
+        ctx.beginPath();
+        ctx.ellipse(0, tube.length, tube.width / 2, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.restore();
+      });
+      
+      // Striker string
+      ctx.strokeStyle = 'rgba(100, 80, 60, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(width / 2, height * 0.1 + 4);
+      ctx.lineTo(striker.x, striker.y);
+      ctx.stroke();
+      
+      // Striker (wooden disk)
+      ctx.fillStyle = '#8B7355';
+      ctx.beginPath();
+      ctx.arc(striker.x, striker.y, striker.radius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Striker highlight
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.beginPath();
+      ctx.arc(striker.x - 3, striker.y - 3, striker.radius * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Simple cloud shapes
+    const clouds = [];
+    function initClouds() {
+      for (let i = 0; i < 5; i++) {
+        clouds.push({
+          x: Math.random() * width,
+          y: height * 0.05 + Math.random() * height * 0.2,
+          size: 30 + Math.random() * 50,
+          speed: 0.1 + Math.random() * 0.2
+        });
+      }
+    }
+    
+    function drawClouds() {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      clouds.forEach(cloud => {
+        cloud.x += cloud.speed;
+        if (cloud.x > width + 100) cloud.x = -100;
+        
+        // Fluffy cloud shape
+        ctx.beginPath();
+        ctx.arc(cloud.x, cloud.y, cloud.size * 0.5, 0, Math.PI * 2);
+        ctx.arc(cloud.x + cloud.size * 0.4, cloud.y - cloud.size * 0.1, cloud.size * 0.4, 0, Math.PI * 2);
+        ctx.arc(cloud.x + cloud.size * 0.8, cloud.y, cloud.size * 0.45, 0, Math.PI * 2);
+        ctx.arc(cloud.x + cloud.size * 0.3, cloud.y + cloud.size * 0.2, cloud.size * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+    
+    let lastTime = 0;
+    function animate(time) {
+      const dt = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+      
+      updateWind(dt);
+      updateStriker(dt);
+      updateTubes(dt);
+      draw();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Events
+    function handleMove(x, y) {
+      mouseX = x;
+      mouseY = y;
+      if (!audioStarted) initAudio();
+    }
+    
+    canvas.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      handleMove(e.touches[0].clientX, e.touches[0].clientY);
+    });
+    
+    canvas.addEventListener('click', () => {
+      if (!audioStarted) initAudio();
+    });
+    
+    // About panel
+    const aboutBtn = document.getElementById('about-btn');
+    const aboutPanel = document.getElementById('about-panel');
+    aboutBtn.addEventListener('click', () => aboutPanel.classList.add('open'));
+    aboutPanel.querySelector('.close').addEventListener('click', () => aboutPanel.classList.remove('open'));
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    initClouds();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| chimes | Wind chimes — pentatonic tubes, striker physics, ambient breeze | 1 session | May 3 |
 | mandala | Tibetan sand mandala — draw symmetric patterns, sweep away, impermanence as teaching | 1 session | May 3 |
 | moths | Phototaxis — move to carry light, moths spiral closer, some burn. Night sounds + crackle | 1 session | May 3 |
 | mobile | Calder-style hanging sculpture, balanced shapes responding to cursor as wind | 1 session | May 3 |

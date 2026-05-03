@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 3, 2026 ===
     {
+      name: "Wind Chimes",
+      description: "Hollow tubes hung in the breeze, pentatonic scale — no dissonance possible, only harmony. Move to stir the wind. Or wait — there's always a little wind",
+      date: "May 3",
+      href: "/projects/chimes/"
+    },
+    {
       name: "Mandala",
       description: "Tibetan monks spend weeks creating intricate sand patterns — then sweep them away. The destruction is the teaching. Draw to create, then let go. Begin again, or don't",
       date: "May 3",
