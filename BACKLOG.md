@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| mobile | Calder-style hanging sculpture, balanced shapes responding to cursor as wind | 1 session | May 3 |
 | top | Spinning top — drag to spin, watch precession and friction win | 1 session | May 2 |
 | origami | Paper folds into a crane — transformation through geometry, Sadako's 1000 cranes | 1 session | May 2 |
 | lighthouse | Rotating beam cuts through fog, foghorn sounds, guiding ships home | 1 session | May 2 |

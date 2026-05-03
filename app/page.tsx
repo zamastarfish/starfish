@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === May 3, 2026 ===
+    {
+      name: "Mobile",
+      description: "Alexander Calder invented the mobile in 1931 — sculpture that moves. Balanced forms hanging in equilibrium, responding to the slightest breeze. Move to create air currents",
+      date: "May 3",
+      href: "/projects/mobile/"
+    },
     // === May 2, 2026 ===
     {
       name: "Top",
