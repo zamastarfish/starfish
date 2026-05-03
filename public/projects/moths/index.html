@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>moths — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a12; 
+      overflow: hidden; 
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      color: rgba(255, 220, 180, 0.6);
+      font-size: 14px;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    body:hover #info { opacity: 1; }
+    
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background: rgba(255,220,180,0.1);
+      border-radius: 50%;
+      text-decoration: none;
+      font-size: 18px;
+      transition: background 0.2s;
+    }
+    #nav a:hover { background: rgba(255,220,180,0.2); }
+    
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 36px;
+      height: 36px;
+      background: rgba(255,220,180,0.1);
+      border: none;
+      border-radius: 50%;
+      color: rgba(255,220,180,0.7);
+      font-size: 18px;
+      cursor: pointer;
+      transition: background 0.2s;
+      z-index: 100;
+    }
+    #about-btn:hover { background: rgba(255,220,180,0.2); }
+    
+    #about-panel {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(400px, 90vw);
+      background: rgba(10,10,18,0.95);
+      border-left: 1px solid rgba(255,220,180,0.2);
+      padding: 60px 30px 30px;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      overflow-y: auto;
+      z-index: 99;
+      color: rgba(255,220,180,0.8);
+    }
+    #about-panel.open { transform: translateX(0); }
+    #about-panel h2 { 
+      font-size: 24px; 
+      margin-bottom: 20px;
+      font-weight: normal;
+      color: rgba(255,220,180,0.9);
+    }
+    #about-panel p { 
+      line-height: 1.7; 
+      margin-bottom: 16px;
+      font-size: 15px;
+    }
+    #about-panel .close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      color: rgba(255,220,180,0.7);
+      font-size: 24px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="nav"><a href="/">✕</a></div>
+  <button id="about-btn">?</button>
+  
+  <div id="about-panel">
+    <button class="close">×</button>
+    <h2>moths</h2>
+    <p>They cannot help themselves.</p>
+    <p>Phototaxis — the instinct that draws them toward light — evolved for navigation by moon and stars. But artificial light short-circuits the system. They spiral inward, closer and closer, until the thing they seek destroys them.</p>
+    <p>Move your cursor to carry the light. Watch them come. Some will burn.</p>
+    <p>We are all drawn to something. The question is whether our lights are stars or flames.</p>
+    <p style="margin-top: 30px; font-style: italic; opacity: 0.7;">"What would you risk to feel alive?"</p>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  <div id="info">move to carry the light</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let mouseX = -1000, mouseY = -1000;
+    let lightActive = false;
+    let audioStarted = false;
+    
+    // Moths
+    const moths = [];
+    const maxMoths = 40;
+    const deadMoths = [];
+    
+    // Stars
+    const stars = [];
+    const numStars = 200;
+    
+    // Audio
+    let drone, crickets, wingFilter, wingNoise;
+    let crackle, crackleGain;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    function initStars() {
+      stars.length = 0;
+      for (let i = 0; i < numStars; i++) {
+        stars.push({
+          x: Math.random() * width,
+          y: Math.random() * height * 0.6,
+          size: Math.random() * 1.5 + 0.5,
+          twinkle: Math.random() * Math.PI * 2,
+          twinkleSpeed: Math.random() * 0.02 + 0.01
+        });
+      }
+    }
+    
+    class Moth {
+      constructor() {
+        this.spawn();
+      }
+      
+      spawn() {
+        // Spawn from edges
+        const side = Math.floor(Math.random() * 4);
+        if (side === 0) { this.x = -20; this.y = Math.random() * height; }
+        else if (side === 1) { this.x = width + 20; this.y = Math.random() * height; }
+        else if (side === 2) { this.x = Math.random() * width; this.y = -20; }
+        else { this.x = Math.random() * width; this.y = height + 20; }
+        
+        this.vx = (Math.random() - 0.5) * 2;
+        this.vy = (Math.random() - 0.5) * 2;
+        this.angle = Math.random() * Math.PI * 2;
+        this.wingPhase = Math.random() * Math.PI * 2;
+        this.wingSpeed = Math.random() * 0.3 + 0.2;
+        this.size = Math.random() * 8 + 6;
+        this.attraction = Math.random() * 0.3 + 0.2;
+        this.spiralBias = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 0.1 + 0.05);
+        this.orbitDistance = Math.random() * 30 + 20;
+        this.alive = true;
+        this.burnTimer = 0;
+        this.opacity = 1;
+        
+        // Color variation (browns, tans, dusty grays)
+        const hue = Math.random() * 30 + 25; // 25-55 (browns/tans)
+        const sat = Math.random() * 30 + 10;
+        const light = Math.random() * 20 + 35;
+        this.color = `hsl(${hue}, ${sat}%, ${light}%)`;
+        
+        // Wing pattern
+        this.hasEyeSpots = Math.random() > 0.6;
+        this.patternType = Math.floor(Math.random() * 3);
+      }
+      
+      update(dt) {
+        if (!this.alive) return;
+        
+        this.wingPhase += this.wingSpeed;
+        
+        if (lightActive) {
+          // Attracted to light
+          const dx = mouseX - this.x;
+          const dy = mouseY - this.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist > 5) {
+            // Spiral toward light
+            const angle = Math.atan2(dy, dx);
+            const perpAngle = angle + Math.PI / 2 * this.spiralBias;
+            
+            // Stronger attraction when further, orbit when close
+            const attractStrength = dist > this.orbitDistance 
+              ? this.attraction 
+              : this.attraction * 0.3;
+            
+            const orbitStrength = dist < this.orbitDistance * 2 
+              ? (1 - dist / (this.orbitDistance * 2)) * 0.5 
+              : 0;
+            
+            this.vx += Math.cos(angle) * attractStrength + Math.cos(perpAngle) * orbitStrength;
+            this.vy += Math.sin(angle) * attractStrength + Math.sin(perpAngle) * orbitStrength;
+            
+            // Too close — burning
+            if (dist < 15) {
+              this.burnTimer += dt;
+              if (this.burnTimer > 0.5 + Math.random() * 0.5) {
+                this.die();
+              }
+            } else {
+              this.burnTimer = Math.max(0, this.burnTimer - dt * 0.5);
+            }
+          }
+        } else {
+          // Wander randomly
+          this.vx += (Math.random() - 0.5) * 0.1;
+          this.vy += (Math.random() - 0.5) * 0.1;
+          this.burnTimer = Math.max(0, this.burnTimer - dt);
+        }
+        
+        // Damping
+        this.vx *= 0.98;
+        this.vy *= 0.98;
+        
+        // Speed limit
+        const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+        if (speed > 4) {
+          this.vx = (this.vx / speed) * 4;
+          this.vy = (this.vy / speed) * 4;
+        }
+        
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // Update angle based on velocity
+        if (speed > 0.5) {
+          const targetAngle = Math.atan2(this.vy, this.vx);
+          let diff = targetAngle - this.angle;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          this.angle += diff * 0.1;
+        }
+        
+        // Wrap around (or respawn if too far)
+        if (this.x < -100 || this.x > width + 100 || 
+            this.y < -100 || this.y > height + 100) {
+          this.spawn();
+        }
+      }
+      
+      die() {
+        this.alive = false;
+        // Trigger crackle
+        if (crackleGain) {
+          crackleGain.gain.setValueAtTime(0.3, Tone.now());
+          crackleGain.gain.exponentialRampToValueAtTime(0.01, Tone.now() + 0.3);
+        }
+        // Add to dead moths
+        deadMoths.push({
+          x: this.x,
+          y: this.y,
+          angle: this.angle,
+          size: this.size,
+          opacity: 0.6,
+          fallSpeed: Math.random() * 0.5 + 0.2
+        });
+      }
+      
+      draw() {
+        if (!this.alive) return;
+        
+        const wingFlap = Math.sin(this.wingPhase) * 0.5 + 0.5;
+        const burning = this.burnTimer > 0;
+        
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle + Math.PI / 2);
+        
+        // Glow if burning
+        if (burning) {
+          ctx.shadowColor = 'rgba(255, 150, 50, 0.8)';
+          ctx.shadowBlur = 15 + this.burnTimer * 20;
+        }
+        
+        // Body
+        ctx.fillStyle = burning ? '#8a5a3a' : this.color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.size * 0.15, this.size * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Wings
+        const wingAngle = wingFlap * Math.PI * 0.3;
+        ctx.fillStyle = burning 
+          ? `rgba(120, 80, 50, ${0.8 - this.burnTimer * 0.3})` 
+          : this.color;
+        
+        // Left wing
+        ctx.save();
+        ctx.rotate(-wingAngle);
+        ctx.beginPath();
+        ctx.ellipse(-this.size * 0.3, -this.size * 0.1, this.size * 0.5, this.size * 0.3, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Wing pattern
+        if (this.hasEyeSpots && !burning) {
+          ctx.fillStyle = 'rgba(30, 20, 15, 0.5)';
+          ctx.beginPath();
+          ctx.arc(-this.size * 0.35, -this.size * 0.1, this.size * 0.12, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(200, 180, 150, 0.3)';
+          ctx.beginPath();
+          ctx.arc(-this.size * 0.35, -this.size * 0.1, this.size * 0.06, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+        
+        // Right wing
+        ctx.save();
+        ctx.rotate(wingAngle);
+        ctx.beginPath();
+        ctx.ellipse(this.size * 0.3, -this.size * 0.1, this.size * 0.5, this.size * 0.3, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        if (this.hasEyeSpots && !burning) {
+          ctx.fillStyle = 'rgba(30, 20, 15, 0.5)';
+          ctx.beginPath();
+          ctx.arc(this.size * 0.35, -this.size * 0.1, this.size * 0.12, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(200, 180, 150, 0.3)';
+          ctx.beginPath();
+          ctx.arc(this.size * 0.35, -this.size * 0.1, this.size * 0.06, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+        
+        // Antennae
+        ctx.strokeStyle = burning ? '#6a4a3a' : this.color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(-2, -this.size * 0.35);
+        ctx.quadraticCurveTo(-5, -this.size * 0.55, -3, -this.size * 0.6);
+        ctx.moveTo(2, -this.size * 0.35);
+        ctx.quadraticCurveTo(5, -this.size * 0.55, 3, -this.size * 0.6);
+        ctx.stroke();
+        
+        ctx.restore();
+      }
+    }
+    
+    function initMoths() {
+      moths.length = 0;
+      for (let i = 0; i < maxMoths; i++) {
+        moths.push(new Moth());
+      }
+    }
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      
+      Tone.start();
+      
+      // Night drone - very low, warm
+      drone = new Tone.FMSynth({
+        harmonicity: 0.5,
+        modulationIndex: 1,
+        oscillator: { type: 'sine' },
+        modulation: { type: 'sine' },
+        envelope: { attack: 2, decay: 0.5, sustain: 0.8, release: 3 },
+        modulationEnvelope: { attack: 1, decay: 0.5, sustain: 1, release: 2 }
+      }).toDestination();
+      drone.volume.value = -25;
+      drone.triggerAttack('C2');
+      
+      // Crickets - filtered noise bursts
+      const cricketFilter = new Tone.Filter(4000, 'bandpass', -24).toDestination();
+      crickets = new Tone.NoiseSynth({
+        noise: { type: 'white' },
+        envelope: { attack: 0.001, decay: 0.03, sustain: 0, release: 0.01 }
+      }).connect(cricketFilter);
+      crickets.volume.value = -20;
+      
+      // Schedule cricket chirps
+      const chirpPattern = () => {
+        const burstLength = Math.floor(Math.random() * 3) + 2;
+        const startTime = Tone.now();
+        for (let i = 0; i < burstLength; i++) {
+          crickets.triggerAttackRelease('16n', startTime + i * 0.05);
+        }
+        // Random interval until next chirp
+        setTimeout(chirpPattern, Math.random() * 3000 + 1000);
+      };
+      setTimeout(chirpPattern, 1000);
+      
+      // Wing flutter - filtered noise
+      wingFilter = new Tone.Filter(800, 'bandpass').toDestination();
+      wingNoise = new Tone.Noise('pink').connect(wingFilter);
+      wingNoise.volume.value = -35;
+      wingNoise.start();
+      
+      // Crackle for burning
+      const crackleFilter = new Tone.Filter(2000, 'highpass').toDestination();
+      crackleGain = new Tone.Gain(0).connect(crackleFilter);
+      crackle = new Tone.Noise('white').connect(crackleGain);
+      crackle.start();
+    }
+    
+    function drawLight() {
+      if (!lightActive) return;
+      
+      // Warm glow
+      const gradient = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, 150);
+      gradient.addColorStop(0, 'rgba(255, 220, 150, 0.4)');
+      gradient.addColorStop(0.2, 'rgba(255, 200, 120, 0.2)');
+      gradient.addColorStop(0.5, 'rgba(255, 180, 100, 0.05)');
+      gradient.addColorStop(1, 'rgba(255, 150, 80, 0)');
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, 150, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Core light
+      const coreGradient = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, 20);
+      coreGradient.addColorStop(0, 'rgba(255, 250, 230, 0.9)');
+      coreGradient.addColorStop(0.5, 'rgba(255, 230, 180, 0.5)');
+      coreGradient.addColorStop(1, 'rgba(255, 200, 120, 0)');
+      
+      ctx.fillStyle = coreGradient;
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, 20, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Flicker
+      if (Math.random() > 0.9) {
+        ctx.fillStyle = 'rgba(255, 240, 200, 0.1)';
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, 100 + Math.random() * 30, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function drawStars() {
+      stars.forEach(star => {
+        star.twinkle += star.twinkleSpeed;
+        const alpha = 0.3 + Math.sin(star.twinkle) * 0.2;
+        ctx.fillStyle = `rgba(200, 210, 230, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+    
+    function updateDeadMoths(dt) {
+      for (let i = deadMoths.length - 1; i >= 0; i--) {
+        const dm = deadMoths[i];
+        dm.y += dm.fallSpeed;
+        dm.opacity -= dt * 0.3;
+        
+        if (dm.opacity <= 0 || dm.y > height + 50) {
+          deadMoths.splice(i, 1);
+        }
+      }
+    }
+    
+    function drawDeadMoths() {
+      deadMoths.forEach(dm => {
+        ctx.save();
+        ctx.globalAlpha = dm.opacity;
+        ctx.translate(dm.x, dm.y);
+        ctx.rotate(dm.angle + Math.PI / 2);
+        
+        ctx.fillStyle = '#3a2a1a';
+        // Crumpled silhouette
+        ctx.beginPath();
+        ctx.ellipse(0, 0, dm.size * 0.4, dm.size * 0.25, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.restore();
+      });
+    }
+    
+    function updateAudio() {
+      if (!audioStarted) return;
+      
+      // Count nearby moths
+      let nearbyCount = 0;
+      moths.forEach(m => {
+        if (!m.alive) return;
+        const dx = m.x - mouseX;
+        const dy = m.y - mouseY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 200) nearbyCount++;
+      });
+      
+      // Wing flutter intensity based on nearby moths
+      const flutterIntensity = lightActive ? nearbyCount / maxMoths : 0.1;
+      if (wingFilter) {
+        wingFilter.frequency.rampTo(600 + flutterIntensity * 1000, 0.1);
+        wingNoise.volume.rampTo(-35 + flutterIntensity * 15, 0.1);
+      }
+    }
+    
+    let lastTime = 0;
+    function animate(time) {
+      const dt = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+      
+      // Clear with slight trail
+      ctx.fillStyle = 'rgba(10, 10, 18, 0.3)';
+      ctx.fillRect(0, 0, width, height);
+      
+      drawStars();
+      drawLight();
+      drawDeadMoths();
+      
+      moths.forEach(m => {
+        m.update(dt);
+        m.draw();
+      });
+      
+      // Respawn dead moths occasionally
+      const aliveCount = moths.filter(m => m.alive).length;
+      if (aliveCount < maxMoths && Math.random() > 0.99) {
+        const dead = moths.find(m => !m.alive);
+        if (dead) dead.spawn();
+      }
+      
+      updateDeadMoths(dt);
+      updateAudio();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Events
+    window.addEventListener('resize', () => {
+      resize();
+      initStars();
+    });
+    
+    canvas.addEventListener('mousemove', e => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      lightActive = true;
+      if (!audioStarted) initAudio();
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      lightActive = false;
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+      lightActive = true;
+      if (!audioStarted) initAudio();
+    });
+    
+    canvas.addEventListener('touchend', () => {
+      lightActive = false;
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    // About panel
+    const aboutBtn = document.getElementById('about-btn');
+    const aboutPanel = document.getElementById('about-panel');
+    aboutBtn.addEventListener('click', () => aboutPanel.classList.add('open'));
+    aboutPanel.querySelector('.close').addEventListener('click', () => aboutPanel.classList.remove('open'));
+    
+    // Init
+    resize();
+    initStars();
+    initMoths();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

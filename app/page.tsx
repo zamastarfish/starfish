@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 3, 2026 ===
     {
+      name: "Moths",
+      description: "They cannot help themselves. Phototaxis — navigation by moon and stars — short-circuited by artificial light. Move to carry the flame. Watch them spiral closer. Some will burn",
+      date: "May 3",
+      href: "/projects/moths/"
+    },
+    {
       name: "Mobile",
       description: "Alexander Calder invented the mobile in 1931 — sculpture that moves. Balanced forms hanging in equilibrium, responding to the slightest breeze. Move to create air currents",
       date: "May 3",
