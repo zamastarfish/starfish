@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === May 4, 2026 ===
+    {
+      name: "Fog",
+      description: "The liminal space between seeing and not seeing. Shapes at the edge of perception — are they real? Movement disturbs the air; stillness lets things emerge. Some revelations require patience",
+      date: "May 4",
+      href: "/projects/fog/"
+    },
     // === May 3, 2026 ===
     {
       name: "Snow Globe",
