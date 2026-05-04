@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>frost — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #0a1520;
+      touch-action: none;
+    }
+    canvas { display: block; }
+    
+    #info-btn, #home-btn {
+      position: fixed; top: 16px; z-index: 100;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(255,255,255,0.1); border: none;
+      color: rgba(255,255,255,0.5); font-size: 18px;
+      cursor: pointer; transition: all 0.3s;
+    }
+    #info-btn:hover, #home-btn:hover { 
+      background: rgba(255,255,255,0.2); 
+      color: rgba(255,255,255,0.8); 
+    }
+    #home-btn { left: 16px; font-size: 16px; }
+    #info-btn { right: 16px; }
+    
+    #info-panel {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.9); color: #ccc;
+      display: none; flex-direction: column;
+      justify-content: center; align-items: center;
+      padding: 2rem; text-align: center;
+      font-family: Georgia, serif;
+    }
+    #info-panel.visible { display: flex; }
+    #info-panel h1 { font-size: 2rem; margin-bottom: 1rem; color: #8ac; }
+    #info-panel p { max-width: 400px; line-height: 1.6; margin-bottom: 1rem; color: #77a; }
+    #info-panel .close { 
+      margin-top: 1rem; padding: 0.5rem 1.5rem;
+      background: transparent; border: 1px solid #556;
+      color: #88a; cursor: pointer; font-family: inherit;
+    }
+    #info-panel .close:hover { background: rgba(255,255,255,0.1); }
+    
+    #start-overlay {
+      position: fixed; inset: 0; z-index: 300;
+      background: #0a1520;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      cursor: pointer; font-family: Georgia, serif;
+      transition: opacity 0.8s;
+    }
+    #start-overlay.hidden { opacity: 0; pointer-events: none; }
+    #start-overlay h1 { font-size: 2rem; color: #6a8ca8; margin-bottom: 0.5rem; }
+    #start-overlay p { color: #4a6a80; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <button id="home-btn" title="Back to gallery">←</button>
+  <button id="info-btn" title="About this piece">?</button>
+  
+  <div id="info-panel">
+    <h1>frost</h1>
+    <p>
+      Ice crystals grow on the window while you sleep.
+      Dendritic patterns — each one unique, each one temporary.
+    </p>
+    <p>
+      Hold to breathe on the glass. Watch the warmth clear a patch.
+      But cold is patient. The frost always returns.
+    </p>
+    <p style="font-style: italic; color: #557;">
+      "Winter is not a season, it's a celebration." — Anamika Mishra
+    </p>
+    <button class="close">close</button>
+  </div>
+  
+  <div id="start-overlay">
+    <h1>frost</h1>
+    <p>tap to enter</p>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let W, H;
+    let audioStarted = false;
+    let started = false;
+    
+    // Crystal growth
+    const crystals = [];
+    const MAX_CRYSTALS = 12;
+    const branches = [];
+    
+    // Breath spots (melted areas)
+    const breathSpots = [];
+    
+    // Mouse/touch
+    let mouse = { x: 0, y: 0, down: false };
+    
+    // Audio
+    let coldDrone, crackle, breathSound, windNoise, windFilter;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      // Restart crystal growth on resize
+      if (started) {
+        initCrystals();
+      }
+    }
+    
+    function initCrystals() {
+      crystals.length = 0;
+      branches.length = 0;
+      
+      // Seed crystals from edges and corners
+      const seeds = [
+        // Corners
+        { x: 0, y: 0 },
+        { x: W, y: 0 },
+        { x: 0, y: H },
+        { x: W, y: H },
+        // Random edge points
+        { x: Math.random() * W, y: 0 },
+        { x: Math.random() * W, y: H },
+        { x: 0, y: Math.random() * H },
+        { x: W, y: Math.random() * H },
+        // A few interior points
+        { x: W * 0.3, y: H * 0.2 },
+        { x: W * 0.7, y: H * 0.4 },
+        { x: W * 0.2, y: H * 0.7 },
+        { x: W * 0.8, y: H * 0.8 }
+      ];
+      
+      seeds.slice(0, MAX_CRYSTALS).forEach((seed, i) => {
+        crystals.push({
+          x: seed.x,
+          y: seed.y,
+          branches: [],
+          growthRate: 0.5 + Math.random() * 0.5,
+          startAngle: Math.random() * Math.PI * 2
+        });
+        
+        // Initial branches from each seed
+        const numBranches = 4 + Math.floor(Math.random() * 3); // 4-6 branches
+        for (let j = 0; j < numBranches; j++) {
+          const angle = (j / numBranches) * Math.PI * 2 + crystals[i].startAngle;
+          addBranch(seed.x, seed.y, angle, 1, 0);
+        }
+      });
+    }
+    
+    function addBranch(x, y, angle, generation, parentLength) {
+      branches.push({
+        x, y,
+        angle,
+        length: 0,
+        maxLength: 30 + Math.random() * 60 / Math.sqrt(generation),
+        speed: (0.3 + Math.random() * 0.4) / generation,
+        generation,
+        thickness: Math.max(0.5, 3 - generation * 0.4),
+        grown: false,
+        hasChildren: false,
+        parentLength,
+        alpha: Math.min(1, 0.3 + 0.7 / generation)
+      });
+    }
+    
+    function initAudio() {
+      // Cold ambient drone
+      coldDrone = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: { attack: 3, decay: 0, sustain: 1, release: 3 }
+      }).toDestination();
+      coldDrone.volume.value = -26;
+      coldDrone.triggerAttack(['E2', 'B2', 'F#3'], Tone.now());
+      
+      // Subtle wind outside
+      windNoise = new Tone.Noise('brown');
+      windFilter = new Tone.Filter({ frequency: 300, type: 'lowpass', Q: 0.3 });
+      const windGain = new Tone.Gain(0.04);
+      windNoise.connect(windFilter);
+      windFilter.connect(windGain);
+      windGain.toDestination();
+      windNoise.start();
+      
+      // Ice crackle - occasional tiny pops
+      crackle = new Tone.NoiseSynth({
+        noise: { type: 'white' },
+        envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.02 }
+      }).toDestination();
+      crackle.volume.value = -20;
+      
+      // Breath sound - warmer filtered noise
+      breathSound = new Tone.Noise('pink');
+      const breathFilter = new Tone.Filter({ frequency: 600, type: 'lowpass' });
+      const breathGain = new Tone.Gain(0);
+      breathSound.connect(breathFilter);
+      breathFilter.connect(breathGain);
+      breathGain.toDestination();
+      breathSound.start();
+      breathSound.breathGain = breathGain;
+    }
+    
+    function triggerCrackle() {
+      if (!audioStarted) return;
+      if (Math.random() < 0.02) { // Occasional crackle
+        crackle.triggerAttackRelease('16n', Tone.now(), 0.1 + Math.random() * 0.2);
+      }
+    }
+    
+    function updateBreathSound(breathing) {
+      if (!audioStarted || !breathSound.breathGain) return;
+      const targetGain = breathing ? 0.15 : 0;
+      breathSound.breathGain.gain.rampTo(targetGain, 0.2);
+    }
+    
+    function isInBreathSpot(x, y) {
+      for (const spot of breathSpots) {
+        const dx = x - spot.x;
+        const dy = y - spot.y;
+        if (dx * dx + dy * dy < spot.radius * spot.radius) {
+          return true;
+        }
+      }
+      return false;
+    }
+    
+    function updateBranches() {
+      let anyGrowing = false;
+      
+      branches.forEach(branch => {
+        if (branch.grown) return;
+        
+        // Check if in breath spot
+        const tipX = branch.x + Math.cos(branch.angle) * branch.length;
+        const tipY = branch.y + Math.sin(branch.angle) * branch.length;
+        
+        if (isInBreathSpot(tipX, tipY)) {
+          return; // Don't grow into melted areas
+        }
+        
+        // Grow
+        branch.length += branch.speed;
+        anyGrowing = true;
+        
+        // Trigger occasional crackle
+        triggerCrackle();
+        
+        // Check if fully grown
+        if (branch.length >= branch.maxLength) {
+          branch.grown = true;
+          branch.length = branch.maxLength;
+          
+          // Spawn child branches
+          if (!branch.hasChildren && branch.generation < 6 && Math.random() < 0.7) {
+            branch.hasChildren = true;
+            
+            const numChildren = branch.generation < 3 ? 2 : 1;
+            for (let i = 0; i < numChildren; i++) {
+              const angleOffset = (Math.random() - 0.5) * Math.PI * 0.6;
+              const childAngle = branch.angle + angleOffset;
+              
+              addBranch(tipX, tipY, childAngle, branch.generation + 1, branch.length);
+            }
+            
+            // Sometimes add a symmetric branch
+            if (Math.random() < 0.4) {
+              const symAngle = branch.angle - (branches[branches.length - 1].angle - branch.angle);
+              addBranch(tipX, tipY, symAngle, branch.generation + 1, branch.length);
+            }
+          }
+        }
+      });
+      
+      // If growth has stalled, add new seed points
+      if (!anyGrowing && branches.length < 2000) {
+        const x = Math.random() * W;
+        const y = Math.random() * H;
+        if (!isInBreathSpot(x, y)) {
+          const numBranches = 4 + Math.floor(Math.random() * 2);
+          const startAngle = Math.random() * Math.PI * 2;
+          for (let j = 0; j < numBranches; j++) {
+            const angle = (j / numBranches) * Math.PI * 2 + startAngle;
+            addBranch(x, y, angle, 1, 0);
+          }
+        }
+      }
+    }
+    
+    function updateBreathSpots() {
+      // Add breath spot when holding
+      if (mouse.down) {
+        // Find existing spot to expand, or create new
+        let found = false;
+        for (const spot of breathSpots) {
+          const dx = mouse.x - spot.x;
+          const dy = mouse.y - spot.y;
+          if (dx * dx + dy * dy < spot.radius * spot.radius) {
+            spot.radius = Math.min(120, spot.radius + 0.5);
+            spot.warmth = 1;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          breathSpots.push({
+            x: mouse.x,
+            y: mouse.y,
+            radius: 30,
+            warmth: 1
+          });
+        }
+      }
+      
+      // Breath spots slowly shrink (frost returns)
+      for (let i = breathSpots.length - 1; i >= 0; i--) {
+        const spot = breathSpots[i];
+        spot.warmth *= 0.995;
+        if (!mouse.down || 
+            Math.abs(mouse.x - spot.x) > spot.radius || 
+            Math.abs(mouse.y - spot.y) > spot.radius) {
+          spot.radius -= 0.1;
+        }
+        if (spot.radius <= 5) {
+          breathSpots.splice(i, 1);
+        }
+      }
+    }
+    
+    function drawBackground() {
+      // Winter night gradient - deep blue
+      const gradient = ctx.createLinearGradient(0, 0, 0, H);
+      gradient.addColorStop(0, '#0a1525');
+      gradient.addColorStop(0.5, '#0c1a2a');
+      gradient.addColorStop(1, '#081018');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Subtle suggestion of outside world - dim blue glow
+      ctx.fillStyle = 'rgba(60, 100, 140, 0.03)';
+      ctx.beginPath();
+      ctx.ellipse(W * 0.3, H * 0.4, 200, 150, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    function drawBranches() {
+      ctx.lineCap = 'round';
+      
+      branches.forEach(branch => {
+        const endX = branch.x + Math.cos(branch.angle) * branch.length;
+        const endY = branch.y + Math.sin(branch.angle) * branch.length;
+        
+        // Check if branch passes through breath spot
+        let alpha = branch.alpha;
+        for (const spot of breathSpots) {
+          const dx = (branch.x + endX) / 2 - spot.x;
+          const dy = (branch.y + endY) / 2 - spot.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < spot.radius) {
+            alpha *= Math.max(0, (dist / spot.radius) * (1 - spot.warmth));
+          }
+        }
+        
+        if (alpha < 0.01) return;
+        
+        // Ice crystal color - pale blue-white
+        const hue = 200 + Math.random() * 20;
+        const sat = 20 + branch.generation * 5;
+        const light = 85 - branch.generation * 3;
+        
+        ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, ${alpha * 0.7})`;
+        ctx.lineWidth = branch.thickness;
+        
+        ctx.beginPath();
+        ctx.moveTo(branch.x, branch.y);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        
+        // Subtle glow on main branches
+        if (branch.generation <= 2 && alpha > 0.3) {
+          ctx.strokeStyle = `hsla(${hue}, 40%, 90%, ${alpha * 0.15})`;
+          ctx.lineWidth = branch.thickness * 3;
+          ctx.beginPath();
+          ctx.moveTo(branch.x, branch.y);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+        }
+      });
+    }
+    
+    function drawBreathSpots() {
+      breathSpots.forEach(spot => {
+        // Warm breath circle - creates a clear spot
+        const gradient = ctx.createRadialGradient(
+          spot.x, spot.y, 0,
+          spot.x, spot.y, spot.radius
+        );
+        gradient.addColorStop(0, `rgba(15, 25, 40, ${spot.warmth * 0.9})`);
+        gradient.addColorStop(0.7, `rgba(12, 22, 35, ${spot.warmth * 0.5})`);
+        gradient.addColorStop(1, 'rgba(10, 20, 30, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(spot.x, spot.y, spot.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Condensation edge
+        ctx.strokeStyle = `rgba(100, 150, 200, ${spot.warmth * 0.2})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(spot.x, spot.y, spot.radius * 0.9, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+    }
+    
+    function drawOverlay() {
+      // Subtle vignette
+      const vignette = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H) * 0.7);
+      vignette.addColorStop(0, 'rgba(5, 15, 25, 0)');
+      vignette.addColorStop(1, 'rgba(0, 5, 10, 0.4)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Frost texture overlay - subtle noise
+      ctx.fillStyle = 'rgba(180, 200, 220, 0.02)';
+      for (let i = 0; i < 50; i++) {
+        const x = Math.random() * W;
+        const y = Math.random() * H;
+        ctx.beginPath();
+        ctx.arc(x, y, 1 + Math.random() * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function draw() {
+      drawBackground();
+      drawBreathSpots();
+      drawBranches();
+      drawOverlay();
+    }
+    
+    function animate() {
+      if (!started) {
+        requestAnimationFrame(animate);
+        return;
+      }
+      
+      updateBranches();
+      updateBreathSpots();
+      draw();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Event handlers
+    function handleStart(x, y) {
+      mouse.x = x;
+      mouse.y = y;
+      mouse.down = true;
+      updateBreathSound(true);
+    }
+    
+    function handleMove(x, y) {
+      mouse.x = x;
+      mouse.y = y;
+    }
+    
+    function handleEnd() {
+      mouse.down = false;
+      updateBreathSound(false);
+    }
+    
+    canvas.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY));
+    canvas.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+    canvas.addEventListener('mouseup', handleEnd);
+    canvas.addEventListener('mouseleave', handleEnd);
+    
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      handleStart(e.touches[0].clientX, e.touches[0].clientY);
+    });
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      handleMove(e.touches[0].clientX, e.touches[0].clientY);
+    });
+    canvas.addEventListener('touchend', handleEnd);
+    
+    // Start
+    document.getElementById('start-overlay').addEventListener('click', async () => {
+      if (!started) {
+        await Tone.start();
+        audioStarted = true;
+        initAudio();
+        initCrystals();
+        started = true;
+        document.getElementById('start-overlay').classList.add('hidden');
+      }
+    });
+    
+    // UI
+    document.getElementById('home-btn').addEventListener('click', () => {
+      window.location.href = '/';
+    });
+    
+    document.getElementById('info-btn').addEventListener('click', () => {
+      document.getElementById('info-panel').classList.add('visible');
+    });
+    
+    document.querySelector('#info-panel .close').addEventListener('click', () => {
+      document.getElementById('info-panel').classList.remove('visible');
+    });
+    
+    // Initialize
+    resize();
+    window.addEventListener('resize', resize);
+    animate();
+  </script>
+</body>
+</html>

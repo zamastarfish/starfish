@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 4, 2026 ===
     {
+      name: "Frost",
+      description: "Ice crystals grow on the window while you sleep. Dendritic patterns branching across glass — each unique, each temporary. Hold to breathe warmth, clear a patch. But cold is patient. The frost always returns",
+      date: "May 4",
+      href: "/projects/frost/"
+    },
+    {
       name: "Fog",
       description: "The liminal space between seeing and not seeing. Shapes at the edge of perception — are they real? Movement disturbs the air; stillness lets things emerge. Some revelations require patience",
       date: "May 4",

@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| frost | Ice crystals grow on window, hold to breathe warmth, cold returns | 1 session | May 4 |
 | fog | The liminal space — shapes at edge of perception, stillness reveals | 1 session | May 4 |
 | snowglobe | Snow globe — shake to disturb, watch snow settle. Cozy cabin, day/night toggle | 1 session | May 3 |
 | chimes | Wind chimes — pentatonic tubes, striker physics, ambient breeze | 1 session | May 3 |
