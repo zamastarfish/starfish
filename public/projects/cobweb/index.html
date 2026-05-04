@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>cobweb — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #1a1c1f;
+      touch-action: none;
+    }
+    canvas { display: block; }
+    
+    #info-btn, #home-btn {
+      position: fixed; top: 16px; z-index: 100;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(255,255,255,0.1); border: none;
+      color: rgba(255,255,255,0.5); font-size: 18px;
+      cursor: pointer; transition: all 0.3s;
+    }
+    #info-btn:hover, #home-btn:hover { 
+      background: rgba(255,255,255,0.2); 
+      color: rgba(255,255,255,0.8); 
+    }
+    #home-btn { left: 16px; font-size: 16px; }
+    #info-btn { right: 16px; }
+    
+    #info-panel {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.9); color: #ccc;
+      display: none; flex-direction: column;
+      justify-content: center; align-items: center;
+      padding: 2rem; text-align: center;
+      font-family: Georgia, serif;
+    }
+    #info-panel.visible { display: flex; }
+    #info-panel h1 { font-size: 2rem; margin-bottom: 1rem; color: #a9b4c0; }
+    #info-panel p { max-width: 400px; line-height: 1.6; margin-bottom: 1rem; color: #889; }
+    #info-panel .close { 
+      margin-top: 1rem; padding: 0.5rem 1.5rem;
+      background: transparent; border: 1px solid #556;
+      color: #889; cursor: pointer; font-family: inherit;
+    }
+    #info-panel .close:hover { background: rgba(255,255,255,0.1); }
+    
+    #start-overlay {
+      position: fixed; inset: 0; z-index: 300;
+      background: #1a1c1f;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      cursor: pointer; font-family: Georgia, serif;
+      transition: opacity 0.8s;
+    }
+    #start-overlay.hidden { opacity: 0; pointer-events: none; }
+    #start-overlay h1 { font-size: 2rem; color: #7a8590; margin-bottom: 0.5rem; }
+    #start-overlay p { color: #556; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <button id="home-btn" title="Back to gallery">←</button>
+  <button id="info-btn" title="About this piece">?</button>
+  
+  <div id="info-panel">
+    <h1>cobweb</h1>
+    <p>
+      Before dawn, a spider finished her work.
+      Now dew clings to every strand, each drop a tiny lens
+      holding the whole world inverted.
+    </p>
+    <p>
+      Move to stir the air. Touch to disturb the web.
+      It trembles but holds — silk is stronger than steel,
+      weight for weight.
+    </p>
+    <p style="font-style: italic; color: #667;">
+      "The spider's touch, how exquisitely fine! Feels at each thread, and lives along the line." — Alexander Pope
+    </p>
+    <button class="close">close</button>
+  </div>
+  
+  <div id="start-overlay">
+    <h1>cobweb</h1>
+    <p>tap to enter</p>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let W, H;
+    let centerX, centerY;
+    let audioStarted = false;
+    let started = false;
+    
+    // Web structure
+    const nodes = [];       // Intersection points
+    const strands = [];     // Connections between nodes
+    const dewdrops = [];    // Dewdrops on strands
+    
+    const RADIALS = 24;     // Number of radial threads
+    const SPIRALS = 18;     // Number of spiral rings
+    const WEB_RADIUS = 0;   // Set on resize
+    
+    // Physics
+    let wind = { x: 0, y: 0 };
+    let mouse = { x: 0, y: 0, active: false };
+    let lastMouse = { x: 0, y: 0 };
+    let disturbance = 0;
+    
+    // Audio
+    let ambientDrone, birdSynth, dropSynth, windNoise, windFilter;
+    let lastBirdTime = 0;
+    let lastDropTime = 0;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      centerX = W / 2;
+      centerY = H / 2;
+      
+      if (started) {
+        buildWeb();
+      }
+    }
+    
+    function buildWeb() {
+      nodes.length = 0;
+      strands.length = 0;
+      dewdrops.length = 0;
+      
+      const webRadius = Math.min(W, H) * 0.4;
+      
+      // Create center node
+      nodes.push({
+        x: centerX,
+        y: centerY,
+        baseX: centerX,
+        baseY: centerY,
+        vx: 0,
+        vy: 0,
+        fixed: true
+      });
+      
+      // Create radial and spiral nodes
+      for (let s = 1; s <= SPIRALS; s++) {
+        const ringRadius = (s / SPIRALS) * webRadius;
+        // Slight spiral offset
+        const spiralOffset = s * 0.05;
+        
+        for (let r = 0; r < RADIALS; r++) {
+          const angle = (r / RADIALS) * Math.PI * 2 + spiralOffset;
+          const x = centerX + Math.cos(angle) * ringRadius;
+          const y = centerY + Math.sin(angle) * ringRadius;
+          
+          // Outer ring nodes are anchored
+          const isAnchor = s === SPIRALS && r % 4 === 0;
+          
+          nodes.push({
+            x,
+            y,
+            baseX: x,
+            baseY: y,
+            vx: 0,
+            vy: 0,
+            fixed: isAnchor,
+            ring: s,
+            radial: r
+          });
+        }
+      }
+      
+      // Create strands
+      // Radial strands (center to outer)
+      for (let r = 0; r < RADIALS; r++) {
+        // Center to first ring
+        strands.push({
+          a: 0,
+          b: 1 + r,
+          restLength: 0, // Set below
+          tension: 0.03
+        });
+        
+        // Between rings
+        for (let s = 1; s < SPIRALS; s++) {
+          const current = 1 + (s - 1) * RADIALS + r;
+          const next = 1 + s * RADIALS + r;
+          strands.push({
+            a: current,
+            b: next,
+            restLength: 0,
+            tension: 0.03
+          });
+        }
+      }
+      
+      // Spiral strands (around rings)
+      for (let s = 1; s <= SPIRALS; s++) {
+        for (let r = 0; r < RADIALS; r++) {
+          const current = 1 + (s - 1) * RADIALS + r;
+          const next = 1 + (s - 1) * RADIALS + ((r + 1) % RADIALS);
+          strands.push({
+            a: current,
+            b: next,
+            restLength: 0,
+            tension: 0.02
+          });
+        }
+      }
+      
+      // Calculate rest lengths
+      strands.forEach(strand => {
+        const a = nodes[strand.a];
+        const b = nodes[strand.b];
+        const dx = b.baseX - a.baseX;
+        const dy = b.baseY - a.baseY;
+        strand.restLength = Math.sqrt(dx * dx + dy * dy);
+      });
+      
+      // Add dewdrops on strands
+      strands.forEach((strand, i) => {
+        // More drops on spiral strands, fewer on radials
+        const isSpiralStrand = strand.a > 0 && strand.b > 0 && 
+          Math.abs(nodes[strand.a].ring - nodes[strand.b].ring) === 0;
+        
+        if (Math.random() < (isSpiralStrand ? 0.4 : 0.2)) {
+          dewdrops.push({
+            strandIndex: i,
+            t: 0.3 + Math.random() * 0.4, // Position along strand
+            size: 2 + Math.random() * 3,
+            phase: Math.random() * Math.PI * 2
+          });
+        }
+      });
+    }
+    
+    function initAudio() {
+      // Quiet dawn ambient
+      ambientDrone = new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: { attack: 4, decay: 0, sustain: 1, release: 4 }
+      }).toDestination();
+      ambientDrone.volume.value = -30;
+      ambientDrone.triggerAttack(['D3', 'A3', 'E4'], Tone.now());
+      
+      // Gentle wind
+      windNoise = new Tone.Noise('pink');
+      windFilter = new Tone.Filter({ frequency: 200, type: 'lowpass', Q: 0.5 });
+      const windGain = new Tone.Gain(0.03);
+      windNoise.connect(windFilter);
+      windFilter.connect(windGain);
+      windGain.toDestination();
+      windNoise.start();
+      
+      // Bird chirps - occasional
+      birdSynth = new Tone.Synth({
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.1 }
+      }).toDestination();
+      birdSynth.volume.value = -18;
+      
+      // Water drop sound
+      dropSynth = new Tone.Synth({
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.2 }
+      }).toDestination();
+      dropSynth.volume.value = -16;
+    }
+    
+    function playBird() {
+      if (!audioStarted) return;
+      const now = Tone.now();
+      if (now - lastBirdTime < 3) return;
+      lastBirdTime = now;
+      
+      const notes = ['E5', 'G5', 'A5', 'B5', 'D6'];
+      // Quick chirp pattern
+      const note1 = notes[Math.floor(Math.random() * notes.length)];
+      const note2 = notes[Math.floor(Math.random() * notes.length)];
+      
+      birdSynth.triggerAttackRelease(note1, '32n', now);
+      birdSynth.triggerAttackRelease(note2, '32n', now + 0.08);
+    }
+    
+    function playDrop() {
+      if (!audioStarted) return;
+      const now = Tone.now();
+      if (now - lastDropTime < 0.5) return;
+      lastDropTime = now;
+      
+      const notes = ['C5', 'E5', 'G5', 'A5'];
+      const note = notes[Math.floor(Math.random() * notes.length)];
+      dropSynth.triggerAttackRelease(note, '8n', now, 0.3 + Math.random() * 0.2);
+    }
+    
+    function updatePhysics() {
+      // Natural gentle wind
+      const time = performance.now() * 0.001;
+      wind.x = Math.sin(time * 0.3) * 0.15 + Math.sin(time * 0.7) * 0.05;
+      wind.y = Math.cos(time * 0.2) * 0.1;
+      
+      // Mouse influence
+      if (mouse.active) {
+        const dx = mouse.x - lastMouse.x;
+        const dy = mouse.y - lastMouse.y;
+        disturbance = Math.sqrt(dx * dx + dy * dy) * 0.05;
+        
+        // Disturb nearby nodes
+        nodes.forEach(node => {
+          if (node.fixed) return;
+          const ndx = node.x - mouse.x;
+          const ndy = node.y - mouse.y;
+          const dist = Math.sqrt(ndx * ndx + ndy * ndy);
+          if (dist < 100) {
+            const force = (100 - dist) / 100 * disturbance * 0.5;
+            node.vx += ndx / dist * force;
+            node.vy += ndy / dist * force;
+          }
+        });
+      }
+      
+      disturbance *= 0.95;
+      
+      // Apply forces to nodes
+      nodes.forEach(node => {
+        if (node.fixed) return;
+        
+        // Wind
+        node.vx += wind.x * 0.1;
+        node.vy += wind.y * 0.1;
+        
+        // Return to base position (tension)
+        const dx = node.baseX - node.x;
+        const dy = node.baseY - node.y;
+        node.vx += dx * 0.005;
+        node.vy += dy * 0.005;
+        
+        // Damping
+        node.vx *= 0.95;
+        node.vy *= 0.95;
+        
+        // Apply velocity
+        node.x += node.vx;
+        node.y += node.vy;
+      });
+      
+      // Strand tension constraints (multiple iterations for stability)
+      for (let iter = 0; iter < 3; iter++) {
+        strands.forEach(strand => {
+          const a = nodes[strand.a];
+          const b = nodes[strand.b];
+          
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist === 0) return;
+          
+          const diff = (dist - strand.restLength) / dist;
+          const offsetX = dx * diff * 0.5 * strand.tension;
+          const offsetY = dy * diff * 0.5 * strand.tension;
+          
+          if (!a.fixed) {
+            a.x += offsetX;
+            a.y += offsetY;
+          }
+          if (!b.fixed) {
+            b.x -= offsetX;
+            b.y -= offsetY;
+          }
+        });
+      }
+      
+      // Update wind audio
+      if (audioStarted) {
+        const windIntensity = Math.sqrt(wind.x * wind.x + wind.y * wind.y);
+        windFilter.frequency.rampTo(150 + windIntensity * 200 + disturbance * 500, 0.1);
+      }
+      
+      // Occasional bird
+      if (Math.random() < 0.002) {
+        playBird();
+      }
+    }
+    
+    function drawBackground() {
+      // Early morning gradient
+      const gradient = ctx.createLinearGradient(0, 0, 0, H);
+      gradient.addColorStop(0, '#2a3040');
+      gradient.addColorStop(0.4, '#3a4555');
+      gradient.addColorStop(0.7, '#4a5565');
+      gradient.addColorStop(1, '#384050');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Subtle light source (dawn)
+      const lightGrad = ctx.createRadialGradient(W * 0.8, H * 0.2, 0, W * 0.8, H * 0.2, H * 0.6);
+      lightGrad.addColorStop(0, 'rgba(255, 220, 180, 0.1)');
+      lightGrad.addColorStop(1, 'rgba(255, 200, 150, 0)');
+      ctx.fillStyle = lightGrad;
+      ctx.fillRect(0, 0, W, H);
+    }
+    
+    function drawStrands() {
+      ctx.strokeStyle = 'rgba(200, 210, 220, 0.3)';
+      ctx.lineWidth = 0.5;
+      
+      strands.forEach(strand => {
+        const a = nodes[strand.a];
+        const b = nodes[strand.b];
+        
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      });
+      
+      // Glow on some strands
+      ctx.strokeStyle = 'rgba(220, 230, 240, 0.1)';
+      ctx.lineWidth = 2;
+      
+      strands.forEach((strand, i) => {
+        if (i % 5 !== 0) return;
+        const a = nodes[strand.a];
+        const b = nodes[strand.b];
+        
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      });
+    }
+    
+    function drawDewdrops() {
+      const time = performance.now() * 0.001;
+      
+      dewdrops.forEach(drop => {
+        const strand = strands[drop.strandIndex];
+        const a = nodes[strand.a];
+        const b = nodes[strand.b];
+        
+        // Position along strand
+        const x = a.x + (b.x - a.x) * drop.t;
+        const y = a.y + (b.y - a.y) * drop.t;
+        
+        // Slight bobbing
+        const bob = Math.sin(time * 2 + drop.phase) * 0.5;
+        
+        // Dewdrop gradient - catches light
+        const gradient = ctx.createRadialGradient(
+          x - drop.size * 0.3, y - drop.size * 0.3, 0,
+          x, y + bob, drop.size
+        );
+        
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+        gradient.addColorStop(0.3, 'rgba(200, 220, 240, 0.6)');
+        gradient.addColorStop(0.7, 'rgba(150, 180, 210, 0.4)');
+        gradient.addColorStop(1, 'rgba(100, 140, 180, 0.1)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y + bob, drop.size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.beginPath();
+        ctx.arc(x - drop.size * 0.3, y - drop.size * 0.3 + bob, drop.size * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      // Occasional drop falls
+      if (Math.random() < 0.001 && dewdrops.length > 0) {
+        const dropIndex = Math.floor(Math.random() * dewdrops.length);
+        dewdrops.splice(dropIndex, 1);
+        playDrop();
+      }
+    }
+    
+    function drawOverlay() {
+      // Subtle vignette
+      const vignette = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H) * 0.7);
+      vignette.addColorStop(0, 'rgba(30, 40, 50, 0)');
+      vignette.addColorStop(1, 'rgba(15, 20, 25, 0.5)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, W, H);
+    }
+    
+    function draw() {
+      drawBackground();
+      drawStrands();
+      drawDewdrops();
+      drawOverlay();
+    }
+    
+    function animate() {
+      if (!started) {
+        requestAnimationFrame(animate);
+        return;
+      }
+      
+      lastMouse.x = mouse.x;
+      lastMouse.y = mouse.y;
+      
+      updatePhysics();
+      draw();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Event handlers
+    function handleMove(x, y) {
+      mouse.x = x;
+      mouse.y = y;
+      mouse.active = true;
+    }
+    
+    canvas.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      handleMove(e.touches[0].clientX, e.touches[0].clientY);
+    });
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      handleMove(e.touches[0].clientX, e.touches[0].clientY);
+    });
+    
+    canvas.addEventListener('click', e => {
+      // Bigger disturbance on click
+      const x = e.clientX;
+      const y = e.clientY;
+      
+      nodes.forEach(node => {
+        if (node.fixed) return;
+        const dx = node.x - x;
+        const dy = node.y - y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 150) {
+          const force = (150 - dist) / 150 * 3;
+          node.vx += (Math.random() - 0.5) * force;
+          node.vy += (Math.random() - 0.5) * force;
+        }
+      });
+    });
+    
+    // Start
+    document.getElementById('start-overlay').addEventListener('click', async () => {
+      if (!started) {
+        await Tone.start();
+        audioStarted = true;
+        initAudio();
+        buildWeb();
+        started = true;
+        document.getElementById('start-overlay').classList.add('hidden');
+      }
+    });
+    
+    // UI
+    document.getElementById('home-btn').addEventListener('click', () => {
+      window.location.href = '/';
+    });
+    
+    document.getElementById('info-btn').addEventListener('click', () => {
+      document.getElementById('info-panel').classList.add('visible');
+    });
+    
+    document.querySelector('#info-panel .close').addEventListener('click', () => {
+      document.getElementById('info-panel').classList.remove('visible');
+    });
+    
+    // Initialize
+    resize();
+    window.addEventListener('resize', resize);
+    animate();
+  </script>
+</body>
+</html>

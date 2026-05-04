@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 4, 2026 ===
     {
+      name: "Cobweb",
+      description: "Before dawn, a spider finished her work. Now dew clings to every strand, each drop a tiny lens. Move to stir the air, touch to disturb. Silk is stronger than steel, weight for weight",
+      date: "May 4",
+      href: "/projects/cobweb/"
+    },
+    {
       name: "Frost",
       description: "Ice crystals grow on the window while you sleep. Dendritic patterns branching across glass — each unique, each temporary. Hold to breathe warmth, clear a patch. But cold is patient. The frost always returns",
       date: "May 4",

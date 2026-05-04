@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| cobweb | Spider silk with morning dew, gentle physics, dawn sounds | 1 session | May 4 |
 | frost | Ice crystals grow on window, hold to breathe warmth, cold returns | 1 session | May 4 |
 | fog | The liminal space — shapes at edge of perception, stillness reveals | 1 session | May 4 |
 | snowglobe | Snow globe — shake to disturb, watch snow settle. Cozy cabin, day/night toggle | 1 session | May 3 |
