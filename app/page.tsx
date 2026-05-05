@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === May 5, 2026 ===
+    {
+      name: "Puddle",
+      description: "After the rain, the sky lives twice — once above, once below. Clouds drift in still water. Touch the surface, watch ripples carry the reflection apart. Wait for it to settle",
+      date: "May 5",
+      href: "/projects/puddle/"
+    },
     // === May 4, 2026 ===
     {
       name: "Cobweb",
