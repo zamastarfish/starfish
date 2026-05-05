@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 5, 2026 ===
     {
+      name: "Embers",
+      description: "The fire is almost out. Coals glow deep orange, pulsing with the last of their heat. Move close to breathe life into them — but all fires find their end. Click to restart, or sit with the darkness",
+      date: "May 5",
+      href: "/projects/embers/"
+    },
+    {
       name: "Puddle",
       description: "After the rain, the sky lives twice — once above, once below. Clouds drift in still water. Touch the surface, watch ripples carry the reflection apart. Wait for it to settle",
       date: "May 5",

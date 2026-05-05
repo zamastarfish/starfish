@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>embers — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; 
+      overflow: hidden;
+      background: #0a0806;
+      cursor: crosshair;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(180, 120, 80, 0.6);
+      font: 14px/1.5 Georgia, serif;
+      font-style: italic;
+      max-width: 300px;
+      pointer-events: none;
+      transition: opacity 2s;
+    }
+    
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      display: inline-block;
+      width: 32px;
+      height: 32px;
+      background: rgba(80, 50, 30, 0.5);
+      border-radius: 50%;
+      text-align: center;
+      line-height: 32px;
+      text-decoration: none;
+      font-size: 16px;
+      transition: background 0.3s;
+    }
+    #nav a:hover { background: rgba(120, 70, 40, 0.7); }
+    
+    #end-message {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(100, 70, 50, 0);
+      font: italic 18px/1.6 Georgia, serif;
+      text-align: center;
+      pointer-events: none;
+      transition: color 8s;
+    }
+    #end-message.visible {
+      color: rgba(100, 70, 50, 0.7);
+    }
+  </style>
+</head>
+<body>
+  <div id="nav"><a href="/" title="Back to gallery">←</a></div>
+  <canvas id="canvas"></canvas>
+  <div id="info">move close to breathe life into the coals</div>
+  <div id="end-message">all fires find their end</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const endMessage = document.getElementById('end-message');
+    
+    let W, H;
+    let mouseX = -1000, mouseY = -1000;
+    let audioStarted = false;
+    let ended = false;
+    let totalLife = 1.0; // Overall life of the fire
+    let lastTime = 0;
+    
+    // Audio
+    let crackleNoise, crackleFilter, crackleGain;
+    let hum, humGain;
+    let popSynth;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    
+    // Ember class
+    class Ember {
+      constructor(x, y, size) {
+        this.x = x;
+        this.y = y;
+        this.baseX = x;
+        this.baseY = y;
+        this.size = size;
+        this.life = 0.7 + Math.random() * 0.3; // Individual ember life
+        this.heat = this.life;
+        this.phase = Math.random() * Math.PI * 2;
+        this.pulseSpeed = 0.5 + Math.random() * 1;
+        this.driftX = 0;
+        this.driftY = 0;
+      }
+      
+      update(dt, globalLife, breathStrength) {
+        this.phase += dt * this.pulseSpeed;
+        
+        // Gentle drift
+        this.driftX += (Math.random() - 0.5) * 0.1;
+        this.driftY += (Math.random() - 0.5) * 0.1;
+        this.driftX *= 0.98;
+        this.driftY *= 0.98;
+        this.x = this.baseX + this.driftX;
+        this.y = this.baseY + this.driftY;
+        
+        // Natural cooling
+        const coolingRate = 0.015 + (1 - globalLife) * 0.03;
+        this.life -= dt * coolingRate;
+        
+        // Breath effect (temporary heat boost)
+        if (breathStrength > 0 && this.life > 0.05) {
+          this.heat = Math.min(1, this.heat + breathStrength * dt * 2);
+          // Slight life extension from breath, but diminishing returns
+          this.life = Math.min(this.life + breathStrength * dt * 0.1, this.life + 0.01);
+        }
+        
+        // Heat follows life but with lag
+        this.heat += (this.life - this.heat) * dt * 2;
+        this.heat = Math.max(0, this.heat);
+        
+        return this.life > 0;
+      }
+      
+      draw(ctx) {
+        if (this.life <= 0) return;
+        
+        const pulse = 0.7 + 0.3 * Math.sin(this.phase);
+        const intensity = this.heat * pulse * totalLife;
+        
+        // Color from bright orange to deep red to dark
+        const r = Math.floor(255 * Math.min(1, intensity * 1.5));
+        const g = Math.floor(80 * intensity * intensity);
+        const b = Math.floor(20 * intensity * intensity * intensity);
+        
+        // Glow layers
+        const glowSize = this.size * (1 + intensity * 0.5);
+        
+        // Outer glow
+        const gradient = ctx.createRadialGradient(
+          this.x, this.y, 0,
+          this.x, this.y, glowSize * 3
+        );
+        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${intensity * 0.8})`);
+        gradient.addColorStop(0.3, `rgba(${r * 0.7}, ${g * 0.5}, 0, ${intensity * 0.4})`);
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, glowSize * 3, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        
+        // Core
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, glowSize * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${Math.min(255, r + 50)}, ${Math.min(255, g + 30)}, ${b}, ${intensity})`;
+        ctx.fill();
+      }
+    }
+    
+    // Ash particle class
+    class Ash {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = 1 + Math.random() * 2;
+        this.life = 1;
+        this.vx = (Math.random() - 0.5) * 0.3;
+        this.vy = -0.2 - Math.random() * 0.5;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+      }
+      
+      update(dt) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vx += (Math.random() - 0.5) * 0.02;
+        this.vy -= 0.005; // Float up
+        this.rotation += this.rotationSpeed;
+        this.life -= dt * 0.3;
+        return this.life > 0;
+      }
+      
+      draw(ctx) {
+        const alpha = this.life * 0.4;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.fillStyle = `rgba(60, 50, 45, ${alpha})`;
+        ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size * 0.6);
+        ctx.restore();
+      }
+    }
+    
+    // Initialize embers in a rough circle/pile shape
+    let embers = [];
+    let ashes = [];
+    
+    function initEmbers() {
+      embers = [];
+      ashes = [];
+      totalLife = 1.0;
+      ended = false;
+      endMessage.classList.remove('visible');
+      
+      const centerX = W / 2;
+      const centerY = H * 0.6;
+      const count = Math.floor(30 + Math.random() * 20);
+      
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * Math.random() * 80;
+        const x = centerX + Math.cos(angle) * dist;
+        const y = centerY + Math.sin(angle) * dist * 0.5; // Flattened pile
+        const size = 4 + Math.random() * 8;
+        embers.push(new Ember(x, y, size));
+      }
+    }
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      
+      // Crackling noise
+      crackleNoise = new Tone.Noise('brown').start();
+      crackleFilter = new Tone.Filter(400, 'bandpass');
+      crackleGain = new Tone.Gain(0.15);
+      crackleNoise.connect(crackleFilter);
+      crackleFilter.connect(crackleGain);
+      crackleGain.toDestination();
+      
+      // Deep hum of heat
+      hum = new Tone.Oscillator(55, 'sine').start();
+      humGain = new Tone.Gain(0.08);
+      const humFilter = new Tone.Filter(100, 'lowpass');
+      hum.connect(humFilter);
+      humFilter.connect(humGain);
+      humGain.toDestination();
+      
+      // Pop synth for occasional pops
+      popSynth = new Tone.MembraneSynth({
+        pitchDecay: 0.01,
+        octaves: 2,
+        envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 }
+      });
+      const popGain = new Tone.Gain(0.1);
+      popSynth.connect(popGain);
+      popGain.toDestination();
+    }
+    
+    function updateAudio() {
+      if (!audioStarted) return;
+      
+      const intensity = totalLife * (embers.length / 40);
+      
+      // Crackling fades with life
+      crackleGain.gain.rampTo(0.1 * intensity, 0.1);
+      crackleFilter.frequency.rampTo(200 + intensity * 400, 0.1);
+      
+      // Hum fades
+      humGain.gain.rampTo(0.06 * intensity, 0.1);
+      hum.frequency.rampTo(45 + intensity * 20, 0.5);
+      
+      // Random pops
+      if (Math.random() < 0.003 * intensity && totalLife > 0.1) {
+        popSynth.triggerAttackRelease(80 + Math.random() * 60, 0.05);
+      }
+    }
+    
+    function stopAudio() {
+      if (!audioStarted) return;
+      crackleGain.gain.rampTo(0, 3);
+      humGain.gain.rampTo(0, 3);
+    }
+    
+    function update(dt) {
+      if (ended) return;
+      
+      // Calculate breath strength based on mouse proximity to ember center
+      const centerX = W / 2;
+      const centerY = H * 0.6;
+      const dist = Math.hypot(mouseX - centerX, mouseY - centerY);
+      const breathStrength = Math.max(0, 1 - dist / 200);
+      
+      // Update global life (slow decay)
+      totalLife -= dt * 0.008;
+      totalLife = Math.max(0, totalLife);
+      
+      // Update embers
+      embers = embers.filter(e => e.update(dt, totalLife, breathStrength));
+      
+      // Spawn ash from dying embers
+      embers.forEach(e => {
+        if (e.life < 0.3 && Math.random() < 0.02) {
+          ashes.push(new Ash(e.x, e.y));
+        }
+      });
+      
+      // Update ash
+      ashes = ashes.filter(a => a.update(dt));
+      
+      // Update audio
+      updateAudio();
+      
+      // Check for end
+      if (embers.length === 0 || totalLife <= 0) {
+        ended = true;
+        stopAudio();
+        setTimeout(() => {
+          endMessage.classList.add('visible');
+        }, 2000);
+      }
+      
+      // Fade info text
+      if (totalLife < 0.7) {
+        info.style.opacity = Math.max(0, (totalLife - 0.3) / 0.4);
+      }
+    }
+    
+    function draw() {
+      // Very subtle fade instead of full clear for glow trails
+      ctx.fillStyle = 'rgba(10, 8, 6, 0.3)';
+      ctx.fillRect(0, 0, W, H);
+      
+      // Draw ash (behind embers)
+      ashes.forEach(a => a.draw(ctx));
+      
+      // Draw embers
+      embers.forEach(e => e.draw(ctx));
+      
+      // Subtle ambient glow at the base
+      if (totalLife > 0.1) {
+        const gradient = ctx.createRadialGradient(W/2, H * 0.6, 0, W/2, H * 0.6, 150);
+        gradient.addColorStop(0, `rgba(60, 20, 5, ${totalLife * 0.15})`);
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+    
+    function animate(time) {
+      const dt = Math.min(0.1, (time - lastTime) / 1000);
+      lastTime = time;
+      
+      update(dt);
+      draw();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Events
+    window.addEventListener('resize', () => {
+      resize();
+      initEmbers();
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      mouseX = e.touches[0].clientX;
+      mouseY = e.touches[0].clientY;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    canvas.addEventListener('click', async () => {
+      if (!audioStarted) {
+        await Tone.start();
+        initAudio();
+      }
+      // Click to restart if ended
+      if (ended) {
+        initEmbers();
+      }
+    });
+    
+    canvas.addEventListener('touchstart', async (e) => {
+      e.preventDefault();
+      if (!audioStarted) {
+        await Tone.start();
+        initAudio();
+      }
+      if (ended) {
+        initEmbers();
+      }
+    });
+    
+    // Init
+    resize();
+    initEmbers();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

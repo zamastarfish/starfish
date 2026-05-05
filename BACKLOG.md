@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| embers | Dying fire — coals glow, breath briefly revives, but all fires end | 1 session | May 5 |
 | puddle | Sky reflected in water, ripples from touch, occasional raindrop | 1 session | May 5 |
 | cobweb | Spider silk with morning dew, gentle physics, dawn sounds | 1 session | May 4 |
 | frost | Ice crystals grow on window, hold to breathe warmth, cold returns | 1 session | May 4 |
