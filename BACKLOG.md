@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| afterimage | Stare at color, see the ghost — perception, photoreceptor fatigue, complementary | 1 session | May 6 |
 | storm | Thunderstorm approaching — sky darkens, lightning strikes, thunder rolls, passes | 1 session | May 6 |
 | tea | Cup of tea cooling — steam rises, warmth fades, everything cools | 1 session | May 6 |
 | embers | Dying fire — coals glow, breath briefly revives, but all fires end | 1 session | May 5 |

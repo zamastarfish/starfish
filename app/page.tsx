@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 6, 2026 ===
     {
+      name: "Afterimage",
+      description: "Stare at the center. Don't look away. When the color fades, your fatigued photoreceptors paint the ghost — complementary colors, shapes that aren't there. We carry traces of everything we've seen",
+      date: "May 6",
+      href: "/projects/afterimage/"
+    },
+    {
       name: "Storm",
       description: "A thunderstorm approaches from the distance. Sky darkens, pressure builds, wind rises. Watch for lightning — listen for thunder. The storm arrives on its own time, and passes when it's ready",
       date: "May 6",

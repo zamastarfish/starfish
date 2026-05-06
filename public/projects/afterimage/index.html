@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>afterimage — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #808080;
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(0,0,0,0.4);
+      font-size: 14px;
+      font-style: italic;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.5s;
+      max-width: 300px;
+    }
+    
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      color: rgba(0,0,0,0.4);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    #nav a:hover { color: rgba(0,0,0,0.7); }
+    
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid rgba(0,0,0,0.3);
+      color: rgba(0,0,0,0.4);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 14px;
+      font-family: Georgia, serif;
+      transition: all 0.2s;
+      z-index: 100;
+    }
+    #about-btn:hover {
+      border-color: rgba(0,0,0,0.5);
+      color: rgba(0,0,0,0.7);
+    }
+    
+    #about-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(128,128,128,0.95);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      z-index: 200;
+    }
+    #about-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #about-content {
+      max-width: 400px;
+      padding: 32px;
+      color: rgba(0,0,0,0.7);
+      text-align: center;
+      line-height: 1.7;
+    }
+    #about-content h2 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 16px;
+      color: rgba(0,0,0,0.8);
+    }
+    #about-content p {
+      margin-bottom: 12px;
+      font-size: 15px;
+    }
+    #about-content .close {
+      margin-top: 20px;
+      color: rgba(0,0,0,0.4);
+      font-size: 13px;
+    }
+    
+    #focus-dot {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 8px;
+      height: 8px;
+      background: #000;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 50;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    #focus-dot.visible {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="focus-dot"></div>
+  
+  <nav id="nav"><a href="/">← starfish</a></nav>
+  <button id="about-btn">?</button>
+  
+  <div id="about-overlay">
+    <div id="about-content">
+      <h2>afterimage</h2>
+      <p>Stare at the center. Don't look away.</p>
+      <p>When the color fades, keep looking. Your eyes will show you what isn't there — the ghost of what you saw, painted in complementary colors.</p>
+      <p>Photoreceptors fatigue. Perception adapts. We carry traces of everything we've looked at.</p>
+      <p class="close">click anywhere to close</p>
+    </div>
+  </div>
+  
+  <div id="info">click to begin · stare at the center</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const focusDot = document.getElementById('focus-dot');
+    const aboutBtn = document.getElementById('about-btn');
+    const aboutOverlay = document.getElementById('about-overlay');
+    
+    let width, height;
+    let started = false;
+    let audioCtx, droneOsc, droneGain, lfoOsc, lfoGain;
+    
+    // State machine
+    let phase = 'waiting'; // waiting, staring, fading, reveal, rest
+    let phaseTime = 0;
+    
+    const STARE_DURATION = 20; // seconds to stare
+    const FADE_DURATION = 2;  // fade to gray
+    const REVEAL_DURATION = 8; // time to see afterimage
+    const REST_DURATION = 3;  // pause before next
+    
+    // Current stimulus
+    let stimulus = null;
+    let stimulusAlpha = 0;
+    
+    // Stimulus types
+    const stimulusTypes = [
+      { type: 'circle', color: [255, 0, 0] },      // red → cyan
+      { type: 'circle', color: [0, 255, 0] },      // green → magenta
+      { type: 'circle', color: [0, 0, 255] },      // blue → yellow
+      { type: 'circle', color: [255, 255, 0] },    // yellow → blue
+      { type: 'circle', color: [0, 255, 255] },    // cyan → red
+      { type: 'circle', color: [255, 0, 255] },    // magenta → green
+      { type: 'square', color: [255, 128, 0] },    // orange
+      { type: 'star', color: [128, 0, 255] },      // purple
+      { type: 'ring', color: [255, 0, 128] },      // pink
+    ];
+    
+    let stimulusIndex = 0;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    
+    function initAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Subtle drone - very quiet, just presence
+      droneOsc = audioCtx.createOscillator();
+      droneOsc.type = 'sine';
+      droneOsc.frequency.value = 110; // A2
+      
+      // LFO for subtle movement
+      lfoOsc = audioCtx.createOscillator();
+      lfoOsc.type = 'sine';
+      lfoOsc.frequency.value = 0.1;
+      lfoGain = audioCtx.createGain();
+      lfoGain.gain.value = 5;
+      lfoOsc.connect(lfoGain);
+      lfoGain.connect(droneOsc.frequency);
+      
+      droneGain = audioCtx.createGain();
+      droneGain.gain.value = 0;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 300;
+      
+      droneOsc.connect(filter);
+      filter.connect(droneGain);
+      droneGain.connect(audioCtx.destination);
+      
+      droneOsc.start();
+      lfoOsc.start();
+    }
+    
+    function nextStimulus() {
+      stimulus = { ...stimulusTypes[stimulusIndex] };
+      stimulus.size = Math.min(width, height) * 0.35;
+      stimulusIndex = (stimulusIndex + 1) % stimulusTypes.length;
+    }
+    
+    function startStaring() {
+      phase = 'staring';
+      phaseTime = 0;
+      stimulusAlpha = 0;
+      nextStimulus();
+      focusDot.classList.add('visible');
+      
+      // Bring in drone
+      if (audioCtx) {
+        droneGain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 1);
+      }
+    }
+    
+    function complementaryColor(rgb) {
+      return [255 - rgb[0], 255 - rgb[1], 255 - rgb[2]];
+    }
+    
+    function update(dt) {
+      if (!started) return;
+      
+      phaseTime += dt;
+      
+      switch (phase) {
+        case 'waiting':
+          // Do nothing, wait for click
+          break;
+          
+        case 'staring':
+          // Fade in stimulus
+          stimulusAlpha = Math.min(1, phaseTime / 1);
+          
+          // Progress indicator via audio pitch
+          if (audioCtx) {
+            const progress = phaseTime / STARE_DURATION;
+            droneOsc.frequency.linearRampToValueAtTime(
+              110 + progress * 55, // A2 to E3
+              audioCtx.currentTime + 0.1
+            );
+          }
+          
+          if (phaseTime >= STARE_DURATION) {
+            phase = 'fading';
+            phaseTime = 0;
+          }
+          break;
+          
+        case 'fading':
+          stimulusAlpha = 1 - (phaseTime / FADE_DURATION);
+          
+          if (phaseTime >= FADE_DURATION) {
+            phase = 'reveal';
+            phaseTime = 0;
+            stimulusAlpha = 0;
+            info.textContent = 'keep looking at the center';
+            info.style.opacity = '1';
+          }
+          break;
+          
+        case 'reveal':
+          // Afterimage appears naturally in viewer's eyes
+          // We just show neutral gray
+          
+          if (phaseTime >= REVEAL_DURATION) {
+            phase = 'rest';
+            phaseTime = 0;
+            info.textContent = 'click for another';
+            focusDot.classList.remove('visible');
+            
+            if (audioCtx) {
+              droneGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1);
+            }
+          }
+          break;
+          
+        case 'rest':
+          // Wait for click
+          break;
+      }
+    }
+    
+    function drawStimulus() {
+      if (!stimulus || stimulusAlpha <= 0) return;
+      
+      const cx = width / 2;
+      const cy = height / 2;
+      const size = stimulus.size;
+      const [r, g, b] = stimulus.color;
+      
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${stimulusAlpha})`;
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${stimulusAlpha})`;
+      
+      switch (stimulus.type) {
+        case 'circle':
+          ctx.beginPath();
+          ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+          
+        case 'square':
+          ctx.fillRect(cx - size/2, cy - size/2, size, size);
+          break;
+          
+        case 'star':
+          drawStar(cx, cy, size / 2, size / 4, 5);
+          ctx.fill();
+          break;
+          
+        case 'ring':
+          ctx.lineWidth = size * 0.15;
+          ctx.beginPath();
+          ctx.arc(cx, cy, size / 2 - size * 0.075, 0, Math.PI * 2);
+          ctx.stroke();
+          break;
+      }
+    }
+    
+    function drawStar(cx, cy, outerR, innerR, points) {
+      ctx.beginPath();
+      for (let i = 0; i < points * 2; i++) {
+        const r = i % 2 === 0 ? outerR : innerR;
+        const angle = (i * Math.PI / points) - Math.PI / 2;
+        const x = cx + Math.cos(angle) * r;
+        const y = cy + Math.sin(angle) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+    }
+    
+    function draw() {
+      // Neutral gray background
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw stimulus if in staring or fading phase
+      if (phase === 'staring' || phase === 'fading') {
+        drawStimulus();
+      }
+      
+      // During reveal, could show very subtle hint of complementary
+      // But actually the real afterimage effect works better with pure gray
+      // The viewer's fatigued photoreceptors do the work
+    }
+    
+    let lastTime = 0;
+    function animate(time) {
+      const dt = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+      
+      update(dt);
+      draw();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    canvas.addEventListener('click', () => {
+      if (!started) {
+        initAudio();
+        started = true;
+        info.textContent = 'stare at the center · don\'t look away';
+        startStaring();
+      } else if (phase === 'rest' || phase === 'waiting') {
+        info.style.opacity = '0.4';
+        info.textContent = 'stare at the center · don\'t look away';
+        startStaring();
+      }
+    });
+    
+    aboutBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      aboutOverlay.classList.add('visible');
+    });
+    
+    aboutOverlay.addEventListener('click', () => {
+      aboutOverlay.classList.remove('visible');
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
