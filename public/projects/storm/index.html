@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>storm — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #1a1a2e;
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.4);
+      font-size: 14px;
+      font-style: italic;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.5s;
+    }
+    
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      color: rgba(255,255,255,0.5);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    #nav a:hover { color: rgba(255,255,255,0.8); }
+    
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid rgba(255,255,255,0.3);
+      color: rgba(255,255,255,0.5);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 14px;
+      font-family: Georgia, serif;
+      transition: all 0.2s;
+      z-index: 100;
+    }
+    #about-btn:hover {
+      border-color: rgba(255,255,255,0.6);
+      color: rgba(255,255,255,0.8);
+    }
+    
+    #about-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      z-index: 200;
+    }
+    #about-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #about-content {
+      max-width: 400px;
+      padding: 32px;
+      color: rgba(255,255,255,0.8);
+      text-align: center;
+      line-height: 1.7;
+    }
+    #about-content h2 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 16px;
+      color: rgba(255,255,255,0.9);
+    }
+    #about-content p {
+      margin-bottom: 12px;
+      font-size: 15px;
+    }
+    #about-content .close {
+      margin-top: 20px;
+      color: rgba(255,255,255,0.4);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <nav id="nav"><a href="/">← starfish</a></nav>
+  <button id="about-btn">?</button>
+  
+  <div id="about-overlay">
+    <div id="about-content">
+      <h2>storm</h2>
+      <p>A thunderstorm approaches from the distance.</p>
+      <p>Watch the sky darken. Feel the pressure build. Wait for release.</p>
+      <p>The storm arrives on its own time.</p>
+      <p class="close">click anywhere to close</p>
+    </div>
+  </div>
+  
+  <div id="info">click to begin</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const aboutBtn = document.getElementById('about-btn');
+    const aboutOverlay = document.getElementById('about-overlay');
+    
+    let width, height;
+    let audioStarted = false;
+    let audioCtx, masterGain;
+    
+    // Storm state
+    let stormPhase = 0; // 0: calm, 1: approaching, 2: overhead, 3: passing, 4: aftermath
+    let stormProgress = 0; // 0-1 within each phase
+    let stormTime = 0;
+    const PHASE_DURATIONS = [8, 20, 30, 20, 15]; // seconds per phase
+    
+    // Visual elements
+    let clouds = [];
+    let raindrops = [];
+    let lightningFlash = 0;
+    let lightningBolts = [];
+    let wind = 0;
+    let targetWind = 0;
+    
+    // Audio nodes
+    let windNoise, windGain, windFilter;
+    let rainNoise, rainGain, rainFilter;
+    let thunderOsc, thunderGain;
+    let ambientDrone, droneGain;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      initClouds();
+    }
+    
+    function initClouds() {
+      clouds = [];
+      const numClouds = 12;
+      for (let i = 0; i < numClouds; i++) {
+        clouds.push({
+          x: Math.random() * width * 1.5 - width * 0.25,
+          y: Math.random() * height * 0.4,
+          width: 150 + Math.random() * 300,
+          height: 60 + Math.random() * 100,
+          speed: 0.2 + Math.random() * 0.5,
+          darkness: 0.3 + Math.random() * 0.3,
+          layer: Math.floor(Math.random() * 3)
+        });
+      }
+      clouds.sort((a, b) => a.layer - b.layer);
+    }
+    
+    function initAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.6;
+      masterGain.connect(audioCtx.destination);
+      
+      // Wind noise
+      const windBuffer = createNoiseBuffer(2);
+      windNoise = audioCtx.createBufferSource();
+      windNoise.buffer = windBuffer;
+      windNoise.loop = true;
+      windFilter = audioCtx.createBiquadFilter();
+      windFilter.type = 'lowpass';
+      windFilter.frequency.value = 400;
+      windGain = audioCtx.createGain();
+      windGain.gain.value = 0;
+      windNoise.connect(windFilter);
+      windFilter.connect(windGain);
+      windGain.connect(masterGain);
+      windNoise.start();
+      
+      // Rain noise
+      const rainBuffer = createNoiseBuffer(2);
+      rainNoise = audioCtx.createBufferSource();
+      rainNoise.buffer = rainBuffer;
+      rainNoise.loop = true;
+      rainFilter = audioCtx.createBiquadFilter();
+      rainFilter.type = 'bandpass';
+      rainFilter.frequency.value = 3000;
+      rainFilter.Q.value = 0.5;
+      rainGain = audioCtx.createGain();
+      rainGain.gain.value = 0;
+      rainNoise.connect(rainFilter);
+      rainFilter.connect(rainGain);
+      rainGain.connect(masterGain);
+      rainNoise.start();
+      
+      // Ambient drone
+      ambientDrone = audioCtx.createOscillator();
+      ambientDrone.type = 'sine';
+      ambientDrone.frequency.value = 55; // Low A
+      const droneFilter = audioCtx.createBiquadFilter();
+      droneFilter.type = 'lowpass';
+      droneFilter.frequency.value = 200;
+      droneGain = audioCtx.createGain();
+      droneGain.gain.value = 0.15;
+      ambientDrone.connect(droneFilter);
+      droneFilter.connect(droneGain);
+      droneGain.connect(masterGain);
+      ambientDrone.start();
+    }
+    
+    function createNoiseBuffer(seconds) {
+      const length = audioCtx.sampleRate * seconds;
+      const buffer = audioCtx.createBuffer(1, length, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < length; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      return buffer;
+    }
+    
+    function triggerThunder(intensity, delay) {
+      setTimeout(() => {
+        // Thunder sound - layered rumble
+        const now = audioCtx.currentTime;
+        
+        // Low rumble
+        const rumble = audioCtx.createOscillator();
+        rumble.type = 'sawtooth';
+        rumble.frequency.value = 30 + Math.random() * 20;
+        const rumbleGain = audioCtx.createGain();
+        const rumbleFilter = audioCtx.createBiquadFilter();
+        rumbleFilter.type = 'lowpass';
+        rumbleFilter.frequency.value = 100;
+        
+        rumbleGain.gain.setValueAtTime(0, now);
+        rumbleGain.gain.linearRampToValueAtTime(0.4 * intensity, now + 0.05);
+        rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + 2 + Math.random() * 2);
+        
+        rumble.connect(rumbleFilter);
+        rumbleFilter.connect(rumbleGain);
+        rumbleGain.connect(masterGain);
+        rumble.start(now);
+        rumble.stop(now + 4);
+        
+        // Crack/pop for close lightning
+        if (intensity > 0.7) {
+          const crack = audioCtx.createOscillator();
+          crack.type = 'square';
+          crack.frequency.value = 100;
+          const crackGain = audioCtx.createGain();
+          crackGain.gain.setValueAtTime(0.3, now);
+          crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+          crack.connect(crackGain);
+          crackGain.connect(masterGain);
+          crack.start(now);
+          crack.stop(now + 0.2);
+        }
+        
+        // Noise burst for texture
+        const noiseLen = audioCtx.sampleRate * 3;
+        const noiseBuffer = audioCtx.createBuffer(1, noiseLen, audioCtx.sampleRate);
+        const noiseData = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < noiseLen; i++) {
+          noiseData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.8));
+        }
+        const noiseSource = audioCtx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+        const noiseFilter = audioCtx.createBiquadFilter();
+        noiseFilter.type = 'lowpass';
+        noiseFilter.frequency.value = 300;
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.value = 0.2 * intensity;
+        noiseSource.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(masterGain);
+        noiseSource.start(now);
+      }, delay * 1000);
+    }
+    
+    function triggerLightning(x, y, intensity) {
+      lightningFlash = intensity;
+      
+      // Create bolt
+      const bolt = {
+        x: x,
+        y: y,
+        segments: [],
+        life: 1,
+        intensity: intensity
+      };
+      
+      // Generate jagged path
+      let cx = x;
+      let cy = y;
+      const targetY = height + 100;
+      
+      while (cy < targetY) {
+        const nextY = cy + 20 + Math.random() * 40;
+        const nextX = cx + (Math.random() - 0.5) * 60;
+        bolt.segments.push({ x1: cx, y1: cy, x2: nextX, y2: nextY });
+        
+        // Branches
+        if (Math.random() < 0.3) {
+          const branchLen = 30 + Math.random() * 50;
+          const branchAngle = (Math.random() - 0.5) * Math.PI * 0.5;
+          bolt.segments.push({
+            x1: nextX,
+            y1: nextY,
+            x2: nextX + Math.cos(branchAngle) * branchLen,
+            y2: nextY + Math.sin(branchAngle) * branchLen + branchLen * 0.5,
+            branch: true
+          });
+        }
+        
+        cx = nextX;
+        cy = nextY;
+      }
+      
+      lightningBolts.push(bolt);
+      
+      // Thunder delay based on "distance"
+      const distance = (1 - intensity) * 3 + 0.1;
+      triggerThunder(intensity, distance);
+    }
+    
+    function updateStorm(dt) {
+      stormTime += dt;
+      
+      const phaseDuration = PHASE_DURATIONS[stormPhase];
+      stormProgress += dt / phaseDuration;
+      
+      if (stormProgress >= 1) {
+        stormProgress = 0;
+        stormPhase++;
+        if (stormPhase > 4) {
+          stormPhase = 0; // Loop back to calm
+        }
+      }
+      
+      // Update wind target based on phase
+      switch (stormPhase) {
+        case 0: // Calm
+          targetWind = 0.1 + Math.sin(stormTime * 0.5) * 0.05;
+          break;
+        case 1: // Approaching
+          targetWind = 0.2 + stormProgress * 0.4;
+          break;
+        case 2: // Overhead
+          targetWind = 0.6 + Math.sin(stormTime * 2) * 0.2;
+          break;
+        case 3: // Passing
+          targetWind = 0.6 - stormProgress * 0.4;
+          break;
+        case 4: // Aftermath
+          targetWind = 0.2 - stormProgress * 0.1;
+          break;
+      }
+      
+      wind += (targetWind - wind) * 0.02;
+      
+      // Lightning timing
+      if (stormPhase === 2 || (stormPhase === 1 && stormProgress > 0.7)) {
+        const lightningChance = stormPhase === 2 ? 0.015 : 0.005;
+        if (Math.random() < lightningChance) {
+          const intensity = stormPhase === 2 ? 0.5 + Math.random() * 0.5 : 0.3 + Math.random() * 0.3;
+          const x = Math.random() * width;
+          const y = Math.random() * height * 0.2;
+          triggerLightning(x, y, intensity);
+        }
+      }
+      
+      // Update audio
+      if (audioStarted) {
+        // Wind
+        const windVolume = Math.min(wind * 0.8, 0.5);
+        windGain.gain.linearRampToValueAtTime(windVolume, audioCtx.currentTime + 0.1);
+        windFilter.frequency.linearRampToValueAtTime(200 + wind * 600, audioCtx.currentTime + 0.1);
+        
+        // Rain
+        let rainIntensity = 0;
+        if (stormPhase === 1) rainIntensity = stormProgress * 0.3;
+        else if (stormPhase === 2) rainIntensity = 0.3 + Math.sin(stormTime) * 0.1 + 0.4;
+        else if (stormPhase === 3) rainIntensity = 0.7 - stormProgress * 0.5;
+        else if (stormPhase === 4) rainIntensity = 0.2 - stormProgress * 0.2;
+        
+        rainGain.gain.linearRampToValueAtTime(rainIntensity * 0.4, audioCtx.currentTime + 0.1);
+        
+        // Drone pressure
+        const pressure = stormPhase === 2 ? 0.25 : (stormPhase === 1 ? 0.15 + stormProgress * 0.1 : 0.1);
+        droneGain.gain.linearRampToValueAtTime(pressure, audioCtx.currentTime + 0.1);
+      }
+    }
+    
+    function updateClouds(dt) {
+      const speedMult = 1 + wind * 3;
+      
+      clouds.forEach(cloud => {
+        cloud.x += cloud.speed * speedMult;
+        if (cloud.x > width + cloud.width) {
+          cloud.x = -cloud.width;
+          cloud.y = Math.random() * height * 0.4;
+        }
+        
+        // Darken based on storm phase
+        let targetDarkness = 0.3;
+        if (stormPhase === 1) targetDarkness = 0.3 + stormProgress * 0.4;
+        else if (stormPhase === 2) targetDarkness = 0.7 + Math.sin(stormTime * 0.5) * 0.1;
+        else if (stormPhase === 3) targetDarkness = 0.7 - stormProgress * 0.3;
+        else if (stormPhase === 4) targetDarkness = 0.4 - stormProgress * 0.1;
+        
+        cloud.darkness += (targetDarkness - cloud.darkness) * 0.01;
+      });
+    }
+    
+    function updateRain(dt) {
+      // Spawn rate based on phase
+      let spawnRate = 0;
+      if (stormPhase === 1) spawnRate = stormProgress * 10;
+      else if (stormPhase === 2) spawnRate = 10 + Math.random() * 15;
+      else if (stormPhase === 3) spawnRate = 10 - stormProgress * 8;
+      else if (stormPhase === 4) spawnRate = 2 - stormProgress * 2;
+      
+      const spawns = Math.floor(spawnRate);
+      for (let i = 0; i < spawns; i++) {
+        raindrops.push({
+          x: Math.random() * width * 1.5 - width * 0.25,
+          y: -10,
+          speed: 12 + Math.random() * 8,
+          length: 10 + Math.random() * 20,
+          opacity: 0.2 + Math.random() * 0.3
+        });
+      }
+      
+      // Update drops
+      const windOffset = wind * 5;
+      raindrops.forEach(drop => {
+        drop.y += drop.speed;
+        drop.x += windOffset;
+      });
+      
+      // Remove offscreen
+      raindrops = raindrops.filter(drop => drop.y < height + 50);
+    }
+    
+    function updateLightning(dt) {
+      lightningFlash *= 0.9;
+      
+      lightningBolts.forEach(bolt => {
+        bolt.life -= dt * 3;
+      });
+      
+      lightningBolts = lightningBolts.filter(bolt => bolt.life > 0);
+    }
+    
+    function getSkyGradient() {
+      let topColor, bottomColor;
+      
+      if (stormPhase === 0) {
+        // Calm - late afternoon
+        topColor = lerpColor([50, 60, 90], [30, 35, 60], stormProgress);
+        bottomColor = lerpColor([80, 70, 100], [50, 50, 80], stormProgress);
+      } else if (stormPhase === 1) {
+        // Approaching - darkening
+        topColor = lerpColor([30, 35, 60], [15, 18, 35], stormProgress);
+        bottomColor = lerpColor([50, 50, 80], [30, 35, 55], stormProgress);
+      } else if (stormPhase === 2) {
+        // Overhead - dark and ominous
+        topColor = [15 + Math.random() * 5, 18, 35];
+        bottomColor = [30, 35 + Math.random() * 5, 55];
+      } else if (stormPhase === 3) {
+        // Passing - lightening
+        topColor = lerpColor([15, 18, 35], [35, 45, 70], stormProgress);
+        bottomColor = lerpColor([30, 35, 55], [60, 65, 90], stormProgress);
+      } else {
+        // Aftermath - peaceful
+        topColor = lerpColor([35, 45, 70], [50, 60, 90], stormProgress);
+        bottomColor = lerpColor([60, 65, 90], [90, 85, 110], stormProgress);
+      }
+      
+      // Lightning flash
+      if (lightningFlash > 0.1) {
+        const flashAmount = lightningFlash * 0.7;
+        topColor = topColor.map(c => c + (255 - c) * flashAmount);
+        bottomColor = bottomColor.map(c => c + (255 - c) * flashAmount);
+      }
+      
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, `rgb(${topColor.join(',')})`);
+      gradient.addColorStop(1, `rgb(${bottomColor.join(',')})`);
+      return gradient;
+    }
+    
+    function lerpColor(c1, c2, t) {
+      return c1.map((v, i) => v + (c2[i] - v) * t);
+    }
+    
+    function drawCloud(cloud) {
+      const darkness = cloud.darkness;
+      const baseColor = Math.floor(40 - darkness * 30);
+      const alpha = 0.6 + darkness * 0.3;
+      
+      ctx.fillStyle = `rgba(${baseColor}, ${baseColor + 5}, ${baseColor + 15}, ${alpha})`;
+      
+      // Draw cloud as overlapping ellipses
+      const cx = cloud.x + cloud.width / 2;
+      const cy = cloud.y + cloud.height / 2;
+      
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, cloud.width / 2, cloud.height / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.ellipse(cx - cloud.width * 0.3, cy + 10, cloud.width * 0.35, cloud.height * 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.ellipse(cx + cloud.width * 0.25, cy + 5, cloud.width * 0.4, cloud.height * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    function drawRain() {
+      ctx.strokeStyle = 'rgba(180, 190, 210, 0.4)';
+      ctx.lineWidth = 1;
+      
+      const windAngle = Math.atan2(1, wind * 0.3);
+      
+      raindrops.forEach(drop => {
+        ctx.globalAlpha = drop.opacity;
+        ctx.beginPath();
+        ctx.moveTo(drop.x, drop.y);
+        ctx.lineTo(
+          drop.x - Math.cos(windAngle) * drop.length * 0.3,
+          drop.y + drop.length
+        );
+        ctx.stroke();
+      });
+      
+      ctx.globalAlpha = 1;
+    }
+    
+    function drawLightning() {
+      lightningBolts.forEach(bolt => {
+        const alpha = bolt.life * bolt.intensity;
+        
+        bolt.segments.forEach(seg => {
+          const width = seg.branch ? 1 : 2 + bolt.intensity;
+          
+          // Glow
+          ctx.strokeStyle = `rgba(200, 220, 255, ${alpha * 0.3})`;
+          ctx.lineWidth = width + 6;
+          ctx.beginPath();
+          ctx.moveTo(seg.x1, seg.y1);
+          ctx.lineTo(seg.x2, seg.y2);
+          ctx.stroke();
+          
+          // Core
+          ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          ctx.moveTo(seg.x1, seg.y1);
+          ctx.lineTo(seg.x2, seg.y2);
+          ctx.stroke();
+        });
+      });
+    }
+    
+    function drawGround() {
+      // Simple horizon line and ground
+      const groundY = height * 0.85;
+      
+      // Ground
+      let groundColor;
+      if (stormPhase <= 1) {
+        groundColor = `rgb(25, 30, 35)`;
+      } else if (stormPhase === 2) {
+        groundColor = `rgb(20, 25, 30)`;
+      } else {
+        const brightness = 25 + stormProgress * 10;
+        groundColor = `rgb(${brightness}, ${brightness + 5}, ${brightness + 10})`;
+      }
+      
+      ctx.fillStyle = groundColor;
+      ctx.fillRect(0, groundY, width, height - groundY);
+      
+      // Horizon glow during lightning
+      if (lightningFlash > 0.1) {
+        const gradient = ctx.createLinearGradient(0, groundY - 50, 0, groundY + 50);
+        gradient.addColorStop(0, `rgba(200, 210, 230, ${lightningFlash * 0.2})`);
+        gradient.addColorStop(1, 'rgba(200, 210, 230, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, groundY - 50, width, 100);
+      }
+    }
+    
+    function draw() {
+      // Sky
+      ctx.fillStyle = getSkyGradient();
+      ctx.fillRect(0, 0, width, height);
+      
+      // Distant clouds (back layer)
+      clouds.filter(c => c.layer === 0).forEach(drawCloud);
+      
+      // Ground
+      drawGround();
+      
+      // Middle clouds
+      clouds.filter(c => c.layer === 1).forEach(drawCloud);
+      
+      // Lightning
+      drawLightning();
+      
+      // Rain
+      drawRain();
+      
+      // Front clouds
+      clouds.filter(c => c.layer === 2).forEach(drawCloud);
+      
+      // Phase indicator (subtle)
+      const phases = ['calm', 'approaching', 'overhead', 'passing', 'clearing'];
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.font = '12px Georgia';
+      ctx.textAlign = 'right';
+      // ctx.fillText(phases[stormPhase], width - 20, height - 20);
+    }
+    
+    let lastTime = 0;
+    function animate(time) {
+      const dt = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+      
+      if (audioStarted) {
+        updateStorm(dt);
+        updateClouds(dt);
+        updateRain(dt);
+        updateLightning(dt);
+      }
+      
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    // Event listeners
+    canvas.addEventListener('click', () => {
+      if (!audioStarted) {
+        initAudio();
+        audioStarted = true;
+        info.style.opacity = '0';
+        setTimeout(() => info.remove(), 500);
+      }
+    });
+    
+    aboutBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      aboutOverlay.classList.add('visible');
+    });
+    
+    aboutOverlay.addEventListener('click', () => {
+      aboutOverlay.classList.remove('visible');
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    // Init
+    resize();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

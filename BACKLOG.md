@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| storm | Thunderstorm approaching — sky darkens, lightning strikes, thunder rolls, passes | 1 session | May 6 |
 | tea | Cup of tea cooling — steam rises, warmth fades, everything cools | 1 session | May 6 |
 | embers | Dying fire — coals glow, breath briefly revives, but all fires end | 1 session | May 5 |
 | puddle | Sky reflected in water, ripples from touch, occasional raindrop | 1 session | May 5 |

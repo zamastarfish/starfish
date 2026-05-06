@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 6, 2026 ===
     {
+      name: "Storm",
+      description: "A thunderstorm approaches from the distance. Sky darkens, pressure builds, wind rises. Watch for lightning — listen for thunder. The storm arrives on its own time, and passes when it's ready",
+      date: "May 6",
+      href: "/projects/storm/"
+    },
+    {
       name: "Tea",
       description: "A cup of tea, still steaming. Watch the warmth leave — steam thinning, heat fading into the room. Hover close to warm your hands. Everything we hold eventually cools",
       date: "May 6",
