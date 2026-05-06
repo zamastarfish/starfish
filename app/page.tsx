@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === May 6, 2026 ===
+    {
+      name: "Tea",
+      description: "A cup of tea, still steaming. Watch the warmth leave — steam thinning, heat fading into the room. Hover close to warm your hands. Everything we hold eventually cools",
+      date: "May 6",
+      href: "/projects/tea/"
+    },
     // === May 5, 2026 ===
     {
       name: "Embers",

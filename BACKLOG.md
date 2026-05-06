@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| tea | Cup of tea cooling — steam rises, warmth fades, everything cools | 1 session | May 6 |
 | embers | Dying fire — coals glow, breath briefly revives, but all fires end | 1 session | May 5 |
 | puddle | Sky reflected in water, ripples from touch, occasional raindrop | 1 session | May 5 |
 | cobweb | Spider silk with morning dew, gentle physics, dawn sounds | 1 session | May 4 |

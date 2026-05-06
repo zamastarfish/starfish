@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>tea — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; 
+      overflow: hidden;
+      background: #2a2520;
+      cursor: default;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(180, 160, 140, 0.5);
+      font: 14px/1.5 Georgia, serif;
+      font-style: italic;
+      max-width: 280px;
+      pointer-events: none;
+      transition: opacity 3s;
+    }
+    
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      display: inline-block;
+      width: 32px;
+      height: 32px;
+      background: rgba(80, 70, 60, 0.5);
+      border-radius: 50%;
+      text-align: center;
+      line-height: 32px;
+      text-decoration: none;
+      font-size: 16px;
+      transition: background 0.3s;
+    }
+    #nav a:hover { background: rgba(120, 100, 80, 0.7); }
+    
+    #end-message {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(140, 120, 100, 0);
+      font: italic 18px/1.6 Georgia, serif;
+      text-align: center;
+      pointer-events: none;
+      transition: color 6s;
+    }
+    #end-message.visible {
+      color: rgba(140, 120, 100, 0.6);
+    }
+  </style>
+</head>
+<body>
+  <div id="nav"><a href="/" title="Back to gallery">←</a></div>
+  <canvas id="canvas"></canvas>
+  <div id="info">sit with it a while</div>
+  <div id="end-message">it was warm once</div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const endMessage = document.getElementById('end-message');
+    
+    let W, H;
+    let audioStarted = false;
+    let warmth = 1.0; // 1 = hot, 0 = cold
+    let ended = false;
+    let lastTime = 0;
+    let mouseX = -1000, mouseY = -1000;
+    
+    // Cup properties
+    let cupX, cupY, cupRadius;
+    
+    // Steam particles
+    let steam = [];
+    
+    // Audio
+    let drone, droneGain, droneFilter;
+    let noise, noiseGain;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      cupRadius = Math.min(W, H) * 0.18;
+      cupX = W / 2;
+      cupY = H / 2;
+    }
+    
+    // Steam particle
+    class SteamParticle {
+      constructor() {
+        this.reset();
+      }
+      
+      reset() {
+        // Start from random point within cup surface
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * cupRadius * 0.7;
+        this.x = cupX + Math.cos(angle) * dist;
+        this.y = cupY + Math.sin(angle) * dist;
+        this.startX = this.x;
+        this.size = 3 + Math.random() * 8;
+        this.life = 1;
+        this.maxLife = 2 + Math.random() * 2;
+        this.speed = 0.3 + Math.random() * 0.4;
+        this.drift = (Math.random() - 0.5) * 0.3;
+        this.phase = Math.random() * Math.PI * 2;
+      }
+      
+      update(dt, warmth) {
+        // Only active steam when warm
+        if (warmth < 0.1) {
+          this.life = 0;
+          return false;
+        }
+        
+        this.y -= this.speed * warmth * 60 * dt;
+        this.x += Math.sin(this.phase + this.y * 0.02) * 0.5;
+        this.x += this.drift;
+        this.phase += dt;
+        
+        this.life -= dt / this.maxLife;
+        
+        if (this.life <= 0 || this.y < cupY - cupRadius * 3) {
+          if (warmth > 0.15 && Math.random() < warmth) {
+            this.reset();
+            return true;
+          }
+          return false;
+        }
+        return true;
+      }
+      
+      draw(ctx, warmth) {
+        const alpha = this.life * warmth * 0.3;
+        const gradient = ctx.createRadialGradient(
+          this.x, this.y, 0,
+          this.x, this.y, this.size * (1 + (1 - this.life) * 2)
+        );
+        gradient.addColorStop(0, `rgba(255, 250, 245, ${alpha})`);
+        gradient.addColorStop(0.5, `rgba(240, 235, 230, ${alpha * 0.5})`);
+        gradient.addColorStop(1, 'rgba(200, 195, 190, 0)');
+        
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
+    }
+    
+    function initSteam() {
+      steam = [];
+      for (let i = 0; i < 40; i++) {
+        const p = new SteamParticle();
+        p.life = Math.random(); // Stagger initial states
+        p.y = cupY - Math.random() * cupRadius * 2;
+        steam.push(p);
+      }
+    }
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      
+      // Warm drone - like radiating heat
+      drone = new Tone.Oscillator(85, 'sine').start();
+      const drone2 = new Tone.Oscillator(127.5, 'sine').start();
+      droneFilter = new Tone.Filter(200, 'lowpass');
+      droneGain = new Tone.Gain(0.06);
+      drone.connect(droneFilter);
+      drone2.connect(droneFilter);
+      droneFilter.connect(droneGain);
+      droneGain.toDestination();
+      
+      // Subtle noise - like liquid stillness
+      noise = new Tone.Noise('pink').start();
+      const noiseFilter = new Tone.Filter(300, 'lowpass');
+      noiseGain = new Tone.Gain(0.02);
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.toDestination();
+    }
+    
+    function updateAudio() {
+      if (!audioStarted) return;
+      
+      // Sound fades with warmth
+      droneGain.gain.rampTo(0.06 * warmth * warmth, 0.5);
+      droneFilter.frequency.rampTo(100 + warmth * 200, 0.5);
+      noiseGain.gain.rampTo(0.015 * warmth, 0.5);
+    }
+    
+    function stopAudio() {
+      if (!audioStarted) return;
+      droneGain.gain.rampTo(0, 4);
+      noiseGain.gain.rampTo(0, 4);
+    }
+    
+    function drawCup() {
+      // Table surface gradient
+      const tableGrad = ctx.createRadialGradient(cupX, cupY + cupRadius * 0.5, cupRadius * 0.5, cupX, cupY, cupRadius * 4);
+      tableGrad.addColorStop(0, '#3d3530');
+      tableGrad.addColorStop(1, '#2a2520');
+      ctx.fillStyle = tableGrad;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Cup shadow
+      ctx.beginPath();
+      ctx.ellipse(cupX + 8, cupY + 8, cupRadius * 1.15, cupRadius * 0.4, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fill();
+      
+      // Cup rim (outer)
+      ctx.beginPath();
+      ctx.arc(cupX, cupY, cupRadius * 1.1, 0, Math.PI * 2);
+      ctx.fillStyle = '#d4cdc4';
+      ctx.fill();
+      
+      // Cup inner edge
+      ctx.beginPath();
+      ctx.arc(cupX, cupY, cupRadius * 1.02, 0, Math.PI * 2);
+      ctx.fillStyle = '#c8c0b6';
+      ctx.fill();
+      
+      // Tea liquid
+      const teaColor = warmth > 0.3 
+        ? `rgb(${140 + warmth * 40}, ${90 + warmth * 20}, ${50 + warmth * 10})`
+        : `rgb(${120}, ${85}, ${55})`;
+      
+      ctx.beginPath();
+      ctx.arc(cupX, cupY, cupRadius * 0.95, 0, Math.PI * 2);
+      
+      // Tea gradient for depth
+      const teaGrad = ctx.createRadialGradient(
+        cupX - cupRadius * 0.3, cupY - cupRadius * 0.3, 0,
+        cupX, cupY, cupRadius
+      );
+      teaGrad.addColorStop(0, warmth > 0.3 ? '#a87040' : '#8b6b4a');
+      teaGrad.addColorStop(0.7, warmth > 0.3 ? '#6b4025' : '#5a4030');
+      teaGrad.addColorStop(1, '#4a3020');
+      ctx.fillStyle = teaGrad;
+      ctx.fill();
+      
+      // Surface reflection
+      if (warmth > 0.2) {
+        ctx.beginPath();
+        ctx.ellipse(cupX - cupRadius * 0.3, cupY - cupRadius * 0.3, 
+                    cupRadius * 0.25, cupRadius * 0.15, -0.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 250, 240, ${0.08 * warmth})`;
+        ctx.fill();
+      }
+      
+      // Warmth glow around cup
+      if (warmth > 0.1) {
+        const glowGrad = ctx.createRadialGradient(cupX, cupY, cupRadius, cupX, cupY, cupRadius * 2);
+        glowGrad.addColorStop(0, `rgba(180, 120, 80, ${warmth * 0.1})`);
+        glowGrad.addColorStop(1, 'rgba(180, 120, 80, 0)');
+        ctx.beginPath();
+        ctx.arc(cupX, cupY, cupRadius * 2, 0, Math.PI * 2);
+        ctx.fillStyle = glowGrad;
+        ctx.fill();
+      }
+    }
+    
+    function update(dt) {
+      if (ended) return;
+      
+      // Check if hovering near cup (warming hands)
+      const dist = Math.hypot(mouseX - cupX, mouseY - cupY);
+      const hovering = dist < cupRadius * 2;
+      
+      // Natural cooling (slower if hovering)
+      const coolingRate = hovering ? 0.008 : 0.012;
+      warmth -= dt * coolingRate;
+      warmth = Math.max(0, warmth);
+      
+      // Update steam
+      steam = steam.filter(p => p.update(dt, warmth));
+      
+      // Add new steam particles if warm
+      if (warmth > 0.2 && steam.length < 40 && Math.random() < warmth * 0.3) {
+        steam.push(new SteamParticle());
+      }
+      
+      // Update audio
+      updateAudio();
+      
+      // Check for end
+      if (warmth <= 0) {
+        ended = true;
+        stopAudio();
+        setTimeout(() => {
+          endMessage.classList.add('visible');
+        }, 2000);
+      }
+      
+      // Fade info
+      if (warmth < 0.6) {
+        info.style.opacity = Math.max(0, warmth - 0.1);
+      }
+    }
+    
+    function draw() {
+      drawCup();
+      
+      // Draw steam
+      steam.forEach(p => p.draw(ctx, warmth));
+    }
+    
+    function animate(time) {
+      const dt = Math.min(0.1, (time - lastTime) / 1000);
+      lastTime = time;
+      
+      update(dt);
+      draw();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Events
+    window.addEventListener('resize', resize);
+    
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      mouseX = e.touches[0].clientX;
+      mouseY = e.touches[0].clientY;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    canvas.addEventListener('click', async () => {
+      if (!audioStarted) {
+        await Tone.start();
+        initAudio();
+      }
+      // Restart if ended
+      if (ended) {
+        warmth = 1.0;
+        ended = false;
+        endMessage.classList.remove('visible');
+        info.style.opacity = 1;
+        initSteam();
+      }
+    });
+    
+    canvas.addEventListener('touchstart', async (e) => {
+      e.preventDefault();
+      mouseX = e.touches[0].clientX;
+      mouseY = e.touches[0].clientY;
+      if (!audioStarted) {
+        await Tone.start();
+        initAudio();
+      }
+      if (ended) {
+        warmth = 1.0;
+        ended = false;
+        endMessage.classList.remove('visible');
+        info.style.opacity = 1;
+        initSteam();
+      }
+    });
+    
+    // Init
+    resize();
+    initSteam();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
