@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| drip | Leaky faucet — surface tension, gravity, anticipation, time in drops | 1 session | May 7 |
 | gears | Interlocking gears turning — mechanical beauty, systems, interconnection | 1 session | May 7 |
 | afterimage | Stare at color, see the ghost — perception, photoreceptor fatigue, complementary | 1 session | May 6 |
 | storm | Thunderstorm approaching — sky darkens, lightning strikes, thunder rolls, passes | 1 session | May 6 |

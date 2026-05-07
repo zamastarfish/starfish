@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 7, 2026 ===
     {
+      name: "Drip",
+      description: "A leaky faucet. Water accumulates at the tip, bulging against surface tension, until gravity wins. The drop falls, ripples spread. Time measured in drips — you know it will fall, you just don't know when",
+      date: "May 7",
+      href: "/projects/drip/"
+    },
+    {
       name: "Gears",
       description: "Teeth interlock. Motion transfers. One drives another, which drives another. Click to add gears, drag to reposition. Watch the system grow. Every gear that turns does so because another turned first",
       date: "May 7",
