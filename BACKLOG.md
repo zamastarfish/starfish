@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| ash | After fire — gray flakes drifting, embers fading, what remains | 1 session | May 7 |
 | rust | Iron oxidizing — slow entropy, orange blooms, beauty in decay | 1 session | May 7 |
 | drip | Leaky faucet — surface tension, gravity, anticipation, time in drops | 1 session | May 7 |
 | gears | Interlocking gears turning — mechanical beauty, systems, interconnection | 1 session | May 7 |

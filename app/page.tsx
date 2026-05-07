@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 7, 2026 ===
     {
+      name: "Ash",
+      description: "After the fire, this is what remains. Gray flakes drift down — what was once wood, paper, memory. Move to stir the air. Occasionally an ember floats past, the last heat leaving",
+      date: "May 7",
+      href: "/projects/ash/"
+    },
+    {
       name: "Rust",
       description: "Iron wants to return to the earth. Watch oxidation bloom across metal — orange spreading like slow fire. Touch to add moisture, accelerate the inevitable. Everything forged will one day flake away",
       date: "May 7",
