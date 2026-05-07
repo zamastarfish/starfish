@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>gears — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden;
+      background: #1a1a1e;
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.4);
+      font-size: 14px;
+      font-style: italic;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.5s;
+    }
+    
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      color: rgba(255,255,255,0.5);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    #nav a:hover { color: rgba(255,255,255,0.8); }
+    
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid rgba(255,255,255,0.3);
+      color: rgba(255,255,255,0.5);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 14px;
+      font-family: Georgia, serif;
+      transition: all 0.2s;
+      z-index: 100;
+    }
+    #about-btn:hover {
+      border-color: rgba(255,255,255,0.6);
+      color: rgba(255,255,255,0.8);
+    }
+    
+    #about-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      z-index: 200;
+    }
+    #about-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #about-content {
+      max-width: 400px;
+      padding: 32px;
+      color: rgba(255,255,255,0.8);
+      text-align: center;
+      line-height: 1.7;
+    }
+    #about-content h2 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 16px;
+      color: rgba(255,255,255,0.9);
+    }
+    #about-content p {
+      margin-bottom: 12px;
+      font-size: 15px;
+    }
+    #about-content .close {
+      margin-top: 20px;
+      color: rgba(255,255,255,0.4);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <nav id="nav"><a href="/">← starfish</a></nav>
+  <button id="about-btn">?</button>
+  
+  <div id="about-overlay">
+    <div id="about-content">
+      <h2>gears</h2>
+      <p>Teeth interlock. Motion transfers. One drives another.</p>
+      <p>Click to add gears. Drag to reposition. Watch the system grow more complex.</p>
+      <p>Every gear that turns does so because another turned first.</p>
+      <p class="close">click anywhere to close</p>
+    </div>
+  </div>
+  
+  <div id="info">click to add gears · drag to move</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const aboutBtn = document.getElementById('about-btn');
+    const aboutOverlay = document.getElementById('about-overlay');
+    
+    let width, height;
+    let audioCtx, masterGain;
+    let audioStarted = false;
+    
+    // Gears
+    let gears = [];
+    let draggingGear = null;
+    let dragOffset = { x: 0, y: 0 };
+    
+    // Colors - brass/copper/bronze palette
+    const gearColors = [
+      { fill: '#b8860b', stroke: '#8b6508' },  // dark goldenrod
+      { fill: '#cd853f', stroke: '#a0522d' },  // peru/sienna
+      { fill: '#d4a574', stroke: '#b8860b' },  // brass
+      { fill: '#c9a959', stroke: '#9a7b4f' },  // antique brass
+      { fill: '#aa8855', stroke: '#886633' },  // bronze
+    ];
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      
+      // Start with a few gears if empty
+      if (gears.length === 0) {
+        initGears();
+      }
+    }
+    
+    function initGears() {
+      // Central driving gear
+      addGear(width / 2, height / 2, 80, 16, true);
+      
+      // A few connected gears
+      addGear(width / 2 + 140, height / 2, 50, 10, false);
+      addGear(width / 2 - 120, height / 2 + 60, 60, 12, false);
+    }
+    
+    function addGear(x, y, radius, teeth, isDriving = false) {
+      const color = gearColors[Math.floor(Math.random() * gearColors.length)];
+      const gear = {
+        x: x,
+        y: y,
+        radius: radius,
+        teeth: teeth,
+        angle: Math.random() * Math.PI * 2,
+        angularVelocity: 0,
+        isDriving: isDriving,
+        color: color,
+        connections: []
+      };
+      
+      gears.push(gear);
+      updateConnections();
+      return gear;
+    }
+    
+    function updateConnections() {
+      // Clear all connections
+      gears.forEach(g => g.connections = []);
+      
+      // Find meshing gears
+      for (let i = 0; i < gears.length; i++) {
+        for (let j = i + 1; j < gears.length; j++) {
+          const g1 = gears[i];
+          const g2 = gears[j];
+          
+          const dx = g2.x - g1.x;
+          const dy = g2.y - g1.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          // Gears mesh if they're close enough (sum of radii with small tolerance)
+          const meshDist = g1.radius + g2.radius;
+          const tolerance = 15;
+          
+          if (dist < meshDist + tolerance && dist > meshDist - tolerance) {
+            g1.connections.push(j);
+            g2.connections.push(i);
+          }
+        }
+      }
+    }
+    
+    function initAudio() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.3;
+      masterGain.connect(audioCtx.destination);
+    }
+    
+    function playTick(pitch = 1) {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Short click sound
+      const osc = audioCtx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = 800 * pitch;
+      
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 2000;
+      filter.Q.value = 1;
+      
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(masterGain);
+      
+      osc.start(now);
+      osc.stop(now + 0.05);
+    }
+    
+    function update(dt) {
+      // Base rotation speed
+      const baseSpeed = 0.5;
+      
+      // Set driving gear velocity
+      gears.forEach(gear => {
+        if (gear.isDriving) {
+          gear.angularVelocity = baseSpeed;
+        }
+      });
+      
+      // Propagate rotation through connections (simplified)
+      let changed = true;
+      let iterations = 0;
+      while (changed && iterations < 10) {
+        changed = false;
+        iterations++;
+        
+        gears.forEach((gear, i) => {
+          if (gear.angularVelocity !== 0) {
+            gear.connections.forEach(j => {
+              const other = gears[j];
+              if (other.angularVelocity === 0) {
+                // Gear ratio: larger gear turns slower
+                const ratio = gear.radius / other.radius;
+                // Opposite direction
+                other.angularVelocity = -gear.angularVelocity * ratio;
+                changed = true;
+              }
+            });
+          }
+        });
+      }
+      
+      // Apply rotation
+      gears.forEach(gear => {
+        const prevAngle = gear.angle;
+        gear.angle += gear.angularVelocity * dt;
+        
+        // Tick sound on tooth passage
+        if (gear.angularVelocity !== 0) {
+          const toothAngle = (Math.PI * 2) / gear.teeth;
+          const prevTooth = Math.floor(prevAngle / toothAngle);
+          const currTooth = Math.floor(gear.angle / toothAngle);
+          
+          if (currTooth !== prevTooth && Math.random() < 0.3) {
+            const pitch = 0.5 + (gear.radius / 100);
+            playTick(pitch);
+          }
+        }
+        
+        // Reset velocity for non-driving gears (recalculated each frame)
+        if (!gear.isDriving) {
+          gear.angularVelocity = 0;
+        }
+      });
+    }
+    
+    function drawGear(gear) {
+      ctx.save();
+      ctx.translate(gear.x, gear.y);
+      ctx.rotate(gear.angle);
+      
+      const { radius, teeth, color } = gear;
+      const toothDepth = radius * 0.15;
+      const toothWidth = (Math.PI * 2) / (teeth * 2);
+      
+      // Main body with teeth
+      ctx.beginPath();
+      for (let i = 0; i < teeth; i++) {
+        const angle1 = (i / teeth) * Math.PI * 2;
+        const angle2 = angle1 + toothWidth * 0.8;
+        const angle3 = angle1 + toothWidth;
+        const angle4 = angle1 + toothWidth * 1.8;
+        const angle5 = angle1 + toothWidth * 2;
+        
+        // Inner radius
+        const r1 = radius - toothDepth;
+        // Outer radius (tooth tip)
+        const r2 = radius + toothDepth * 0.5;
+        
+        if (i === 0) {
+          ctx.moveTo(Math.cos(angle1) * r1, Math.sin(angle1) * r1);
+        }
+        
+        // Tooth rise
+        ctx.lineTo(Math.cos(angle2) * r1, Math.sin(angle2) * r1);
+        ctx.lineTo(Math.cos(angle2) * r2, Math.sin(angle2) * r2);
+        
+        // Tooth top
+        ctx.lineTo(Math.cos(angle4) * r2, Math.sin(angle4) * r2);
+        
+        // Tooth fall
+        ctx.lineTo(Math.cos(angle4) * r1, Math.sin(angle4) * r1);
+        ctx.lineTo(Math.cos(angle5) * r1, Math.sin(angle5) * r1);
+      }
+      ctx.closePath();
+      
+      // Fill and stroke
+      ctx.fillStyle = color.fill;
+      ctx.fill();
+      ctx.strokeStyle = color.stroke;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Center hub
+      const hubRadius = radius * 0.3;
+      ctx.beginPath();
+      ctx.arc(0, 0, hubRadius, 0, Math.PI * 2);
+      ctx.fillStyle = color.stroke;
+      ctx.fill();
+      
+      // Center hole
+      ctx.beginPath();
+      ctx.arc(0, 0, hubRadius * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a1a1e';
+      ctx.fill();
+      
+      // Spokes (for larger gears)
+      if (radius > 50) {
+        const spokeCount = Math.min(6, Math.floor(radius / 20));
+        ctx.strokeStyle = color.stroke;
+        ctx.lineWidth = 4;
+        
+        for (let i = 0; i < spokeCount; i++) {
+          const angle = (i / spokeCount) * Math.PI * 2;
+          const innerR = hubRadius * 1.2;
+          const outerR = radius - toothDepth - 5;
+          
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(angle) * innerR, Math.sin(angle) * innerR);
+          ctx.lineTo(Math.cos(angle) * outerR, Math.sin(angle) * outerR);
+          ctx.stroke();
+        }
+      }
+      
+      // Driving gear indicator
+      if (gear.isDriving) {
+        ctx.beginPath();
+        ctx.arc(0, 0, hubRadius * 0.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffcc00';
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+    
+    function draw() {
+      ctx.fillStyle = '#1a1a1e';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw connection lines (subtle)
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      gears.forEach((gear, i) => {
+        gear.connections.forEach(j => {
+          if (j > i) {
+            const other = gears[j];
+            ctx.beginPath();
+            ctx.moveTo(gear.x, gear.y);
+            ctx.lineTo(other.x, other.y);
+            ctx.stroke();
+          }
+        });
+      });
+      
+      // Draw gears (sorted by size for layering)
+      const sortedGears = [...gears].sort((a, b) => b.radius - a.radius);
+      sortedGears.forEach(drawGear);
+    }
+    
+    function getGearAt(x, y) {
+      // Check in reverse order (top gears first)
+      for (let i = gears.length - 1; i >= 0; i--) {
+        const gear = gears[i];
+        const dx = x - gear.x;
+        const dy = y - gear.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < gear.radius + 10) {
+          return gear;
+        }
+      }
+      return null;
+    }
+    
+    function onPointerDown(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      if (!audioStarted) {
+        initAudio();
+        audioStarted = true;
+      }
+      
+      const gear = getGearAt(x, y);
+      if (gear) {
+        draggingGear = gear;
+        dragOffset.x = gear.x - x;
+        dragOffset.y = gear.y - y;
+      } else {
+        // Add new gear
+        const radius = 30 + Math.random() * 50;
+        const teeth = Math.floor(radius / 8) + 4;
+        addGear(x, y, radius, teeth, false);
+        
+        // Brief feedback
+        info.textContent = `${gears.length} gears`;
+        setTimeout(() => {
+          info.textContent = 'click to add gears · drag to move';
+        }, 1500);
+      }
+    }
+    
+    function onPointerMove(e) {
+      if (draggingGear) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        draggingGear.x = x + dragOffset.x;
+        draggingGear.y = y + dragOffset.y;
+        
+        updateConnections();
+      }
+    }
+    
+    function onPointerUp() {
+      draggingGear = null;
+    }
+    
+    let lastTime = 0;
+    function animate(time) {
+      const dt = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+      
+      update(dt);
+      draw();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointerleave', onPointerUp);
+    
+    aboutBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      aboutOverlay.classList.add('visible');
+    });
+    
+    aboutOverlay.addEventListener('click', () => {
+      aboutOverlay.classList.remove('visible');
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    resize();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

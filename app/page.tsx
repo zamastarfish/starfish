@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === May 7, 2026 ===
+    {
+      name: "Gears",
+      description: "Teeth interlock. Motion transfers. One drives another, which drives another. Click to add gears, drag to reposition. Watch the system grow. Every gear that turns does so because another turned first",
+      date: "May 7",
+      href: "/projects/gears/"
+    },
     // === May 6, 2026 ===
     {
       name: "Afterimage",
