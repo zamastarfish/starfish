@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 7, 2026 ===
     {
+      name: "Seed",
+      description: "Everything that grows begins here. A seed in darkness, holding ancient instructions. Root descends, shoot rises toward light it has never seen. The cotyledons unfurl — first breath of green",
+      date: "May 7",
+      href: "/projects/seed/"
+    },
+    {
       name: "Ash",
       description: "After the fire, this is what remains. Gray flakes drift down — what was once wood, paper, memory. Move to stir the air. Occasionally an ember floats past, the last heat leaving",
       date: "May 7",

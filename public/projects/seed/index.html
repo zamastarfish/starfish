@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>seed — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; 
+      overflow: hidden;
+      background: #1a1a1a;
+      touch-action: none;
+    }
+    canvas { display: block; }
+    
+    .nav-btn, .info-btn {
+      position: fixed;
+      top: 16px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+      z-index: 100;
+    }
+    .nav-btn { left: 16px; }
+    .info-btn { right: 16px; }
+    .nav-btn:hover, .info-btn:hover { background: rgba(255,255,255,0.2); }
+    .nav-btn svg, .info-btn svg { 
+      width: 20px; height: 20px; 
+      stroke: rgba(255,255,255,0.7); 
+      fill: none; 
+      stroke-width: 2;
+    }
+    
+    .info-panel {
+      position: fixed;
+      top: 0; right: 0;
+      width: min(400px, 90vw);
+      height: 100%;
+      background: rgba(0,0,0,0.95);
+      padding: 80px 24px 24px;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      z-index: 90;
+      overflow-y: auto;
+      color: rgba(255,255,255,0.8);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .info-panel.open { transform: translateX(0); }
+    .info-panel h1 { 
+      font-size: 24px; 
+      font-weight: 300; 
+      margin-bottom: 16px;
+      color: #fff;
+    }
+    .info-panel p { 
+      font-size: 14px; 
+      line-height: 1.6; 
+      margin-bottom: 12px;
+      color: rgba(255,255,255,0.7);
+    }
+    .info-panel .meta {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+    }
+  </style>
+</head>
+<body>
+  <button class="nav-btn" onclick="window.location.href='/'">
+    <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  
+  <button class="info-btn" onclick="toggleInfo()">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01" stroke-linecap="round"/></svg>
+  </button>
+  
+  <div class="info-panel" id="infoPanel">
+    <h1>seed</h1>
+    <p>Everything that grows begins here. A seed in darkness, holding instructions written millions of years ago.</p>
+    <p>Watch: first the root descends, anchoring, seeking water. Then the shoot rises, pale and determined, pushing through soil toward light it has never seen but somehow knows is there.</p>
+    <p>The cotyledons unfurl — the first breath of green.</p>
+    <p><em>Click to plant another. Every forest started this way.</em></p>
+    <div class="meta">
+      starfish.zama.space<br>
+      May 2026
+    </div>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let W, H;
+    let audioStarted = false;
+    
+    // Growth state
+    let phase = 'dormant';  // dormant, cracking, rooting, shooting, emerging, growing
+    let progress = 0;       // 0-1 within phase
+    let totalTime = 0;
+    
+    // Seed position
+    let seedX, seedY, soilLine;
+    
+    // Growth structures
+    let roots = [];
+    let stem = { points: [], height: 0 };
+    let leaves = { angle: 0, size: 0 };
+    
+    // Audio
+    let earthDrone, growthTone, emergeSynth;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      soilLine = H * 0.4;
+      seedX = W / 2;
+      seedY = soilLine + 60;
+    }
+    
+    function initGrowth() {
+      phase = 'dormant';
+      progress = 0;
+      totalTime = 0;
+      roots = [];
+      stem = { points: [{ x: seedX, y: seedY }], height: 0 };
+      leaves = { angle: 0, size: 0 };
+    }
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      
+      // Deep earth drone
+      const droneFilter = new Tone.Filter(100, 'lowpass').toDestination();
+      const droneGain = new Tone.Gain(0.08).connect(droneFilter);
+      earthDrone = new Tone.Oscillator({ frequency: 35, type: 'sine' }).connect(droneGain);
+      
+      const drone2Gain = new Tone.Gain(0.04).connect(droneFilter);
+      const drone2 = new Tone.Oscillator({ frequency: 52, type: 'sine' }).connect(drone2Gain);
+      
+      earthDrone.start();
+      drone2.start();
+      
+      // Growth tone - rises as plant grows
+      const growthFilter = new Tone.Filter(300, 'lowpass').toDestination();
+      const growthGain = new Tone.Gain(0).connect(growthFilter);
+      growthTone = new Tone.Oscillator({ frequency: 110, type: 'triangle' }).connect(growthGain);
+      growthTone.start();
+      growthTone._gain = growthGain;
+      growthTone._filter = growthFilter;
+      
+      // Emergence sound
+      const emergeReverb = new Tone.Reverb({ decay: 3, wet: 0.5 }).toDestination();
+      emergeSynth = new Tone.Synth({
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.5, decay: 1, sustain: 0.3, release: 2 }
+      }).connect(emergeReverb);
+      emergeSynth.volume.value = -12;
+    }
+    
+    function toggleInfo() {
+      document.getElementById('infoPanel').classList.toggle('open');
+    }
+    
+    canvas.addEventListener('click', () => {
+      initAudio();
+      Tone.start();
+      
+      // Restart growth
+      if (phase === 'growing' && leaves.size > 0.8) {
+        initGrowth();
+      }
+    });
+    
+    canvas.addEventListener('touchstart', () => {
+      initAudio();
+      Tone.start();
+    });
+    
+    function update() {
+      totalTime++;
+      
+      const phaseSpeed = 0.003;
+      
+      switch (phase) {
+        case 'dormant':
+          progress += phaseSpeed * 0.5;
+          if (progress >= 1) {
+            phase = 'cracking';
+            progress = 0;
+          }
+          break;
+          
+        case 'cracking':
+          progress += phaseSpeed;
+          if (progress >= 1) {
+            phase = 'rooting';
+            progress = 0;
+            // Initialize root
+            roots.push({
+              points: [{ x: seedX, y: seedY + 10 }],
+              angle: Math.PI / 2,
+              length: 0,
+              maxLength: 80 + Math.random() * 40
+            });
+          }
+          break;
+          
+        case 'rooting':
+          progress += phaseSpeed;
+          // Grow roots
+          for (const root of roots) {
+            if (root.length < root.maxLength) {
+              root.length += 0.5;
+              root.angle += (Math.random() - 0.5) * 0.1;
+              const lastPoint = root.points[root.points.length - 1];
+              root.points.push({
+                x: lastPoint.x + Math.cos(root.angle) * 2,
+                y: lastPoint.y + Math.sin(root.angle) * 2
+              });
+              
+              // Branch occasionally
+              if (root.length > 20 && Math.random() < 0.02 && roots.length < 8) {
+                roots.push({
+                  points: [{ x: lastPoint.x, y: lastPoint.y }],
+                  angle: root.angle + (Math.random() - 0.5) * 1,
+                  length: 0,
+                  maxLength: 20 + Math.random() * 30
+                });
+              }
+            }
+          }
+          
+          if (progress >= 1) {
+            phase = 'shooting';
+            progress = 0;
+          }
+          break;
+          
+        case 'shooting':
+          progress += phaseSpeed * 0.8;
+          // Grow stem upward
+          stem.height = progress * (seedY - soilLine - 20);
+          
+          // Continue root growth
+          for (const root of roots) {
+            if (root.length < root.maxLength) {
+              root.length += 0.2;
+              root.angle += (Math.random() - 0.5) * 0.05;
+              const lastPoint = root.points[root.points.length - 1];
+              root.points.push({
+                x: lastPoint.x + Math.cos(root.angle) * 1,
+                y: lastPoint.y + Math.sin(root.angle) * 1
+              });
+            }
+          }
+          
+          if (progress >= 1) {
+            phase = 'emerging';
+            progress = 0;
+            if (audioStarted && emergeSynth) {
+              emergeSynth.triggerAttackRelease('C4', 2);
+            }
+          }
+          break;
+          
+        case 'emerging':
+          progress += phaseSpeed * 0.6;
+          // Stem breaks surface and continues up
+          stem.height = (seedY - soilLine - 20) + progress * 60;
+          
+          if (progress >= 1) {
+            phase = 'growing';
+            progress = 0;
+          }
+          break;
+          
+        case 'growing':
+          progress = Math.min(1, progress + phaseSpeed * 0.4);
+          // Leaves unfurl
+          leaves.size = progress;
+          leaves.angle = progress * 0.3;
+          
+          // Stem continues slightly
+          stem.height = (seedY - soilLine - 20) + 60 + progress * 20;
+          break;
+      }
+      
+      // Audio updates
+      if (audioStarted && growthTone) {
+        const overallProgress = getOverallProgress();
+        growthTone._gain.gain.value = overallProgress * 0.05;
+        growthTone.frequency.value = 110 + overallProgress * 220;
+        growthTone._filter.frequency.value = 200 + overallProgress * 800;
+      }
+    }
+    
+    function getOverallProgress() {
+      const phases = ['dormant', 'cracking', 'rooting', 'shooting', 'emerging', 'growing'];
+      const idx = phases.indexOf(phase);
+      return (idx + progress) / phases.length;
+    }
+    
+    function draw() {
+      // Sky gradient
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, soilLine);
+      skyGrad.addColorStop(0, '#1a2a3a');
+      skyGrad.addColorStop(1, '#2a3a4a');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, W, soilLine);
+      
+      // Subtle light from above (the light the seed seeks)
+      const lightGrad = ctx.createRadialGradient(W/2, 0, 0, W/2, 0, H * 0.5);
+      lightGrad.addColorStop(0, 'rgba(255, 250, 230, 0.1)');
+      lightGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = lightGrad;
+      ctx.fillRect(0, 0, W, soilLine);
+      
+      // Soil cross-section
+      const soilGrad = ctx.createLinearGradient(0, soilLine, 0, H);
+      soilGrad.addColorStop(0, '#3d2817');
+      soilGrad.addColorStop(0.3, '#2a1a0f');
+      soilGrad.addColorStop(1, '#1a0f08');
+      ctx.fillStyle = soilGrad;
+      ctx.fillRect(0, soilLine, W, H - soilLine);
+      
+      // Soil texture
+      drawSoilTexture();
+      
+      // Roots
+      drawRoots();
+      
+      // Seed
+      drawSeed();
+      
+      // Stem (underground part)
+      drawStemUnderground();
+      
+      // Stem (above ground) and leaves
+      if (phase === 'emerging' || phase === 'growing') {
+        drawStemAboveGround();
+        drawLeaves();
+      }
+    }
+    
+    function drawSoilTexture() {
+      // Small particles in soil
+      ctx.fillStyle = 'rgba(60, 40, 25, 0.5)';
+      for (let i = 0; i < 50; i++) {
+        const x = (i * 73 + totalTime * 0.01) % W;
+        const y = soilLine + 20 + (i * 47) % (H - soilLine - 40);
+        ctx.beginPath();
+        ctx.arc(x, y, 1 + Math.random() * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function drawRoots() {
+      ctx.strokeStyle = '#c4a574';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      
+      for (const root of roots) {
+        if (root.points.length < 2) continue;
+        
+        ctx.beginPath();
+        ctx.moveTo(root.points[0].x, root.points[0].y);
+        
+        for (let i = 1; i < root.points.length; i++) {
+          ctx.lineTo(root.points[i].x, root.points[i].y);
+        }
+        ctx.stroke();
+        
+        // Root tip
+        const tip = root.points[root.points.length - 1];
+        ctx.fillStyle = '#d4b584';
+        ctx.beginPath();
+        ctx.arc(tip.x, tip.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function drawSeed() {
+      const crackAmount = phase === 'cracking' ? progress : (phase === 'dormant' ? 0 : 1);
+      
+      // Seed body
+      ctx.fillStyle = '#8b6914';
+      ctx.beginPath();
+      ctx.ellipse(seedX, seedY, 15, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Seed highlight
+      ctx.fillStyle = 'rgba(255, 220, 150, 0.3)';
+      ctx.beginPath();
+      ctx.ellipse(seedX - 5, seedY - 3, 6, 4, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Crack
+      if (crackAmount > 0) {
+        ctx.strokeStyle = '#2a1a0f';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(seedX - 5, seedY - 8 * crackAmount);
+        ctx.lineTo(seedX, seedY);
+        ctx.lineTo(seedX + 3, seedY - 6 * crackAmount);
+        ctx.stroke();
+      }
+    }
+    
+    function drawStemUnderground() {
+      if (phase !== 'shooting' && phase !== 'emerging' && phase !== 'growing') return;
+      
+      const stemTop = seedY - stem.height;
+      const clampedTop = Math.max(soilLine, stemTop);
+      
+      // Underground stem (pale)
+      ctx.strokeStyle = '#c4d4a4';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(seedX, seedY - 10);
+      ctx.lineTo(seedX, clampedTop);
+      ctx.stroke();
+    }
+    
+    function drawStemAboveGround() {
+      const stemTop = seedY - stem.height;
+      
+      if (stemTop >= soilLine) return;
+      
+      // Above ground stem (greener)
+      const grad = ctx.createLinearGradient(0, soilLine, 0, stemTop);
+      grad.addColorStop(0, '#7a9a4a');
+      grad.addColorStop(1, '#5a8a3a');
+      
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(seedX, soilLine);
+      ctx.lineTo(seedX, stemTop);
+      ctx.stroke();
+      
+      // Stem tip
+      ctx.fillStyle = '#8aba5a';
+      ctx.beginPath();
+      ctx.ellipse(seedX, stemTop, 3, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    function drawLeaves() {
+      if (leaves.size <= 0) return;
+      
+      const stemTop = seedY - stem.height;
+      const leafSize = leaves.size * 30;
+      const angle = leaves.angle;
+      
+      // Cotyledons (seed leaves) - two rounded leaves
+      ctx.fillStyle = '#6a9a3a';
+      
+      // Left leaf
+      ctx.save();
+      ctx.translate(seedX, stemTop + 5);
+      ctx.rotate(-Math.PI/2 - angle - 0.3);
+      ctx.beginPath();
+      ctx.ellipse(leafSize/2, 0, leafSize, leafSize/2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Leaf vein
+      ctx.strokeStyle = '#5a8a2a';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(leafSize * 0.8, 0);
+      ctx.stroke();
+      ctx.restore();
+      
+      // Right leaf
+      ctx.save();
+      ctx.translate(seedX, stemTop + 5);
+      ctx.rotate(-Math.PI/2 + angle + 0.3);
+      ctx.beginPath();
+      ctx.ellipse(leafSize/2, 0, leafSize, leafSize/2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Leaf vein
+      ctx.strokeStyle = '#5a8a2a';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(leafSize * 0.8, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    resize();
+    initGrowth();
+    window.addEventListener('resize', resize);
+    animate();
+  </script>
+</body>
+</html>
