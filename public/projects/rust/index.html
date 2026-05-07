@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>rust — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; height: 100%; 
+      overflow: hidden;
+      background: #1a1a1a;
+      touch-action: none;
+    }
+    canvas { display: block; }
+    
+    .nav-btn, .info-btn {
+      position: fixed;
+      top: 16px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+      z-index: 100;
+    }
+    .nav-btn { left: 16px; }
+    .info-btn { right: 16px; }
+    .nav-btn:hover, .info-btn:hover { background: rgba(255,255,255,0.2); }
+    .nav-btn svg, .info-btn svg { 
+      width: 20px; height: 20px; 
+      stroke: rgba(255,255,255,0.7); 
+      fill: none; 
+      stroke-width: 2;
+    }
+    
+    .info-panel {
+      position: fixed;
+      top: 0; right: 0;
+      width: min(400px, 90vw);
+      height: 100%;
+      background: rgba(0,0,0,0.95);
+      padding: 80px 24px 24px;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      z-index: 90;
+      overflow-y: auto;
+      color: rgba(255,255,255,0.8);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .info-panel.open { transform: translateX(0); }
+    .info-panel h1 { 
+      font-size: 24px; 
+      font-weight: 300; 
+      margin-bottom: 16px;
+      color: #fff;
+    }
+    .info-panel p { 
+      font-size: 14px; 
+      line-height: 1.6; 
+      margin-bottom: 12px;
+      color: rgba(255,255,255,0.7);
+    }
+    .info-panel .meta {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+    }
+  </style>
+</head>
+<body>
+  <button class="nav-btn" onclick="window.location.href='/'">
+    <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  
+  <button class="info-btn" onclick="toggleInfo()">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01" stroke-linecap="round"/></svg>
+  </button>
+  
+  <div class="info-panel" id="infoPanel">
+    <h1>rust</h1>
+    <p>Iron wants to return to the earth. Oxygen and water are patient collaborators.</p>
+    <p>Watch oxidation bloom across metal — orange spreading like a slow fire, eating what was forged. The process takes years in the world, minutes here.</p>
+    <p>Touch to add moisture. Accelerate the inevitable.</p>
+    <p><em>Click to reset. Start with fresh metal. Watch it happen again.</em></p>
+    <div class="meta">
+      starfish.zama.space<br>
+      May 2026
+    </div>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let W, H;
+    let audioStarted = false;
+    
+    // Rust state
+    let rustPoints = [];       // Points where rust has started
+    let globalRust = 0;        // Overall oxidation level 0-1
+    let metalAge = 0;          // Time counter
+    
+    // Metal plate dimensions
+    let plateX, plateY, plateW, plateH;
+    
+    // Audio
+    let drone, creak, droneFilter;
+    
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      
+      // Metal plate centered
+      plateW = Math.min(W * 0.7, 500);
+      plateH = Math.min(H * 0.5, 350);
+      plateX = (W - plateW) / 2;
+      plateY = (H - plateH) / 2;
+    }
+    
+    function initRust() {
+      rustPoints = [];
+      globalRust = 0;
+      metalAge = 0;
+      
+      // Start with a few rust seeds
+      for (let i = 0; i < 3; i++) {
+        addRustPoint(
+          plateX + Math.random() * plateW,
+          plateY + Math.random() * plateH
+        );
+      }
+    }
+    
+    function addRustPoint(x, y) {
+      // Clamp to plate
+      x = Math.max(plateX, Math.min(plateX + plateW, x));
+      y = Math.max(plateY, Math.min(plateY + plateH, y));
+      
+      rustPoints.push({
+        x, y,
+        radius: 2 + Math.random() * 3,
+        maxRadius: 30 + Math.random() * 50,
+        age: 0,
+        intensity: 0.3 + Math.random() * 0.4,
+        hue: 15 + Math.random() * 20  // Orange to red-brown
+      });
+    }
+    
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      
+      // Deep time drone
+      droneFilter = new Tone.Filter(150, 'lowpass').toDestination();
+      droneFilter.Q.value = 1;
+      
+      const droneGain = new Tone.Gain(0.1).connect(droneFilter);
+      drone = new Tone.Oscillator({
+        frequency: 40,
+        type: 'sawtooth'
+      }).connect(droneGain);
+      
+      // Second drone voice
+      const drone2Gain = new Tone.Gain(0.06).connect(droneFilter);
+      const drone2 = new Tone.Oscillator({
+        frequency: 60,
+        type: 'sine'
+      }).connect(drone2Gain);
+      
+      // Slow modulation
+      const lfo = new Tone.LFO(0.03, 38, 44).connect(drone.frequency);
+      lfo.start();
+      
+      drone.start();
+      drone2.start();
+      
+      // Occasional creak/groan
+      const creakReverb = new Tone.Reverb({ decay: 2, wet: 0.4 }).toDestination();
+      creak = new Tone.MetalSynth({
+        frequency: 50,
+        envelope: {
+          attack: 0.1,
+          decay: 1,
+          release: 0.5
+        },
+        harmonicity: 2,
+        modulationIndex: 8,
+        resonance: 1000,
+        octaves: 1
+      }).connect(creakReverb);
+      creak.volume.value = -18;
+    }
+    
+    function toggleInfo() {
+      document.getElementById('infoPanel').classList.toggle('open');
+    }
+    
+    // Mouse/touch handling
+    let lastInteract = 0;
+    
+    function handleInteract(x, y) {
+      const now = Date.now();
+      if (now - lastInteract < 100) return;
+      lastInteract = now;
+      
+      // Add moisture = new rust points near touch
+      if (x >= plateX && x <= plateX + plateW && 
+          y >= plateY && y <= plateY + plateH) {
+        for (let i = 0; i < 2; i++) {
+          addRustPoint(
+            x + (Math.random() - 0.5) * 40,
+            y + (Math.random() - 0.5) * 40
+          );
+        }
+      }
+    }
+    
+    canvas.addEventListener('mousemove', e => {
+      if (e.buttons > 0) handleInteract(e.clientX, e.clientY);
+    });
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      handleInteract(e.touches[0].clientX, e.touches[0].clientY);
+    });
+    
+    canvas.addEventListener('click', e => {
+      initAudio();
+      Tone.start();
+      
+      // Check if fully rusted - reset
+      if (globalRust > 0.95) {
+        initRust();
+      } else {
+        handleInteract(e.clientX, e.clientY);
+      }
+    });
+    canvas.addEventListener('touchstart', e => {
+      initAudio();
+      Tone.start();
+    });
+    
+    function update() {
+      metalAge++;
+      
+      // Natural rust spreading
+      if (Math.random() < 0.02 && rustPoints.length < 50) {
+        // Spontaneous new rust near existing
+        if (rustPoints.length > 0) {
+          const parent = rustPoints[Math.floor(Math.random() * rustPoints.length)];
+          const angle = Math.random() * Math.PI * 2;
+          const dist = parent.radius + Math.random() * 30;
+          addRustPoint(
+            parent.x + Math.cos(angle) * dist,
+            parent.y + Math.sin(angle) * dist
+          );
+        }
+      }
+      
+      // Grow existing rust
+      let totalRust = 0;
+      const plateArea = plateW * plateH;
+      
+      for (const r of rustPoints) {
+        r.age++;
+        
+        // Slow logarithmic growth
+        if (r.radius < r.maxRadius) {
+          r.radius += 0.03 * (1 - r.radius / r.maxRadius);
+        }
+        
+        // Intensity deepens
+        r.intensity = Math.min(1, r.intensity + 0.0002);
+        
+        // Hue shifts toward brown over time
+        r.hue = Math.max(10, r.hue - 0.005);
+        
+        totalRust += Math.PI * r.radius * r.radius;
+      }
+      
+      globalRust = Math.min(1, totalRust / (plateArea * 0.6));
+      
+      // Audio responds to oxidation
+      if (audioStarted && droneFilter) {
+        droneFilter.frequency.value = 80 + globalRust * 200;
+      }
+      
+      // Occasional creak
+      if (audioStarted && Math.random() < 0.001 && globalRust > 0.2) {
+        creak.triggerAttackRelease(30 + Math.random() * 30, 0.5);
+      }
+    }
+    
+    function draw() {
+      // Background
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 0, W, H);
+      
+      // Subtle vignette
+      const vignette = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H) * 0.7);
+      vignette.addColorStop(0, 'transparent');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.4)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Draw metal plate
+      drawPlate();
+      
+      // Draw rust
+      drawRust();
+      
+      // Edge wear
+      drawEdges();
+    }
+    
+    function drawPlate() {
+      // Base metal color - darkens as it rusts
+      const baseBrightness = 70 - globalRust * 30;
+      
+      // Metal gradient
+      const metalGrad = ctx.createLinearGradient(plateX, plateY, plateX, plateY + plateH);
+      metalGrad.addColorStop(0, `hsl(220, 5%, ${baseBrightness + 10}%)`);
+      metalGrad.addColorStop(0.5, `hsl(220, 5%, ${baseBrightness}%)`);
+      metalGrad.addColorStop(1, `hsl(220, 5%, ${baseBrightness - 5}%)`);
+      
+      ctx.fillStyle = metalGrad;
+      ctx.fillRect(plateX, plateY, plateW, plateH);
+      
+      // Subtle metal texture (scratches)
+      ctx.strokeStyle = `rgba(255,255,255,${0.03 * (1 - globalRust)})`;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 30; i++) {
+        const sx = plateX + Math.random() * plateW;
+        const sy = plateY + Math.random() * plateH;
+        const angle = Math.random() * 0.4 - 0.2; // Mostly horizontal
+        const len = 20 + Math.random() * 60;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + Math.cos(angle) * len, sy + Math.sin(angle) * len);
+        ctx.stroke();
+      }
+    }
+    
+    function drawRust() {
+      for (const r of rustPoints) {
+        // Outer bloom (light orange)
+        const outerGrad = ctx.createRadialGradient(r.x, r.y, 0, r.x, r.y, r.radius);
+        outerGrad.addColorStop(0, `hsla(${r.hue}, 70%, 35%, ${r.intensity})`);
+        outerGrad.addColorStop(0.5, `hsla(${r.hue + 5}, 60%, 30%, ${r.intensity * 0.7})`);
+        outerGrad.addColorStop(1, `hsla(${r.hue + 10}, 50%, 25%, 0)`);
+        
+        ctx.fillStyle = outerGrad;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Core (darker, deeper rust)
+        if (r.radius > 10) {
+          const coreGrad = ctx.createRadialGradient(r.x, r.y, 0, r.x, r.y, r.radius * 0.5);
+          coreGrad.addColorStop(0, `hsla(${r.hue - 5}, 80%, 20%, ${r.intensity})`);
+          coreGrad.addColorStop(1, `hsla(${r.hue}, 70%, 30%, 0)`);
+          
+          ctx.fillStyle = coreGrad;
+          ctx.beginPath();
+          ctx.arc(r.x, r.y, r.radius * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        // Texture (small bumps)
+        if (r.radius > 15 && r.age > 100) {
+          ctx.fillStyle = `hsla(${r.hue - 3}, 75%, 25%, ${r.intensity * 0.5})`;
+          const bumps = Math.floor(r.radius / 8);
+          for (let i = 0; i < bumps; i++) {
+            const angle = (i / bumps) * Math.PI * 2 + r.age * 0.001;
+            const dist = r.radius * 0.3 + Math.random() * r.radius * 0.4;
+            const bx = r.x + Math.cos(angle) * dist;
+            const by = r.y + Math.sin(angle) * dist;
+            ctx.beginPath();
+            ctx.arc(bx, by, 2 + Math.random() * 3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+    
+    function drawEdges() {
+      // Plate edge shadow
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(plateX, plateY, plateW, plateH);
+      
+      // Highlight on top/left
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(plateX, plateY + plateH);
+      ctx.lineTo(plateX, plateY);
+      ctx.lineTo(plateX + plateW, plateY);
+      ctx.stroke();
+      
+      // Edge rust (runs down edges more)
+      if (globalRust > 0.3) {
+        ctx.fillStyle = `hsla(20, 60%, 25%, ${globalRust * 0.5})`;
+        // Bottom edge drip
+        for (let x = plateX; x < plateX + plateW; x += 15 + Math.random() * 20) {
+          const dripH = 5 + globalRust * 15 * Math.random();
+          ctx.fillRect(x, plateY + plateH, 3 + Math.random() * 4, dripH);
+        }
+      }
+    }
+    
+    function animate() {
+      update();
+      draw();
+      requestAnimationFrame(animate);
+    }
+    
+    resize();
+    initRust();
+    window.addEventListener('resize', resize);
+    animate();
+  </script>
+</body>
+</html>

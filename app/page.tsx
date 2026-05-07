@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 7, 2026 ===
     {
+      name: "Rust",
+      description: "Iron wants to return to the earth. Watch oxidation bloom across metal — orange spreading like slow fire. Touch to add moisture, accelerate the inevitable. Everything forged will one day flake away",
+      date: "May 7",
+      href: "/projects/rust/"
+    },
+    {
       name: "Drip",
       description: "A leaky faucet. Water accumulates at the tip, bulging against surface tension, until gravity wins. The drop falls, ripples spread. Time measured in drips — you know it will fall, you just don't know when",
       date: "May 7",

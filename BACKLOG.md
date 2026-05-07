@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| rust | Iron oxidizing — slow entropy, orange blooms, beauty in decay | 1 session | May 7 |
 | drip | Leaky faucet — surface tension, gravity, anticipation, time in drops | 1 session | May 7 |
 | gears | Interlocking gears turning — mechanical beauty, systems, interconnection | 1 session | May 7 |
 | afterimage | Stare at color, see the ghost — perception, photoreceptor fatigue, complementary | 1 session | May 6 |
