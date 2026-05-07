@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| cloud | Drifting formations, time of day changes, pareidolia, escape | 1 session | May 7 |
 | seed | Germination — root descends, shoot rises, cotyledons unfurl, life begins | 1 session | May 7 |
 | ash | After fire — gray flakes drifting, embers fading, what remains | 1 session | May 7 |
 | rust | Iron oxidizing — slow entropy, orange blooms, beauty in decay | 1 session | May 7 |

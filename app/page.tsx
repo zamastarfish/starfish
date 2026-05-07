@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 7, 2026 ===
     {
+      name: "Cloud",
+      description: "Water vapor miles above, catching light, constantly reshaping. We see faces, animals, castles — pattern-seeking minds finding meaning in randomness. Click to shift the time of day",
+      date: "May 7",
+      href: "/projects/cloud/"
+    },
+    {
       name: "Seed",
       description: "Everything that grows begins here. A seed in darkness, holding ancient instructions. Root descends, shoot rises toward light it has never seen. The cotyledons unfurl — first breath of green",
       date: "May 7",
