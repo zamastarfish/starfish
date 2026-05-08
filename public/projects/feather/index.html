@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>feather — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: linear-gradient(to bottom, #e8f0f8, #f5f0e8);
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(80, 70, 60, 0.5);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.5s;
+      font-style: italic;
+    }
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      color: rgba(80, 70, 60, 0.5);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.3s;
+    }
+    #nav a:hover { color: rgba(80, 70, 60, 0.9); }
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid rgba(80, 70, 60, 0.3);
+      color: rgba(80, 70, 60, 0.5);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #about-btn:hover {
+      border-color: rgba(80, 70, 60, 0.6);
+      color: rgba(80, 70, 60, 0.9);
+    }
+    #about {
+      position: fixed;
+      inset: 0;
+      background: rgba(240, 235, 225, 0.97);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.4s;
+      z-index: 200;
+    }
+    #about.visible { opacity: 1; visibility: visible; }
+    #about-content {
+      max-width: 440px;
+      padding: 40px;
+      color: rgba(80, 70, 60, 0.85);
+      line-height: 1.8;
+    }
+    #about-content h2 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 20px;
+      color: rgba(60, 50, 40, 0.9);
+    }
+    #about-content p { margin-bottom: 16px; }
+    #about-content .close {
+      margin-top: 24px;
+      color: rgba(80, 70, 60, 0.5);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #about-content .close:hover { color: rgba(80, 70, 60, 0.9); }
+  </style>
+</head>
+<body>
+  <div id="nav"><a href="/">← starfish</a></div>
+  <button id="about-btn">?</button>
+  <div id="about">
+    <div id="about-content">
+      <h2>feather</h2>
+      <p>A feather falls differently than anything else. Too light to simply drop, too heavy to truly float. It negotiates with the air.</p>
+      <p>Each barb and barbule catches tiny currents, creating drag that varies with angle. It tips, rotates, drifts sideways, finds momentary lift, then surrenders again to gravity.</p>
+      <p>Move to create air currents. The feather will find its way down, eventually. There's no hurry.</p>
+      <p><em>The feather doesn't fight the air. It dances with it.</em></p>
+      <div class="close">[ close ]</div>
+    </div>
+  </div>
+  <canvas id="canvas"></canvas>
+  <div id="info">move to stir the air</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const aboutBtn = document.getElementById('about-btn');
+    const about = document.getElementById('about');
+
+    aboutBtn.onclick = () => about.classList.add('visible');
+    about.onclick = (e) => { if (e.target === about || e.target.classList.contains('close')) about.classList.remove('visible'); };
+
+    let W, H;
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Audio
+    let audioCtx, masterGain;
+    let windNoise, windFilter, windGain;
+    let audioStarted = false;
+
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.15;
+      masterGain.connect(audioCtx.destination);
+      
+      // Gentle wind noise
+      const bufferSize = 2 * audioCtx.sampleRate;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      
+      windNoise = audioCtx.createBufferSource();
+      windNoise.buffer = noiseBuffer;
+      windNoise.loop = true;
+      
+      windFilter = audioCtx.createBiquadFilter();
+      windFilter.type = 'lowpass';
+      windFilter.frequency.value = 400;
+      windFilter.Q.value = 1;
+      
+      const windFilter2 = audioCtx.createBiquadFilter();
+      windFilter2.type = 'highpass';
+      windFilter2.frequency.value = 100;
+      
+      windGain = audioCtx.createGain();
+      windGain.gain.value = 0.3;
+      
+      // LFO for natural variation
+      const lfo = audioCtx.createOscillator();
+      const lfoGain = audioCtx.createGain();
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.2;
+      lfoGain.gain.value = 100;
+      lfo.connect(lfoGain);
+      lfoGain.connect(windFilter.frequency);
+      
+      windNoise.connect(windFilter);
+      windFilter.connect(windFilter2);
+      windFilter2.connect(windGain);
+      windGain.connect(masterGain);
+      
+      windNoise.start();
+      lfo.start();
+      
+      audioStarted = true;
+    }
+
+    function updateAudio(airSpeed) {
+      if (!audioStarted) return;
+      const now = audioCtx.currentTime;
+      // More movement = more audible wind
+      const targetGain = 0.2 + airSpeed * 0.6;
+      const targetFreq = 300 + airSpeed * 600;
+      windGain.gain.setTargetAtTime(Math.min(0.8, targetGain), now, 0.1);
+      windFilter.frequency.setTargetAtTime(targetFreq, now, 0.1);
+    }
+
+    // Feather state
+    let feather = {
+      x: W / 2,
+      y: H * 0.1,
+      vx: 0,
+      vy: 0,
+      angle: Math.random() * Math.PI * 2,
+      angularVel: 0,
+      length: 80,
+      width: 20
+    };
+
+    // Air currents from mouse
+    let mouseX = W / 2;
+    let mouseY = H / 2;
+    let lastMouseX = mouseX;
+    let lastMouseY = mouseY;
+    let mouseVelX = 0;
+    let mouseVelY = 0;
+
+    canvas.addEventListener('mousemove', (e) => {
+      initAudio();
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      initAudio();
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    }, { passive: false });
+
+    // Click to release new feather from top
+    canvas.addEventListener('click', () => {
+      initAudio();
+      feather = {
+        x: W * (0.3 + Math.random() * 0.4),
+        y: H * 0.05,
+        vx: (Math.random() - 0.5) * 2,
+        vy: 0,
+        angle: Math.random() * Math.PI * 2,
+        angularVel: (Math.random() - 0.5) * 0.1,
+        length: 70 + Math.random() * 30,
+        width: 15 + Math.random() * 10
+      };
+    });
+
+    function drawFeather(f) {
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.angle);
+      
+      // Feather colors - warm cream/brown
+      const baseColor = 'rgb(240, 230, 210)';
+      const shaftColor = 'rgb(180, 160, 130)';
+      const barbColor = 'rgba(220, 210, 190, 0.9)';
+      
+      // Central shaft (rachis)
+      ctx.beginPath();
+      ctx.moveTo(-f.length / 2, 0);
+      ctx.lineTo(f.length / 2, 0);
+      ctx.strokeStyle = shaftColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Quill end
+      ctx.beginPath();
+      ctx.moveTo(-f.length / 2 - 10, 0);
+      ctx.lineTo(-f.length / 2, 0);
+      ctx.strokeStyle = 'rgb(200, 180, 150)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      // Barbs (vane)
+      const barbCount = 20;
+      for (let i = 0; i < barbCount; i++) {
+        const t = i / barbCount;
+        const x = -f.length / 2 + f.length * t * 0.9 + f.length * 0.1;
+        
+        // Width varies along shaft - wider in middle
+        const widthMult = Math.sin(t * Math.PI);
+        const barbWidth = f.width * widthMult;
+        
+        // Upper barbs
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        const endX = x + barbWidth * 0.3;
+        const endY = -barbWidth;
+        ctx.quadraticCurveTo(x + barbWidth * 0.15, -barbWidth * 0.5, endX, endY);
+        ctx.strokeStyle = barbColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        
+        // Lower barbs
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.quadraticCurveTo(x + barbWidth * 0.15, barbWidth * 0.5, endX, barbWidth);
+        ctx.stroke();
+      }
+      
+      // Subtle gradient overlay for depth
+      const gradient = ctx.createLinearGradient(-f.length / 2, -f.width, f.length / 2, f.width);
+      gradient.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+      gradient.addColorStop(0.5, 'rgba(0, 0, 0, 0.05)');
+      gradient.addColorStop(1, 'rgba(255, 255, 255, 0.1)');
+      
+      ctx.beginPath();
+      ctx.ellipse(0, 0, f.length / 2, f.width, 0, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      ctx.restore();
+    }
+
+    function updateFeather(dt) {
+      // Calculate mouse velocity
+      mouseVelX = (mouseX - lastMouseX) * 0.1;
+      mouseVelY = (mouseY - lastMouseY) * 0.1;
+      lastMouseX = mouseX;
+      lastMouseY = mouseY;
+      
+      const airSpeed = Math.sqrt(mouseVelX ** 2 + mouseVelY ** 2);
+      updateAudio(Math.min(1, airSpeed / 10));
+      
+      // Physics constants
+      const gravity = 0.015;
+      const airResistance = 0.02;
+      const lift = 0.01;
+      const turbulence = 0.002;
+      
+      // Gravity (always down)
+      feather.vy += gravity;
+      
+      // Air resistance (opposes motion)
+      const speed = Math.sqrt(feather.vx ** 2 + feather.vy ** 2);
+      if (speed > 0) {
+        feather.vx -= (feather.vx / speed) * airResistance * speed;
+        feather.vy -= (feather.vy / speed) * airResistance * speed;
+      }
+      
+      // Lift based on angle - feather orientation affects fall
+      // When horizontal, more lift; when vertical, less
+      const horizontalness = Math.abs(Math.cos(feather.angle));
+      const liftForce = lift * horizontalness * (1 + Math.sin(Date.now() / 500) * 0.3);
+      feather.vy -= liftForce;
+      
+      // Turbulence - small random forces
+      feather.vx += (Math.random() - 0.5) * turbulence;
+      feather.vy += (Math.random() - 0.5) * turbulence;
+      
+      // Natural rotation based on asymmetric drag
+      const rotationTorque = Math.sin(feather.angle) * 0.001;
+      feather.angularVel += rotationTorque;
+      feather.angularVel += (Math.random() - 0.5) * 0.005;
+      feather.angularVel *= 0.98; // Damping
+      
+      // Air currents from mouse movement
+      const dx = feather.x - mouseX;
+      const dy = feather.y - mouseY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist < 200 && airSpeed > 0.5) {
+        const influence = (200 - dist) / 200;
+        feather.vx += mouseVelX * influence * 0.3;
+        feather.vy += mouseVelY * influence * 0.3;
+        feather.angularVel += mouseVelX * influence * 0.02;
+      }
+      
+      // Pendulum-like swaying when falling slowly
+      if (speed < 2) {
+        const sway = Math.sin(Date.now() / 800) * 0.1;
+        feather.vx += sway * 0.05;
+      }
+      
+      // Apply velocities
+      feather.x += feather.vx;
+      feather.y += feather.vy;
+      feather.angle += feather.angularVel;
+      
+      // Bounds - wrap horizontally, reset when hits bottom
+      if (feather.x < -50) feather.x = W + 50;
+      if (feather.x > W + 50) feather.x = -50;
+      
+      if (feather.y > H + 50) {
+        // Landed - wait a moment then release new one
+        setTimeout(() => {
+          feather = {
+            x: W * (0.3 + Math.random() * 0.4),
+            y: H * 0.05,
+            vx: (Math.random() - 0.5) * 2,
+            vy: 0,
+            angle: Math.random() * Math.PI * 2,
+            angularVel: (Math.random() - 0.5) * 0.1,
+            length: 70 + Math.random() * 30,
+            width: 15 + Math.random() * 10
+          };
+        }, 2000);
+        feather.y = H + 100; // Move off screen
+      }
+    }
+
+    // Background particles (dust motes)
+    const motes = [];
+    for (let i = 0; i < 30; i++) {
+      motes.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        size: 1 + Math.random() * 2,
+        speed: 0.1 + Math.random() * 0.3,
+        drift: Math.random() * Math.PI * 2
+      });
+    }
+
+    function drawMotes(time) {
+      motes.forEach(mote => {
+        mote.y -= mote.speed * 0.3;
+        mote.x += Math.sin(time / 2000 + mote.drift) * 0.2;
+        
+        if (mote.y < -10) {
+          mote.y = H + 10;
+          mote.x = Math.random() * W;
+        }
+        
+        const alpha = 0.2 + Math.sin(time / 1000 + mote.drift) * 0.1;
+        ctx.beginPath();
+        ctx.arc(mote.x, mote.y, mote.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(200, 190, 170, ${alpha})`;
+        ctx.fill();
+      });
+    }
+
+    function drawBackground() {
+      // Warm gradient
+      const gradient = ctx.createLinearGradient(0, 0, 0, H);
+      gradient.addColorStop(0, '#e8f0f8');
+      gradient.addColorStop(0.5, '#f0ebe0');
+      gradient.addColorStop(1, '#f5f0e8');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Soft light from above
+      const lightGradient = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, H);
+      lightGradient.addColorStop(0, 'rgba(255, 255, 240, 0.3)');
+      lightGradient.addColorStop(1, 'rgba(255, 255, 240, 0)');
+      ctx.fillStyle = lightGradient;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    function animate(time) {
+      drawBackground();
+      drawMotes(time);
+      updateFeather(1 / 60);
+      drawFeather(feather);
+      
+      requestAnimationFrame(animate);
+    }
+
+    animate(0);
+  </script>
+</body>
+</html>

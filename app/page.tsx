@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 8, 2026 ===
     {
+      name: "Feather",
+      description: "A feather falls differently than anything else. Too light to simply drop, too heavy to truly float. It negotiates with the air — tipping, rotating, finding momentary lift, then surrendering to gravity. Move to stir currents. Click for another",
+      date: "May 8",
+      href: "/projects/feather/"
+    },
+    {
       name: "Eclipse",
       description: "The moon crosses the sun. Day becomes night. The corona blazes — invisible until totality reveals what was always there. Click to begin. Drag to adjust speed. Watch for Baily's beads, the diamond ring, the ancient terror and wonder",
       date: "May 8",
