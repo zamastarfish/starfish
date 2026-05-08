@@ -227,4 +227,93 @@ No accents. No bells. No rewards. Just building tension that never resolves. The
 
 ---
 
+## Cognitive/Perceptual Pieces
+
+**First explored in:** memory, afterimage
+
+Pieces about how we perceive and remember, not just what we see.
+
+### Memory Degradation Pattern
+**Used in:** memory
+
+Each interaction (recall) degrades the state:
+- Visual: position drift, size drift, color shift, shape confusion, false additions/deletions
+- Audio: drone darkens (filter closes), recall tones gain echo and distortion
+
+**Key insight:** The degradation should compound. Each step adds to previous drift, never corrects. The more you engage, the further from truth.
+
+**Parameter mapping:**
+- `recallCount` → degradation factor (caps at ~0.9)
+- degradation → filter frequency (darker = more degraded)
+- degradation → delay time and feedback (more echo = more lost)
+
+---
+
+## Celestial/Cosmic Pieces
+
+**First explored in:** aurora, eclipse
+
+Large-scale phenomena with their own timeline.
+
+### Phase-Based Dramatic Arc
+**Used in:** eclipse
+
+The piece has distinct phases with different audio states:
+- Approach: building, quiet anticipation
+- Climax: transformation (totality - corona visible, stars appear, ethereal audio)
+- Resolution: return to normal
+
+**Audio state machine:**
+- Pre-totality: deep drone, filtered dark
+- Totality: filter opens, shimmer tones trigger, detune for ethereal quality
+- Post-totality: return to normal state
+
+**Key details that sell it:**
+- Baily's beads (sunlight through lunar valleys)
+- Diamond ring effect (single bright point at edge)
+- Stars becoming visible as sky darkens
+- Corona streamers with slight wobble
+
+---
+
+## Physics-Driven Interaction
+
+**First explored in:** feather, pendulum, cradle
+
+When the physics IS the interaction.
+
+### Feather/Lightness Pattern
+**Used in:** feather
+
+Physics of something light enough to almost defy gravity:
+- Gravity (constant down)
+- Air resistance (opposes motion, proportional to speed)
+- Lift (based on angle - horizontal = more lift)
+- Turbulence (small random forces)
+- Angular momentum (rotation based on asymmetric drag)
+
+**Mouse → air currents:**
+- Track mouse velocity
+- Apply as force to nearby objects
+- Falloff with distance
+
+**Audio:** Wind noise intensity tied to air movement speed (filter + gain).
+
+**The feel:** The object has agency. It's not just falling - it's negotiating with forces. The viewer influences but doesn't control.
+
+---
+
+## Triptych/Series Thinking
+
+**First used in:** May 8 triptych (memory → eclipse → feather)
+
+When making multiple pieces, think about how they converse:
+- **Scale:** internal/cognitive → cosmic/celestial → human-scale/physical
+- **Emotional territory:** question → inspire → escape
+- **Common thread:** all three are about forces beyond our control (memory degrades, celestial alignment, gravity wins)
+
+**Value:** The pieces are stronger together. Each creates context for the others.
+
+---
+
 *Update this as patterns emerge.*
