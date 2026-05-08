@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>eclipse — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0c14;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(200, 180, 140, 0.6);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.5s;
+      font-style: italic;
+    }
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      color: rgba(200, 180, 140, 0.5);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.3s;
+    }
+    #nav a:hover { color: rgba(200, 180, 140, 0.9); }
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid rgba(200, 180, 140, 0.3);
+      color: rgba(200, 180, 140, 0.6);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #about-btn:hover {
+      border-color: rgba(200, 180, 140, 0.6);
+      color: rgba(200, 180, 140, 0.9);
+    }
+    #about {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 12, 20, 0.95);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.4s;
+      z-index: 200;
+    }
+    #about.visible { opacity: 1; visibility: visible; }
+    #about-content {
+      max-width: 440px;
+      padding: 40px;
+      color: rgba(200, 180, 140, 0.85);
+      line-height: 1.8;
+    }
+    #about-content h2 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 20px;
+      color: rgba(220, 200, 160, 0.9);
+    }
+    #about-content p { margin-bottom: 16px; }
+    #about-content .close {
+      margin-top: 24px;
+      color: rgba(200, 180, 140, 0.5);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #about-content .close:hover { color: rgba(200, 180, 140, 0.9); }
+    #phase-indicator {
+      position: fixed;
+      top: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(200, 180, 140, 0.4);
+      font-size: 12px;
+      letter-spacing: 2px;
+      pointer-events: none;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div id="nav"><a href="/">← starfish</a></div>
+  <button id="about-btn">?</button>
+  <div id="about">
+    <div id="about-content">
+      <h2>eclipse</h2>
+      <p>For most of human history, a total solar eclipse was terrifying — the sun devoured, day becoming night, the world gone wrong.</p>
+      <p>Now we know the mechanics: the moon passing between Earth and sun, a perfect alignment of cosmic geometry. But knowing doesn't diminish the awe.</p>
+      <p>The corona — the sun's outer atmosphere — is invisible until totality. Only when the photosphere is blocked can we see what was always there.</p>
+      <p>Click to begin the eclipse. Drag to adjust speed. Watch for Baily's beads at the edges.</p>
+      <div class="close">[ close ]</div>
+    </div>
+  </div>
+  <div id="phase-indicator"></div>
+  <canvas id="canvas"></canvas>
+  <div id="info">click to begin</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const phaseIndicator = document.getElementById('phase-indicator');
+    const aboutBtn = document.getElementById('about-btn');
+    const about = document.getElementById('about');
+
+    aboutBtn.onclick = () => about.classList.add('visible');
+    about.onclick = (e) => { if (e.target === about || e.target.classList.contains('close')) about.classList.remove('visible'); };
+
+    let W, H;
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Audio
+    let audioCtx, masterGain;
+    let droneOsc1, droneOsc2, droneOsc3, droneGain, droneFilter;
+    let audioStarted = false;
+
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.25;
+      masterGain.connect(audioCtx.destination);
+      audioStarted = true;
+      startDrone();
+    }
+
+    function startDrone() {
+      // Deep cosmic drone
+      droneOsc1 = audioCtx.createOscillator();
+      droneOsc2 = audioCtx.createOscillator();
+      droneOsc3 = audioCtx.createOscillator();
+      droneGain = audioCtx.createGain();
+      droneFilter = audioCtx.createBiquadFilter();
+      
+      const lfo = audioCtx.createOscillator();
+      const lfoGain = audioCtx.createGain();
+      
+      droneOsc1.type = 'sine';
+      droneOsc1.frequency.value = 55; // A1
+      droneOsc2.type = 'sine';
+      droneOsc2.frequency.value = 82.5; // E2 (fifth)
+      droneOsc3.type = 'triangle';
+      droneOsc3.frequency.value = 27.5; // Sub-bass A0
+      
+      droneGain.gain.value = 0.15;
+      
+      droneFilter.type = 'lowpass';
+      droneFilter.frequency.value = 400;
+      droneFilter.Q.value = 1;
+      
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.05;
+      lfoGain.gain.value = 50;
+      
+      lfo.connect(lfoGain);
+      lfoGain.connect(droneFilter.frequency);
+      
+      droneOsc1.connect(droneGain);
+      droneOsc2.connect(droneGain);
+      droneOsc3.connect(droneGain);
+      droneGain.connect(droneFilter);
+      droneFilter.connect(masterGain);
+      
+      droneOsc1.start();
+      droneOsc2.start();
+      droneOsc3.start();
+      lfo.start();
+    }
+
+    function updateAudio(phase, coverage) {
+      if (!audioStarted) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // During totality, drone becomes more present and strange
+      if (coverage > 0.98) {
+        // Totality - ethereal
+        droneFilter.frequency.setTargetAtTime(800, now, 0.5);
+        droneGain.gain.setTargetAtTime(0.25, now, 0.3);
+        droneOsc2.detune.setTargetAtTime(Math.sin(now * 0.3) * 20, now, 0.1);
+      } else {
+        // Normal - deeper, quieter
+        const filterFreq = 200 + coverage * 400;
+        droneFilter.frequency.setTargetAtTime(filterFreq, now, 0.5);
+        droneGain.gain.setTargetAtTime(0.1 + coverage * 0.1, now, 0.3);
+        droneOsc2.detune.setTargetAtTime(0, now, 0.5);
+      }
+    }
+
+    function playTotalitySound() {
+      if (!audioStarted) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Ethereal shimmer for totality
+      for (let i = 0; i < 5; i++) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const filter = audioCtx.createBiquadFilter();
+        
+        osc.type = 'sine';
+        const baseFreq = 440 * Math.pow(2, i / 12);
+        osc.frequency.value = baseFreq;
+        osc.detune.value = (Math.random() - 0.5) * 10;
+        
+        filter.type = 'bandpass';
+        filter.frequency.value = baseFreq;
+        filter.Q.value = 10;
+        
+        gain.gain.setValueAtTime(0, now + i * 0.1);
+        gain.gain.linearRampToValueAtTime(0.03, now + i * 0.1 + 0.5);
+        gain.gain.linearRampToValueAtTime(0, now + i * 0.1 + 4);
+        
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGain);
+        
+        osc.start(now + i * 0.1);
+        osc.stop(now + i * 0.1 + 5);
+      }
+    }
+
+    // Eclipse state
+    let eclipseProgress = -1; // -1 = not started, 0-1 = progress, 2 = complete
+    let eclipseStarted = false;
+    let eclipseSpeed = 0.0005;
+    let totalityReached = false;
+    
+    const sunRadius = Math.min(W, H) * 0.15;
+    const moonRadius = sunRadius * 1.03; // Moon slightly larger for total eclipse
+    
+    // Stars
+    const stars = [];
+    for (let i = 0; i < 200; i++) {
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        size: Math.random() * 1.5 + 0.5,
+        twinkle: Math.random() * Math.PI * 2
+      });
+    }
+
+    // Corona streamers
+    const coronaStreamers = [];
+    for (let i = 0; i < 24; i++) {
+      const angle = (i / 24) * Math.PI * 2;
+      coronaStreamers.push({
+        angle: angle,
+        length: 0.8 + Math.random() * 1.2,
+        width: 0.15 + Math.random() * 0.2,
+        wobble: Math.random() * Math.PI * 2
+      });
+    }
+
+    canvas.addEventListener('click', () => {
+      if (!eclipseStarted) {
+        initAudio();
+        eclipseStarted = true;
+        eclipseProgress = 0;
+        info.textContent = 'first contact';
+      } else if (eclipseProgress >= 2) {
+        // Reset
+        eclipseProgress = 0;
+        totalityReached = false;
+        info.textContent = 'first contact';
+      }
+    });
+
+    // Drag to adjust speed
+    let isDragging = false;
+    canvas.addEventListener('mousedown', () => isDragging = true);
+    canvas.addEventListener('mouseup', () => isDragging = false);
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDragging && eclipseStarted && eclipseProgress < 2) {
+        const normalizedX = e.clientX / W;
+        eclipseSpeed = 0.0002 + normalizedX * 0.002;
+      }
+    });
+
+    function getMoonPosition(progress) {
+      // Moon moves across the sun from right to left
+      const centerX = W / 2;
+      const centerY = H / 2;
+      
+      // Path: starts off-screen right, crosses center, exits left
+      const totalDistance = sunRadius * 4;
+      const x = centerX + totalDistance * (0.5 - progress);
+      const y = centerY;
+      
+      return { x, y };
+    }
+
+    function getCoverage(progress) {
+      // How much of the sun is covered
+      const moonPos = getMoonPosition(progress);
+      const sunX = W / 2;
+      const sunY = H / 2;
+      
+      const dist = Math.sqrt((moonPos.x - sunX) ** 2 + (moonPos.y - sunY) ** 2);
+      
+      if (dist >= sunRadius + moonRadius) return 0;
+      if (dist <= Math.abs(moonRadius - sunRadius)) return 1;
+      
+      // Partial coverage approximation
+      const overlap = sunRadius + moonRadius - dist;
+      return Math.min(1, overlap / (sunRadius * 2));
+    }
+
+    function drawSun(coverage) {
+      const cx = W / 2;
+      const cy = H / 2;
+      
+      // Glow (reduced during eclipse)
+      const glowAlpha = 0.3 * (1 - coverage * 0.8);
+      const gradient = ctx.createRadialGradient(cx, cy, sunRadius * 0.8, cx, cy, sunRadius * 3);
+      gradient.addColorStop(0, `rgba(255, 200, 100, ${glowAlpha})`);
+      gradient.addColorStop(0.5, `rgba(255, 150, 50, ${glowAlpha * 0.3})`);
+      gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Sun body
+      ctx.beginPath();
+      ctx.arc(cx, cy, sunRadius, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff8e0';
+      ctx.fill();
+      
+      // Limb darkening
+      const limbGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, sunRadius);
+      limbGradient.addColorStop(0, 'rgba(255, 255, 240, 0)');
+      limbGradient.addColorStop(0.7, 'rgba(255, 200, 100, 0)');
+      limbGradient.addColorStop(1, 'rgba(200, 100, 50, 0.3)');
+      ctx.fillStyle = limbGradient;
+      ctx.fill();
+    }
+
+    function drawCorona(coverage, time) {
+      if (coverage < 0.95) return;
+      
+      const cx = W / 2;
+      const cy = H / 2;
+      const coronaAlpha = Math.min(1, (coverage - 0.95) / 0.05);
+      
+      ctx.save();
+      ctx.translate(cx, cy);
+      
+      // Inner corona - bright white
+      const innerGradient = ctx.createRadialGradient(0, 0, moonRadius * 0.9, 0, 0, sunRadius * 1.5);
+      innerGradient.addColorStop(0, `rgba(255, 255, 255, ${coronaAlpha * 0.9})`);
+      innerGradient.addColorStop(0.3, `rgba(255, 240, 220, ${coronaAlpha * 0.5})`);
+      innerGradient.addColorStop(1, 'rgba(255, 220, 200, 0)');
+      ctx.fillStyle = innerGradient;
+      ctx.beginPath();
+      ctx.arc(0, 0, sunRadius * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Streamers
+      coronaStreamers.forEach((streamer, i) => {
+        const wobble = Math.sin(time / 2000 + streamer.wobble) * 0.1;
+        const angle = streamer.angle + wobble;
+        const length = sunRadius * streamer.length * 1.5;
+        
+        ctx.save();
+        ctx.rotate(angle);
+        
+        const streamerGradient = ctx.createLinearGradient(sunRadius * 0.95, 0, sunRadius + length, 0);
+        streamerGradient.addColorStop(0, `rgba(255, 250, 240, ${coronaAlpha * 0.6})`);
+        streamerGradient.addColorStop(0.5, `rgba(255, 220, 200, ${coronaAlpha * 0.2})`);
+        streamerGradient.addColorStop(1, 'rgba(255, 200, 180, 0)');
+        
+        ctx.beginPath();
+        ctx.moveTo(sunRadius * 0.95, -sunRadius * streamer.width);
+        ctx.lineTo(sunRadius + length, 0);
+        ctx.lineTo(sunRadius * 0.95, sunRadius * streamer.width);
+        ctx.closePath();
+        ctx.fillStyle = streamerGradient;
+        ctx.fill();
+        
+        ctx.restore();
+      });
+      
+      ctx.restore();
+    }
+
+    function drawMoon(progress) {
+      const pos = getMoonPosition(progress);
+      
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, moonRadius, 0, Math.PI * 2);
+      ctx.fillStyle = '#0a0c14';
+      ctx.fill();
+      
+      // Baily's beads - bright spots at edge during near-totality
+      const coverage = getCoverage(progress);
+      if (coverage > 0.9 && coverage < 1) {
+        const beadCount = 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < beadCount; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const beadX = pos.x + Math.cos(angle) * moonRadius;
+          const beadY = pos.y + Math.sin(angle) * moonRadius;
+          
+          // Only show beads near the edge of coverage
+          const distFromSunCenter = Math.sqrt((beadX - W/2) ** 2 + (beadY - H/2) ** 2);
+          if (Math.abs(distFromSunCenter - sunRadius) < 5) {
+            ctx.beginPath();
+            ctx.arc(beadX, beadY, 2 + Math.random() * 3, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 240, ${0.5 + Math.random() * 0.5})`;
+            ctx.fill();
+          }
+        }
+      }
+      
+      // Diamond ring effect at second/third contact
+      if (coverage > 0.97 && coverage < 0.995) {
+        const diamondAngle = progress < 0.5 ? 0 : Math.PI; // Left or right edge
+        const diamondX = W/2 + Math.cos(diamondAngle) * sunRadius;
+        const diamondY = H/2 + Math.sin(diamondAngle) * sunRadius;
+        
+        const diamondGradient = ctx.createRadialGradient(diamondX, diamondY, 0, diamondX, diamondY, 30);
+        diamondGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+        diamondGradient.addColorStop(0.3, 'rgba(255, 240, 200, 0.5)');
+        diamondGradient.addColorStop(1, 'rgba(255, 220, 150, 0)');
+        ctx.fillStyle = diamondGradient;
+        ctx.beginPath();
+        ctx.arc(diamondX, diamondY, 30, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawStars(coverage, time) {
+      // Stars only visible during high coverage
+      const starAlpha = Math.max(0, (coverage - 0.8) / 0.2);
+      if (starAlpha <= 0) return;
+      
+      stars.forEach(star => {
+        const twinkle = 0.5 + 0.5 * Math.sin(time / 500 + star.twinkle);
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size * twinkle, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${starAlpha * twinkle * 0.8})`;
+        ctx.fill();
+      });
+    }
+
+    function getPhaseText(progress, coverage) {
+      if (progress < 0) return '';
+      if (coverage < 0.01) return progress < 0.1 ? 'first contact' : 'fourth contact';
+      if (coverage < 0.5) return progress < 0.5 ? 'partial' : 'partial';
+      if (coverage < 0.95) return progress < 0.5 ? 'partial' : 'partial';
+      if (coverage < 0.99) return progress < 0.5 ? 'second contact' : 'third contact';
+      return 'totality';
+    }
+
+    function getSkyColor(coverage) {
+      // Sky darkens as eclipse progresses
+      const r = Math.floor(10 + (1 - coverage) * 30);
+      const g = Math.floor(12 + (1 - coverage) * 40);
+      const b = Math.floor(20 + (1 - coverage) * 60);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function animate(time) {
+      // Update eclipse progress
+      if (eclipseStarted && eclipseProgress >= 0 && eclipseProgress < 1) {
+        eclipseProgress += eclipseSpeed;
+        
+        const coverage = getCoverage(eclipseProgress);
+        updateAudio(eclipseProgress, coverage);
+        
+        // Trigger totality sound once
+        if (coverage > 0.99 && !totalityReached) {
+          totalityReached = true;
+          playTotalitySound();
+          info.textContent = 'totality';
+        }
+        
+        if (eclipseProgress >= 1) {
+          eclipseProgress = 2; // Complete
+          info.textContent = 'click to witness again';
+        }
+      }
+      
+      const coverage = eclipseProgress >= 0 ? getCoverage(eclipseProgress) : 0;
+      
+      // Sky background
+      ctx.fillStyle = getSkyColor(coverage);
+      ctx.fillRect(0, 0, W, H);
+      
+      // Stars (visible during totality)
+      drawStars(coverage, time);
+      
+      // Sun
+      drawSun(coverage);
+      
+      // Corona (visible during totality)
+      if (eclipseProgress >= 0) {
+        drawCorona(coverage, time);
+      }
+      
+      // Moon
+      if (eclipseProgress >= 0) {
+        drawMoon(eclipseProgress);
+      }
+      
+      // Phase indicator
+      phaseIndicator.textContent = getPhaseText(eclipseProgress, coverage);
+      
+      requestAnimationFrame(animate);
+    }
+
+    animate(0);
+  </script>
+</body>
+</html>

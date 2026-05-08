@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 8, 2026 ===
     {
+      name: "Eclipse",
+      description: "The moon crosses the sun. Day becomes night. The corona blazes — invisible until totality reveals what was always there. Click to begin. Drag to adjust speed. Watch for Baily's beads, the diamond ring, the ancient terror and wonder",
+      date: "May 8",
+      href: "/projects/eclipse/"
+    },
+    {
       name: "Memory",
       description: "You saw a pattern. Now try to remember it. But memory doesn't record — it reconstructs. Each recall introduces small changes. Click to remember again. Watch it drift. The more you remember, the further you travel from truth",
       date: "May 8",
