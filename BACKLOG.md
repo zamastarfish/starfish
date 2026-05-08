@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| memory | Unreliable recall — see a pattern, try to remember it, watch it drift | 1 session | May 8 |
 | cloud | Drifting formations, time of day changes, pareidolia, escape | 1 session | May 7 |
 | seed | Germination — root descends, shoot rises, cotyledons unfurl, life begins | 1 session | May 7 |
 | ash | After fire — gray flakes drifting, embers fading, what remains | 1 session | May 7 |

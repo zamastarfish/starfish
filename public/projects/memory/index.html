@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>memory — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0f;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(180, 170, 200, 0.6);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.5s;
+      font-style: italic;
+    }
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      color: rgba(180, 170, 200, 0.5);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.3s;
+    }
+    #nav a:hover { color: rgba(180, 170, 200, 0.9); }
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid rgba(180, 170, 200, 0.3);
+      color: rgba(180, 170, 200, 0.6);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #about-btn:hover {
+      border-color: rgba(180, 170, 200, 0.6);
+      color: rgba(180, 170, 200, 0.9);
+    }
+    #about {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 10, 15, 0.95);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.4s;
+      z-index: 200;
+    }
+    #about.visible { opacity: 1; visibility: visible; }
+    #about-content {
+      max-width: 440px;
+      padding: 40px;
+      color: rgba(180, 170, 200, 0.85);
+      line-height: 1.8;
+    }
+    #about-content h2 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 20px;
+      color: rgba(200, 190, 220, 0.9);
+    }
+    #about-content p { margin-bottom: 16px; }
+    #about-content .close {
+      margin-top: 24px;
+      color: rgba(180, 170, 200, 0.5);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #about-content .close:hover { color: rgba(180, 170, 200, 0.9); }
+    #recall-count {
+      position: fixed;
+      top: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(180, 170, 200, 0.4);
+      font-size: 12px;
+      letter-spacing: 2px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="nav"><a href="/">← starfish</a></div>
+  <button id="about-btn">?</button>
+  <div id="about">
+    <div id="about-content">
+      <h2>memory</h2>
+      <p>You see a pattern. You try to remember it. But memory doesn't record — it reconstructs.</p>
+      <p>Each recall introduces small changes. The gaps are filled with plausible fictions. Over time, what you remember becomes something the original never was.</p>
+      <p>Click to recall the pattern. Watch it drift. The more you remember, the further you travel from truth.</p>
+      <p><em>"Every time we remember something, we're not opening a file — we're writing a new one."</em></p>
+      <div class="close">[ close ]</div>
+    </div>
+  </div>
+  <div id="recall-count"></div>
+  <canvas id="canvas"></canvas>
+  <div id="info">watch — click to recall</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const recallCount = document.getElementById('recall-count');
+    const aboutBtn = document.getElementById('about-btn');
+    const about = document.getElementById('about');
+
+    aboutBtn.onclick = () => about.classList.add('visible');
+    about.onclick = (e) => { if (e.target === about || e.target.classList.contains('close')) about.classList.remove('visible'); };
+
+    let W, H;
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Audio context (lazy init)
+    let audioCtx, masterGain;
+    let audioStarted = false;
+
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.3;
+      masterGain.connect(audioCtx.destination);
+      audioStarted = true;
+    }
+
+    // Play a degraded, reverby tone
+    function playRecallSound(degradation) {
+      if (!audioStarted) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Create nodes
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const gain1 = audioCtx.createGain();
+      const gain2 = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+      const delay = audioCtx.createDelay();
+      const delayGain = audioCtx.createGain();
+      
+      // Base frequency with slight drift based on degradation
+      const baseFreq = 220 * (1 + (Math.random() - 0.5) * degradation * 0.3);
+      
+      osc1.type = 'sine';
+      osc1.frequency.value = baseFreq;
+      osc2.type = 'triangle';
+      osc2.frequency.value = baseFreq * 1.5 * (1 + (Math.random() - 0.5) * degradation * 0.2);
+      
+      // Filter gets darker with degradation
+      filter.type = 'lowpass';
+      filter.frequency.value = 2000 - degradation * 1500;
+      filter.Q.value = 1 + degradation * 3;
+      
+      // Delay for echo/memory effect
+      delay.delayTime.value = 0.15 + degradation * 0.3;
+      delayGain.gain.value = 0.3 + degradation * 0.3;
+      
+      // Connect
+      osc1.connect(gain1);
+      osc2.connect(gain2);
+      gain1.connect(filter);
+      gain2.connect(filter);
+      filter.connect(masterGain);
+      filter.connect(delay);
+      delay.connect(delayGain);
+      delayGain.connect(masterGain);
+      delayGain.connect(delay); // Feedback loop
+      
+      // Envelope
+      gain1.gain.setValueAtTime(0.2, now);
+      gain1.gain.exponentialDecayTo && gain1.gain.exponentialDecayTo(0.001, now + 2);
+      gain1.gain.setTargetAtTime(0.001, now + 0.3, 0.5);
+      
+      gain2.gain.setValueAtTime(0.1, now);
+      gain2.gain.setTargetAtTime(0.001, now + 0.2, 0.4);
+      
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 3);
+      osc2.stop(now + 3);
+      
+      // Additional warped echo based on degradation
+      if (degradation > 0.3) {
+        const echoOsc = audioCtx.createOscillator();
+        const echoGain = audioCtx.createGain();
+        echoOsc.type = 'sine';
+        echoOsc.frequency.value = baseFreq * (Math.random() > 0.5 ? 0.5 : 2) * (1 + (Math.random() - 0.5) * 0.4);
+        echoGain.gain.setValueAtTime(0.05 * degradation, now + 0.4);
+        echoGain.gain.setTargetAtTime(0.001, now + 0.6, 0.8);
+        echoOsc.connect(echoGain);
+        echoGain.connect(filter);
+        echoOsc.start(now + 0.3);
+        echoOsc.stop(now + 3);
+      }
+    }
+
+    // Ambient drone that gets more distorted
+    let droneOsc, droneGain, droneFilter, droneLFO, droneLFOGain;
+    
+    function startDrone() {
+      if (!audioStarted) return;
+      
+      droneOsc = audioCtx.createOscillator();
+      const droneOsc2 = audioCtx.createOscillator();
+      droneGain = audioCtx.createGain();
+      droneFilter = audioCtx.createBiquadFilter();
+      droneLFO = audioCtx.createOscillator();
+      droneLFOGain = audioCtx.createGain();
+      
+      droneOsc.type = 'sine';
+      droneOsc.frequency.value = 55;
+      droneOsc2.type = 'sine';
+      droneOsc2.frequency.value = 55 * 1.5; // Fifth
+      
+      droneGain.gain.value = 0.08;
+      
+      droneFilter.type = 'lowpass';
+      droneFilter.frequency.value = 300;
+      
+      droneLFO.type = 'sine';
+      droneLFO.frequency.value = 0.1;
+      droneLFOGain.gain.value = 20;
+      
+      droneLFO.connect(droneLFOGain);
+      droneLFOGain.connect(droneFilter.frequency);
+      
+      droneOsc.connect(droneGain);
+      droneOsc2.connect(droneGain);
+      droneGain.connect(droneFilter);
+      droneFilter.connect(masterGain);
+      
+      droneOsc.start();
+      droneOsc2.start();
+      droneLFO.start();
+    }
+    
+    function updateDrone(degradation) {
+      if (!droneFilter) return;
+      droneFilter.frequency.setTargetAtTime(300 - degradation * 200, audioCtx.currentTime, 0.5);
+      droneLFO.frequency.setTargetAtTime(0.1 + degradation * 0.4, audioCtx.currentTime, 0.5);
+    }
+
+    // The Pattern
+    // Original pattern: array of shapes with position, size, color
+    let originalPattern = [];
+    let currentPattern = [];
+    let recallNumber = 0;
+    let state = 'initial'; // initial, showing, remembering, recalled
+    let stateTimer = 0;
+    let fadeAlpha = 0;
+    let showingAlpha = 0;
+
+    function generateOriginalPattern() {
+      originalPattern = [];
+      const numShapes = 4 + Math.floor(Math.random() * 3); // 4-6 shapes
+      
+      const shapeTypes = ['circle', 'square', 'triangle'];
+      const colors = [
+        { h: 200, s: 60, l: 60 }, // Blue
+        { h: 340, s: 50, l: 55 }, // Dusty rose
+        { h: 45, s: 55, l: 55 },  // Gold
+        { h: 160, s: 40, l: 50 }, // Teal
+        { h: 280, s: 45, l: 55 }, // Lavender
+      ];
+      
+      const centerX = W / 2;
+      const centerY = H / 2;
+      const spread = Math.min(W, H) * 0.25;
+      
+      for (let i = 0; i < numShapes; i++) {
+        const angle = (i / numShapes) * Math.PI * 2 + Math.random() * 0.5;
+        const dist = spread * (0.4 + Math.random() * 0.6);
+        
+        originalPattern.push({
+          type: shapeTypes[Math.floor(Math.random() * shapeTypes.length)],
+          x: centerX + Math.cos(angle) * dist,
+          y: centerY + Math.sin(angle) * dist,
+          size: 20 + Math.random() * 30,
+          rotation: Math.random() * Math.PI * 2,
+          color: colors[Math.floor(Math.random() * colors.length)]
+        });
+      }
+      
+      // Deep copy for current
+      currentPattern = JSON.parse(JSON.stringify(originalPattern));
+    }
+
+    function degradePattern() {
+      const degradeFactor = Math.min(recallNumber * 0.08, 0.9);
+      const maxDrift = 30 + recallNumber * 5;
+      const maxSizeDrift = 8 + recallNumber * 2;
+      const maxRotDrift = 0.3 + recallNumber * 0.1;
+      const maxColorDrift = 15 + recallNumber * 3;
+      
+      currentPattern = currentPattern.map((shape, i) => {
+        // Position drift
+        const xDrift = (Math.random() - 0.5) * maxDrift;
+        const yDrift = (Math.random() - 0.5) * maxDrift;
+        
+        // Size drift
+        const sizeDrift = (Math.random() - 0.5) * maxSizeDrift;
+        
+        // Rotation drift
+        const rotDrift = (Math.random() - 0.5) * maxRotDrift;
+        
+        // Color drift
+        const hDrift = (Math.random() - 0.5) * maxColorDrift;
+        const sDrift = (Math.random() - 0.5) * 10;
+        const lDrift = (Math.random() - 0.5) * 8;
+        
+        // Occasionally confuse shape type
+        let newType = shape.type;
+        if (Math.random() < degradeFactor * 0.15) {
+          const types = ['circle', 'square', 'triangle'];
+          newType = types[Math.floor(Math.random() * types.length)];
+        }
+        
+        return {
+          type: newType,
+          x: shape.x + xDrift,
+          y: shape.y + yDrift,
+          size: Math.max(10, shape.size + sizeDrift),
+          rotation: shape.rotation + rotDrift,
+          color: {
+            h: (shape.color.h + hDrift + 360) % 360,
+            s: Math.max(20, Math.min(80, shape.color.s + sDrift)),
+            l: Math.max(30, Math.min(70, shape.color.l + lDrift))
+          }
+        };
+      });
+      
+      // Occasionally lose a shape (false forgetting)
+      if (Math.random() < degradeFactor * 0.1 && currentPattern.length > 2) {
+        const removeIdx = Math.floor(Math.random() * currentPattern.length);
+        currentPattern.splice(removeIdx, 1);
+      }
+      
+      // Occasionally add a false memory
+      if (Math.random() < degradeFactor * 0.08 && currentPattern.length < 8) {
+        const ref = currentPattern[Math.floor(Math.random() * currentPattern.length)];
+        currentPattern.push({
+          type: ['circle', 'square', 'triangle'][Math.floor(Math.random() * 3)],
+          x: ref.x + (Math.random() - 0.5) * 80,
+          y: ref.y + (Math.random() - 0.5) * 80,
+          size: ref.size * (0.7 + Math.random() * 0.6),
+          rotation: Math.random() * Math.PI * 2,
+          color: {
+            h: (ref.color.h + (Math.random() - 0.5) * 40 + 360) % 360,
+            s: ref.color.s,
+            l: ref.color.l
+          }
+        });
+      }
+    }
+
+    function drawShape(shape, alpha) {
+      ctx.save();
+      ctx.translate(shape.x, shape.y);
+      ctx.rotate(shape.rotation);
+      
+      const { h, s, l } = shape.color;
+      ctx.fillStyle = `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
+      ctx.strokeStyle = `hsla(${h}, ${s}%, ${l + 15}%, ${alpha * 0.8})`;
+      ctx.lineWidth = 2;
+      
+      const size = shape.size;
+      
+      if (shape.type === 'circle') {
+        ctx.beginPath();
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else if (shape.type === 'square') {
+        ctx.fillRect(-size, -size, size * 2, size * 2);
+        ctx.strokeRect(-size, -size, size * 2, size * 2);
+      } else if (shape.type === 'triangle') {
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size * 0.866, size * 0.5);
+        ctx.lineTo(-size * 0.866, size * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      
+      ctx.restore();
+    }
+
+    function drawPattern(pattern, alpha) {
+      pattern.forEach(shape => drawShape(shape, alpha));
+    }
+
+    // Visual noise/grain that increases with degradation
+    function drawNoise(intensity) {
+      const imageData = ctx.getImageData(0, 0, W, H);
+      const data = imageData.data;
+      
+      for (let i = 0; i < data.length; i += 4) {
+        if (Math.random() < intensity * 0.02) {
+          const noise = (Math.random() - 0.5) * intensity * 100;
+          data[i] = Math.max(0, Math.min(255, data[i] + noise));
+          data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+          data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
+        }
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    generateOriginalPattern();
+    state = 'showing';
+    stateTimer = 0;
+
+    canvas.addEventListener('click', () => {
+      initAudio();
+      if (!droneOsc) startDrone();
+      
+      if (state === 'recalled' || state === 'showing') {
+        recallNumber++;
+        degradePattern();
+        state = 'recalling';
+        stateTimer = 0;
+        
+        const degradation = Math.min(recallNumber * 0.1, 0.9);
+        playRecallSound(degradation);
+        updateDrone(degradation);
+        
+        recallCount.textContent = `recall ${recallNumber}`;
+        info.textContent = recallNumber > 5 ? 'is this what you saw?' : 'click to recall again';
+        
+        if (recallNumber > 10) {
+          info.textContent = 'the original is lost';
+        }
+      }
+    });
+
+    function animate(time) {
+      ctx.fillStyle = '#0a0a0f';
+      ctx.fillRect(0, 0, W, H);
+      
+      stateTimer += 1/60;
+      
+      if (state === 'showing') {
+        // Show original for 3 seconds
+        showingAlpha = Math.min(1, stateTimer * 2);
+        drawPattern(originalPattern, showingAlpha * 0.9);
+        
+        if (stateTimer > 3) {
+          state = 'fading';
+          stateTimer = 0;
+          info.textContent = 'remember...';
+        }
+      } else if (state === 'fading') {
+        // Fade out
+        showingAlpha = Math.max(0, 1 - stateTimer * 1.5);
+        drawPattern(originalPattern, showingAlpha * 0.9);
+        
+        if (stateTimer > 1) {
+          state = 'recalled';
+          stateTimer = 0;
+          info.textContent = 'click to recall';
+        }
+      } else if (state === 'recalling') {
+        // Flash/transition effect
+        const flash = Math.sin(stateTimer * 15) * 0.3 + 0.5;
+        const alpha = stateTimer < 0.3 ? flash : Math.min(1, (stateTimer - 0.3) * 2);
+        
+        drawPattern(currentPattern, alpha * 0.85);
+        
+        if (stateTimer > 0.8) {
+          state = 'recalled';
+          stateTimer = 0;
+        }
+      } else if (state === 'recalled') {
+        // Show current (degraded) pattern
+        const breathe = 0.85 + Math.sin(time / 3000) * 0.05;
+        drawPattern(currentPattern, breathe);
+        
+        // Add noise based on degradation
+        const degradation = Math.min(recallNumber * 0.1, 0.9);
+        if (degradation > 0.2) {
+          drawNoise(degradation);
+        }
+      }
+      
+      requestAnimationFrame(animate);
+    }
+
+    animate(0);
+  </script>
+</body>
+</html>
