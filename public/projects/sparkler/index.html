@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>sparkler — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0812;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 220, 150, 0.4);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.5s;
+      font-style: italic;
+    }
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      color: rgba(255, 220, 150, 0.4);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.3s;
+    }
+    #nav a:hover { color: rgba(255, 220, 150, 0.8); }
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid rgba(255, 220, 150, 0.3);
+      color: rgba(255, 220, 150, 0.4);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #about-btn:hover {
+      border-color: rgba(255, 220, 150, 0.6);
+      color: rgba(255, 220, 150, 0.9);
+    }
+    #about {
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 6, 15, 0.97);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.4s;
+      z-index: 200;
+    }
+    #about.visible { opacity: 1; visibility: visible; }
+    #about-content {
+      max-width: 440px;
+      padding: 40px;
+      color: rgba(255, 220, 150, 0.85);
+      line-height: 1.8;
+    }
+    #about-content h2 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 20px;
+      color: rgba(255, 230, 170, 0.9);
+    }
+    #about-content p { margin-bottom: 16px; }
+    #about-content .close {
+      margin-top: 24px;
+      color: rgba(255, 220, 150, 0.5);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #about-content .close:hover { color: rgba(255, 220, 150, 0.9); }
+  </style>
+</head>
+<body>
+  <div id="nav"><a href="/">← starfish</a></div>
+  <button id="about-btn">?</button>
+  <div id="about">
+    <div id="about-content">
+      <h2>sparkler</h2>
+      <p>A wire coated in metal powder and oxidizer. Light it and chemistry becomes celebration — iron and aluminum burning bright, throwing sparks into the dark.</p>
+      <p>Sparklers are handheld fireworks. We write our names in light, knowing the letters fade before we finish. We wave them at weddings, birthdays, New Year's Eve — marking moments we want to remember.</p>
+      <p>Click to light. Move to wave. Watch it burn down. When it's gone, light another.</p>
+      <p><em>Every bright thing burns out.</em></p>
+      <div class="close">[ close ]</div>
+    </div>
+  </div>
+  <canvas id="canvas"></canvas>
+  <div id="info">click to light</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const aboutBtn = document.getElementById('about-btn');
+    const about = document.getElementById('about');
+
+    aboutBtn.onclick = () => about.classList.add('visible');
+    about.onclick = (e) => { if (e.target === about || e.target.classList.contains('close')) about.classList.remove('visible'); };
+
+    let W, H;
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Audio
+    let audioCtx;
+    let audioStarted = false;
+    let crackleSource, crackleGain;
+
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioStarted = true;
+    }
+
+    function startCrackle() {
+      if (!audioStarted) return;
+      
+      // Create crackling noise
+      const bufferSize = audioCtx.sampleRate * 2;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      // Sparse crackle pattern
+      for (let i = 0; i < bufferSize; i++) {
+        if (Math.random() < 0.02) {
+          // Sharp crackle
+          const decay = Math.min(200, bufferSize - i);
+          for (let j = 0; j < decay && i + j < bufferSize; j++) {
+            data[i + j] += (Math.random() * 2 - 1) * Math.exp(-j / 20) * 0.3;
+          }
+        }
+      }
+      
+      crackleSource = audioCtx.createBufferSource();
+      crackleSource.buffer = buffer;
+      crackleSource.loop = true;
+      
+      crackleGain = audioCtx.createGain();
+      crackleGain.gain.value = 0.15;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.value = 2000;
+      
+      crackleSource.connect(filter);
+      filter.connect(crackleGain);
+      crackleGain.connect(audioCtx.destination);
+      
+      crackleSource.start();
+    }
+
+    function stopCrackle() {
+      if (crackleSource) {
+        crackleGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.3);
+        setTimeout(() => {
+          try { crackleSource.stop(); } catch(e) {}
+        }, 500);
+      }
+    }
+
+    function playSpark() {
+      if (!audioStarted || Math.random() > 0.1) return;
+      
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'square';
+      osc.frequency.value = 3000 + Math.random() * 4000;
+      
+      gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.05);
+    }
+
+    // Sparkler state
+    let sparkler = null;
+    let sparks = [];
+    let trails = [];
+
+    // Mouse tracking
+    let mouseX = W / 2;
+    let mouseY = H / 2;
+    let lastMouseX = mouseX;
+    let lastMouseY = mouseY;
+    let velocity = { x: 0, y: 0 };
+
+    canvas.addEventListener('mousemove', (e) => {
+      lastMouseX = mouseX;
+      lastMouseY = mouseY;
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      velocity.x = mouseX - lastMouseX;
+      velocity.y = mouseY - lastMouseY;
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      lastMouseX = mouseX;
+      lastMouseY = mouseY;
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+      velocity.x = mouseX - lastMouseX;
+      velocity.y = mouseY - lastMouseY;
+    }, { passive: false });
+
+    canvas.addEventListener('click', () => {
+      initAudio();
+      
+      if (!sparkler || sparkler.fuel <= 0) {
+        lightSparkler();
+      }
+    });
+
+    function lightSparkler() {
+      sparkler = {
+        fuel: 1, // 1 = full, 0 = burned out
+        intensity: 1,
+        x: mouseX,
+        y: mouseY
+      };
+      startCrackle();
+      info.textContent = 'wave it around';
+    }
+
+    function createSpark(x, y, vx, vy) {
+      return {
+        x, y,
+        vx: vx + (Math.random() - 0.5) * 8,
+        vy: vy + (Math.random() - 0.5) * 8 - 2,
+        life: 0.5 + Math.random() * 0.5,
+        maxLife: 0.5 + Math.random() * 0.5,
+        size: 1 + Math.random() * 2,
+        color: Math.random() < 0.7 ? 'gold' : (Math.random() < 0.5 ? 'white' : 'orange')
+      };
+    }
+
+    function createTrailPoint(x, y) {
+      trails.push({
+        x, y,
+        life: 0.3,
+        maxLife: 0.3
+      });
+    }
+
+    function updateSparkler(dt) {
+      if (!sparkler || sparkler.fuel <= 0) return;
+      
+      // Follow mouse
+      sparkler.x = mouseX;
+      sparkler.y = mouseY;
+      
+      // Burn down
+      sparkler.fuel -= dt * 0.08;
+      sparkler.intensity = Math.min(1, sparkler.fuel * 2);
+      
+      if (sparkler.fuel <= 0) {
+        stopCrackle();
+        info.textContent = 'click to light another';
+        return;
+      }
+      
+      // Create sparks
+      const sparkCount = Math.floor(5 + Math.random() * 5 * sparkler.intensity);
+      const speed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+      
+      for (let i = 0; i < sparkCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 4;
+        sparks.push(createSpark(
+          sparkler.x,
+          sparkler.y,
+          Math.cos(angle) * spd + velocity.x * 0.3,
+          Math.sin(angle) * spd + velocity.y * 0.3
+        ));
+        playSpark();
+      }
+      
+      // Trail
+      if (speed > 2) {
+        createTrailPoint(sparkler.x, sparkler.y);
+      }
+    }
+
+    function updateSparks(dt) {
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const spark = sparks[i];
+        
+        // Physics
+        spark.vy += 15 * dt; // gravity
+        spark.vx *= 0.99;
+        spark.vy *= 0.99;
+        
+        spark.x += spark.vx;
+        spark.y += spark.vy;
+        
+        spark.life -= dt;
+        
+        if (spark.life <= 0) {
+          sparks.splice(i, 1);
+        }
+      }
+      
+      // Update trails
+      for (let i = trails.length - 1; i >= 0; i--) {
+        trails[i].life -= dt;
+        if (trails[i].life <= 0) {
+          trails.splice(i, 1);
+        }
+      }
+    }
+
+    function drawSparkler() {
+      if (!sparkler) return;
+      
+      const x = sparkler.x;
+      const y = sparkler.y;
+      
+      // Wire/stick
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 4);
+      
+      // Handle
+      const gradient = ctx.createLinearGradient(0, 0, 0, 120);
+      gradient.addColorStop(0, '#444');
+      gradient.addColorStop(0.3, '#666');
+      gradient.addColorStop(1, '#333');
+      
+      ctx.beginPath();
+      ctx.roundRect(-3, 20, 6, 100, 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Wire with coating
+      if (sparkler.fuel > 0) {
+        const burnHeight = 80 * (1 - sparkler.fuel);
+        
+        // Unburned coating
+        ctx.beginPath();
+        ctx.rect(-2, -60 + burnHeight, 4, 80 - burnHeight);
+        ctx.fillStyle = '#555';
+        ctx.fill();
+        
+        // Burned wire
+        if (burnHeight > 0) {
+          ctx.beginPath();
+          ctx.rect(-1, -60, 2, burnHeight);
+          ctx.fillStyle = '#222';
+          ctx.fill();
+        }
+        
+        // Burning point glow
+        if (sparkler.fuel > 0) {
+          const burnY = -60 + burnHeight;
+          
+          // Outer glow
+          const glow = ctx.createRadialGradient(0, burnY, 0, 0, burnY, 40);
+          glow.addColorStop(0, `rgba(255, 200, 100, ${sparkler.intensity * 0.8})`);
+          glow.addColorStop(0.3, `rgba(255, 150, 50, ${sparkler.intensity * 0.4})`);
+          glow.addColorStop(1, 'rgba(255, 100, 0, 0)');
+          
+          ctx.beginPath();
+          ctx.arc(0, burnY, 40, 0, Math.PI * 2);
+          ctx.fillStyle = glow;
+          ctx.fill();
+          
+          // Core
+          ctx.beginPath();
+          ctx.arc(0, burnY, 4, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 255, 255, ${sparkler.intensity})`;
+          ctx.fill();
+        }
+      } else {
+        // Burned out wire
+        ctx.beginPath();
+        ctx.rect(-1, -60, 2, 80);
+        ctx.fillStyle = '#222';
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+
+    function drawSparks() {
+      sparks.forEach(spark => {
+        const alpha = spark.life / spark.maxLife;
+        
+        let color;
+        if (spark.color === 'gold') {
+          color = `rgba(255, 200, 100, ${alpha})`;
+        } else if (spark.color === 'white') {
+          color = `rgba(255, 255, 255, ${alpha})`;
+        } else {
+          color = `rgba(255, 150, 50, ${alpha})`;
+        }
+        
+        // Glow
+        const glow = ctx.createRadialGradient(spark.x, spark.y, 0, spark.x, spark.y, spark.size * 3);
+        glow.addColorStop(0, color);
+        glow.addColorStop(1, 'rgba(255, 150, 50, 0)');
+        
+        ctx.beginPath();
+        ctx.arc(spark.x, spark.y, spark.size * 3, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+        
+        // Core
+        ctx.beginPath();
+        ctx.arc(spark.x, spark.y, spark.size * alpha, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, ' + alpha + ')';
+        ctx.fill();
+      });
+    }
+
+    function drawTrails() {
+      trails.forEach(trail => {
+        const alpha = trail.life / trail.maxLife;
+        
+        const glow = ctx.createRadialGradient(trail.x, trail.y, 0, trail.x, trail.y, 15);
+        glow.addColorStop(0, `rgba(255, 200, 100, ${alpha * 0.5})`);
+        glow.addColorStop(1, 'rgba(255, 150, 50, 0)');
+        
+        ctx.beginPath();
+        ctx.arc(trail.x, trail.y, 15, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+      });
+    }
+
+    function drawBackground() {
+      // Night sky
+      ctx.fillStyle = '#0a0812';
+      ctx.fillRect(0, 0, W, H);
+      
+      // Subtle stars
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      for (let i = 0; i < 50; i++) {
+        const x = (i * 137.5 + 50) % W;
+        const y = (i * 89.3 + 30) % H;
+        const size = 0.5 + Math.random() * 0.5;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    let lastTime = 0;
+    function animate(time) {
+      const dt = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+      
+      updateSparkler(dt);
+      updateSparks(dt);
+      
+      drawBackground();
+      drawTrails();
+      drawSparks();
+      drawSparkler();
+      
+      // Decay velocity
+      velocity.x *= 0.9;
+      velocity.y *= 0.9;
+      
+      requestAnimationFrame(animate);
+    }
+
+    animate(0);
+  </script>
+</body>
+</html>

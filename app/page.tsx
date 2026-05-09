@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 9, 2026 ===
     {
+      name: "Sparkler",
+      description: "A wire coated in metal powder and oxidizer. Light it and chemistry becomes celebration — iron and aluminum burning bright, throwing sparks into the dark. Click to light. Move to wave. Watch it burn down",
+      date: "May 9",
+      href: "/projects/sparkler/"
+    },
+    {
       name: "Resonance",
       description: "Every object has a frequency at which it wants to vibrate. Find it. Hold and move slowly — when you approach the resonant frequency, the object awakens. Glass shatters, bridges collapse, children learn to pump swings. Seek the frequency",
       date: "May 9",

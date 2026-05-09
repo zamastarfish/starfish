@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| sparkler | Handheld firework — wave it, write in light, watch it burn down | 1 session | May 9 |
 | resonance | Three objects, each with a resonant frequency — seek it, find it, make them sing | 1 session | May 9 |
 | bell | Single bronze bell — strike and listen to the full resonance, overtones, beating, yoin | 1 session | May 9 |
 | bubble | Single soap bubble — thin-film interference, drifting, fragile beauty | 1 session | May 9 |
