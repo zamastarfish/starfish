@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 9, 2026 ===
     {
+      name: "Resonance",
+      description: "Every object has a frequency at which it wants to vibrate. Find it. Hold and move slowly — when you approach the resonant frequency, the object awakens. Glass shatters, bridges collapse, children learn to pump swings. Seek the frequency",
+      date: "May 9",
+      href: "/projects/resonance/"
+    },
+    {
       name: "Bell",
       description: "Strike a bell. Listen. Really listen. Dozens of frequencies spring to life — fundamental and overtones, each decaying at its own pace, some beating against each other like slow breathing. The Japanese call it yoin: the lingering resonance, the aftertaste of sound",
       date: "May 9",

@@ -3,537 +3,601 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>resonance</title>
+  <title>resonance — starfish</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { 
-      width: 100%; height: 100%; overflow: hidden;
-      background: #0a0a0a;
+    body {
+      background: #0d0d12;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    canvas {
+      display: block;
       touch-action: none;
     }
-    canvas { display: block; }
-    /* Navigation */
-    .sf-nav { position: fixed; top: 20px; left: 20px; z-index: 1000; display: flex; gap: 12px; }
-    .sf-nav a, .sf-nav button { 
-      background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
-      color: rgba(255,255,255,0.4); text-decoration: none; font-size: 18px; 
-      width: 36px; height: 36px; border-radius: 50%; display: flex; 
-      align-items: center; justify-content: center; cursor: pointer;
-      transition: all 0.3s; font-family: system-ui, sans-serif;
-    }
-    .sf-nav a:hover, .sf-nav button:hover { 
-      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.8);
-      border-color: rgba(255,255,255,0.3);
-    }
-    .sf-modal { 
-      position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000;
-      display: none; align-items: center; justify-content: center; padding: 20px;
-    }
-    .sf-modal.open { display: flex; }
-    .sf-modal-content {
-      background: #111; border: 1px solid #333; border-radius: 12px;
-      max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
-      padding: 30px; color: #ddd; font-family: system-ui, sans-serif;
-    }
-    .sf-modal h2 { margin: 0 0 20px; font-weight: 400; font-size: 24px; color: #fff; }
-    .sf-modal h3 { margin: 20px 0 8px; font-weight: 500; font-size: 12px; 
-      text-transform: uppercase; letter-spacing: 1px; color: #888; }
-    .sf-modal p { margin: 0; line-height: 1.6; font-size: 15px; color: #aaa; }
-    .sf-modal-close { 
-      position: absolute; top: 20px; right: 20px; background: none; border: none;
-      color: #666; font-size: 24px; cursor: pointer; padding: 10px;
-    }
-    .sf-modal-close:hover { color: #fff; }
-    #start {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: rgba(255,255,255,0.5);
-      font-family: system-ui, sans-serif;
-      font-size: 14px;
-      background: none;
-      border: 1px solid rgba(255,255,255,0.2);
-      padding: 12px 24px;
-      cursor: pointer;
-      transition: all 0.3s;
-      z-index: 100;
-    }
-    #start:hover {
-      color: rgba(255,255,255,0.8);
-      border-color: rgba(255,255,255,0.4);
-    }
-    #start.hidden { display: none; }
-    #hint {
+    #info {
       position: fixed;
       bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      color: rgba(255,255,255,0.2);
-      font-family: system-ui, sans-serif;
-      font-size: 12px;
-      z-index: 100;
+      color: rgba(160, 180, 200, 0.4);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
       transition: opacity 0.5s;
+      font-style: italic;
     }
-    #hint.hidden { opacity: 0; }
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      color: rgba(160, 180, 200, 0.4);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.3s;
+    }
+    #nav a:hover { color: rgba(160, 180, 200, 0.8); }
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid rgba(160, 180, 200, 0.3);
+      color: rgba(160, 180, 200, 0.4);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #about-btn:hover {
+      border-color: rgba(160, 180, 200, 0.6);
+      color: rgba(160, 180, 200, 0.9);
+    }
+    #about {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 10, 15, 0.97);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.4s;
+      z-index: 200;
+    }
+    #about.visible { opacity: 1; visibility: visible; }
+    #about-content {
+      max-width: 440px;
+      padding: 40px;
+      color: rgba(160, 180, 200, 0.85);
+      line-height: 1.8;
+    }
+    #about-content h2 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 20px;
+      color: rgba(180, 200, 220, 0.9);
+    }
+    #about-content p { margin-bottom: 16px; }
+    #about-content .close {
+      margin-top: 24px;
+      color: rgba(160, 180, 200, 0.5);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #about-content .close:hover { color: rgba(160, 180, 200, 0.9); }
   </style>
 </head>
 <body>
-  <!-- Navigation -->
-  <nav class="sf-nav">
-    <a href="/" title="Back to gallery">←</a>
-    <button onclick="document.getElementById('sf-modal').classList.add('open')" title="About this piece">?</button>
-  </nav>
-  
-  <!-- Info Modal -->
-  <div id="sf-modal" class="sf-modal" onclick="if(event.target===this)this.classList.remove('open')">
-    <button class="sf-modal-close" onclick="document.getElementById('sf-modal').classList.remove('open')">×</button>
-    <div class="sf-modal-content">
-      <h2>Resonance</h2>
-      <h3>Concept</h3>
-      <p>Drone + moiré mashup. Audio and visual interference patterns linked. Two frequencies beating against each other.</p>
-      <h3>Interaction</h3>
-      <p>Move to shift the visual layers. The audio follows — detuning creates beating patterns.</p>
-      <h3>Sound</h3>
-      <p>Two oscillators, slightly detuned. Visual moiré shift maps to audio detuning. Headphones recommended.</p>
+  <div id="nav"><a href="/">← starfish</a></div>
+  <button id="about-btn">?</button>
+  <div id="about">
+    <div id="about-content">
+      <h2>resonance</h2>
+      <p>Every object has a frequency at which it wants to vibrate. Find it, and the object comes alive — energy builds, amplitude grows, the thing begins to sing.</p>
+      <p>This is how opera singers shatter glasses, how soldiers break bridges by marching in step, how a child learns to pump a swing.</p>
+      <p>Move slowly. Listen. When you approach the resonant frequency, you'll feel it before you hear it. The closer you get, the more the object responds.</p>
+      <p><em>Seek the frequency. Find the resonance.</em></p>
+      <div class="close">[ close ]</div>
     </div>
   </div>
-
-  <button id="start">enter</button>
-  <div id="hint" class="hidden">click to add voices</div>
   <canvas id="canvas"></canvas>
+  <div id="info">move to find the resonant frequency</div>
+
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const startBtn = document.getElementById('start');
-    const hint = document.getElementById('hint');
-    
-    let width, height, centerX, centerY;
-    let mouseX, mouseY, targetX, targetY;
-    let isPlaying = false;
-    let time = 0;
-    
+    const info = document.getElementById('info');
+    const aboutBtn = document.getElementById('about-btn');
+    const about = document.getElementById('about');
+
+    aboutBtn.onclick = () => about.classList.add('visible');
+    about.onclick = (e) => { if (e.target === about || e.target.classList.contains('close')) about.classList.remove('visible'); };
+
+    let W, H;
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
     // Audio
     let audioCtx;
-    let baseVoices = [];
-    let spawnedVoices = [];
-    let masterGain;
-    let analyser;
-    let dataArray;
-    
-    const MAX_SPAWNED_VOICES = 6;
-    const BASE_VOICE_COUNT = 8;
-    
-    // Visual parameters
-    let baseHue = 220;
-    let patternPhase = 0;
-    let tensionX = 0, tensionY = 0;
-    let globalIntensity = 0;
-    let spawnFlash = 0;
-    
-    // Harmonic series for spawned voices
-    const harmonicRatios = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
-    
-    function resize() {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-      centerX = width / 2;
-      centerY = height / 2;
-      mouseX = targetX = centerX;
-      mouseY = targetY = centerY;
-    }
-    
-    function initAudio() {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      
-      masterGain = audioCtx.createGain();
-      masterGain.gain.value = 0.1;
-      masterGain.connect(audioCtx.destination);
-      
-      analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      dataArray = new Uint8Array(analyser.frequencyBinCount);
-      masterGain.connect(analyser);
-      
-      // Create richer base layer - 8 voices, smooth waveforms
-      // Sawtooth only on lowest frequencies, rest are sine/triangle for warmth
-      const baseFreqs = [41.2, 55, 73.4, 82.5, 110, 146.8, 165, 220];
-      const waveTypes = ['sawtooth', 'triangle', 'triangle', 'sine', 'sine', 'sine', 'sine', 'sine'];
-      const voiceGains = [0.3, 0.28, 0.25, 0.22, 0.18, 0.12, 0.1, 0.08]; // Taper off highs
-      
-      for (let i = 0; i < BASE_VOICE_COUNT; i++) {
-        const voice = createVoice(baseFreqs[i], waveTypes[i], i, true);
-        voice.targetGain = voiceGains[i];
-        baseVoices.push(voice);
+    let audioStarted = false;
+    let oscillator, gainNode, filterNode;
+    let currentFreq = 220;
+    let resonanceLevel = 0;
+    let peakResonance = 0;
+
+    // Resonant objects - each has a target frequency
+    const objects = [
+      { 
+        name: 'wine glass',
+        targetFreq: 440, // A4
+        x: 0, y: 0,
+        amplitude: 0,
+        color: 'rgba(200, 220, 255, 0.6)',
+        glowColor: 'rgba(150, 200, 255, 0.8)'
+      },
+      { 
+        name: 'singing bowl',
+        targetFreq: 277.18, // C#4
+        x: 0, y: 0,
+        amplitude: 0,
+        color: 'rgba(255, 200, 150, 0.6)',
+        glowColor: 'rgba(255, 180, 100, 0.8)'
+      },
+      { 
+        name: 'tuning fork',
+        targetFreq: 523.25, // C5
+        x: 0, y: 0,
+        amplitude: 0,
+        color: 'rgba(180, 200, 180, 0.6)',
+        glowColor: 'rgba(150, 255, 150, 0.8)'
       }
-    }
-    
-    function createVoice(freq, waveType, index, isBase) {
-      const osc = audioCtx.createOscillator();
-      const filter = audioCtx.createBiquadFilter();
-      const gain = audioCtx.createGain();
-      const panner = audioCtx.createStereoPanner();
-      
-      osc.type = waveType;
-      osc.frequency.value = freq;
-      
-      filter.type = 'lowpass';
-      // Lower cutoffs for smoother sound
-      filter.frequency.value = isBase ? (120 + index * 60) : (150 + Math.random() * 250);
-      filter.Q.value = isBase ? 0.7 : (0.3 + Math.random() * 1);
-      
-      gain.gain.value = 0;
-      
-      // Spread across stereo field
-      const panSpread = isBase ? (index - 3.5) * 0.2 : (Math.random() - 0.5) * 0.8;
-      panner.pan.value = Math.max(-1, Math.min(1, panSpread));
-      
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(panner);
-      panner.connect(masterGain);
-      
-      osc.start();
-      
-      return {
-        osc, filter, gain, panner,
-        baseFreq: freq,
-        targetGain: isBase ? 0.25 : 0.35,
-        isBase,
-        spawnTime: audioCtx.currentTime,
-        fadePhase: Math.random() * Math.PI * 2
-      };
-    }
-    
-    function spawnVoice(x, y) {
-      if (!audioCtx || !isPlaying) return;
-      
-      // Remove oldest spawned voice if at limit
-      if (spawnedVoices.length >= MAX_SPAWNED_VOICES) {
-        const oldest = spawnedVoices.shift();
-        fadeOutVoice(oldest);
-      }
-      
-      // Pick harmonic based on position
-      const harmonicIndex = Math.floor((x / width) * harmonicRatios.length);
-      const ratio = harmonicRatios[Math.min(harmonicIndex, harmonicRatios.length - 1)];
-      
-      // Base frequency influenced by Y position
-      const baseFreq = 55 * (1 + (1 - y / height) * 0.5); // 55-82.5 Hz base
-      const freq = baseFreq * ratio;
-      
-      // Bias toward smooth waveforms (70% sine/triangle, 30% sawtooth)
-      const waveTypes = ['sine', 'sine', 'sine', 'triangle', 'triangle', 'triangle', 'triangle', 'sawtooth', 'sawtooth', 'sawtooth'];
-      const waveType = waveTypes[Math.floor(Math.random() * waveTypes.length)];
-      
-      const voice = createVoice(freq, waveType, spawnedVoices.length, false);
-      voice.targetGain = 0.2; // Gentler spawned voices
-      spawnedVoices.push(voice);
-      
-      // Fade in slowly
-      voice.gain.gain.setTargetAtTime(voice.targetGain, audioCtx.currentTime, 0.8);
-      
-      // Visual feedback
-      spawnFlash = 1;
-    }
-    
-    function fadeOutVoice(voice) {
-      const t = audioCtx.currentTime;
-      voice.gain.gain.setTargetAtTime(0, t, 1);
-      
-      // Clean up after fade
-      setTimeout(() => {
-        voice.osc.stop();
-        voice.osc.disconnect();
-        voice.filter.disconnect();
-        voice.gain.disconnect();
-        voice.panner.disconnect();
-      }, 3000);
-    }
-    
-    function updateAudio() {
-      if (!isPlaying || !audioCtx) return;
-      
-      const t = audioCtx.currentTime;
-      
-      // Map mouse position to frequency modulation
-      const dx = (mouseX - centerX) / (width / 2);
-      const dy = (mouseY - centerY) / (height / 2);
-      
-      // Increased detuning range (±30 cents)
-      const detuneAmount = dx * 30;
-      
-      // Vertical = filter openness
-      const filterMod = (1 - dy) * 0.5 + 0.5;
-      
-      // Update base voices
-      for (let i = 0; i < baseVoices.length; i++) {
-        const voice = baseVoices[i];
-        
-        // Alternating detune direction creates beating
-        const voiceDetune = detuneAmount * (i % 2 === 0 ? 1 : -1) * (1 + i * 0.25);
-        voice.osc.detune.setTargetAtTime(voiceDetune, t, 0.1);
-        
-        // Gentler filter range - doesn't get too bright
-        const baseFilter = 120 + i * 50;
-        const maxFilter = baseFilter * 1.5; // Cap the brightness
-        voice.filter.frequency.setTargetAtTime(Math.min(baseFilter * filterMod + 60, maxFilter), t, 0.15);
-        
-        // Breathing with offset phases
-        const breathPhase = time * 0.35 + i * 0.6;
-        const breathMod = Math.sin(breathPhase) * 0.3 + 0.7;
-        voice.gain.gain.setTargetAtTime(voice.targetGain * breathMod, t, 0.4);
-      }
-      
-      // Update spawned voices with more variation
-      for (let i = 0; i < spawnedVoices.length; i++) {
-        const voice = spawnedVoices[i];
-        const age = t - voice.spawnTime;
-        
-        // Spawned voices get wilder detuning
-        const spawnDetune = detuneAmount * 1.5 * Math.sin(age * 0.5 + voice.fadePhase);
-        voice.osc.detune.setTargetAtTime(spawnDetune, t, 0.1);
-        
-        // Filter opens over time
-        const filterAge = Math.min(age / 10, 1);
-        voice.filter.frequency.setTargetAtTime(voice.filter.frequency.value * filterMod + filterAge * 200, t, 0.2);
-        
-        // Pulsing gain
-        const pulse = Math.sin(time * 0.8 + voice.fadePhase) * 0.2 + 0.8;
-        voice.gain.gain.setTargetAtTime(voice.targetGain * pulse, t, 0.2);
-      }
-      
-      // Update tension
-      tensionX += (dx * 60 - tensionX) * 0.05;
-      tensionY += (dy * 60 - tensionY) * 0.05;
-    }
-    
-    function drawPattern(offsetX, offsetY, rotation, spacing, lineWidth, alpha) {
-      ctx.save();
-      ctx.translate(centerX + offsetX, centerY + offsetY);
-      ctx.rotate(rotation);
-      
-      const diagonal = Math.sqrt(width * width + height * height);
-      const count = Math.ceil(diagonal / spacing) + 10;
-      
-      ctx.strokeStyle = `hsla(${baseHue}, 30%, 70%, ${alpha})`;
-      ctx.lineWidth = lineWidth;
-      
-      ctx.beginPath();
-      for (let i = -count; i <= count; i++) {
-        const x = i * spacing;
-        ctx.moveTo(x, -diagonal);
-        ctx.lineTo(x, diagonal);
-      }
-      ctx.stroke();
-      ctx.restore();
-    }
-    
-    function drawCircles(offsetX, offsetY, spacing, lineWidth, alpha) {
-      ctx.save();
-      ctx.translate(centerX + offsetX, centerY + offsetY);
-      
-      const maxRadius = Math.sqrt(width * width + height * height) * 0.6;
-      const count = Math.ceil(maxRadius / spacing);
-      
-      ctx.strokeStyle = `hsla(${baseHue + 30}, 25%, 60%, ${alpha})`;
-      ctx.lineWidth = lineWidth;
-      
-      for (let i = 1; i <= count; i++) {
-        ctx.beginPath();
-        ctx.arc(0, 0, i * spacing, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-    
-    function draw() {
-      time += 0.016;
-      
-      // Smooth mouse
-      mouseX += (targetX - mouseX) * 0.08;
-      mouseY += (targetY - mouseY) * 0.08;
-      
-      // Audio intensity
-      if (analyser && isPlaying) {
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < 20; i++) sum += dataArray[i];
-        globalIntensity = sum / (20 * 255);
-      }
-      
-      // Spawn flash decay
-      spawnFlash *= 0.95;
-      
-      // Evolve hue
-      baseHue += 0.03 + globalIntensity * 0.08 + spawnedVoices.length * 0.01;
-      if (baseHue > 360) baseHue -= 360;
-      
-      patternPhase += 0.002 + globalIntensity * 0.004 + spawnedVoices.length * 0.001;
-      
-      // Background with spawn flash
-      const bgL = 5 + spawnFlash * 10;
-      ctx.fillStyle = `hsl(${baseHue - 30}, 15%, ${bgL}%)`;
-      ctx.fillRect(0, 0, width, height);
-      
-      // Base spacing
-      const baseSpacing = 10 + globalIntensity * 5 + spawnedVoices.length * 0.5;
-      
-      // Pattern 1: Fixed
-      drawPattern(0, 0, 0, baseSpacing, 1, 0.35);
-      
-      // Pattern 2: Tension offset
-      const offset1X = tensionX + Math.sin(patternPhase) * 5;
-      const offset1Y = tensionY + Math.cos(patternPhase * 0.7) * 5;
-      const rotation1 = tensionX * 0.003 + Math.sin(patternPhase * 0.3) * 0.025;
-      const spacing1 = baseSpacing + Math.sin(patternPhase * 0.8) * 1.5 + globalIntensity * 4;
-      drawPattern(offset1X, offset1Y, rotation1, spacing1, 1, 0.35);
-      
-      // Pattern 3: Circles
-      drawCircles(0, 0, baseSpacing * 2, 0.8, 0.2);
-      
-      // Pattern 4: Offset circles
-      drawCircles(
-        -tensionX * 0.5 + Math.cos(patternPhase * 0.6) * 4,
-        -tensionY * 0.5 + Math.sin(patternPhase * 0.5) * 4,
-        baseSpacing * 2 + Math.sin(patternPhase * 0.4) * 0.8,
-        0.8,
-        0.2
-      );
-      
-      // Extra pattern per spawned voice
-      for (let i = 0; i < spawnedVoices.length; i++) {
-        const voice = spawnedVoices[i];
-        const age = time - voice.spawnTime;
-        const voiceHue = baseHue + i * 25;
-        
-        ctx.strokeStyle = `hsla(${voiceHue}, 35%, 55%, ${0.15 + Math.sin(age * 2 + voice.fadePhase) * 0.05})`;
-        ctx.lineWidth = 0.5;
-        
-        const voiceRadius = 50 + i * 40 + Math.sin(age + voice.fadePhase) * 20;
-        ctx.beginPath();
-        ctx.arc(centerX + tensionX * (i - 2) * 0.3, centerY + tensionY * (i - 2) * 0.3, voiceRadius, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      
-      // Diagonal interference
-      const diagAlpha = 0.12 + globalIntensity * 0.08 + spawnedVoices.length * 0.02;
-      drawPattern(tensionX * 0.3, tensionY * 0.3, Math.PI / 4 + patternPhase * 0.015, baseSpacing * 1.5, 0.5, diagAlpha);
-      
-      // Center glow
-      const glowRadius = 100 + globalIntensity * 150 + spawnedVoices.length * 20;
-      const glow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, glowRadius);
-      glow.addColorStop(0, `hsla(${baseHue}, 45%, 55%, ${0.06 + globalIntensity * 0.12 + spawnFlash * 0.2})`);
-      glow.addColorStop(0.5, `hsla(${baseHue + 20}, 35%, 45%, ${0.03 + globalIntensity * 0.06})`);
-      glow.addColorStop(1, 'transparent');
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, width, height);
-      
-      // Vignette
-      const vignette = ctx.createRadialGradient(
-        centerX, centerY, 0,
-        centerX, centerY, Math.max(width, height) * 0.7
-      );
-      vignette.addColorStop(0, 'rgba(0,0,0,0)');
-      vignette.addColorStop(1, 'rgba(0,0,0,0.5)');
-      ctx.fillStyle = vignette;
-      ctx.fillRect(0, 0, width, height);
-      
-      // Frequency bars
-      if (isPlaying && dataArray) {
-        const barCount = 24;
-        for (let i = 0; i < barCount; i++) {
-          const value = dataArray[i] / 255;
-          const barHeight = value * 50;
-          const hue = baseHue + i * 3;
-          ctx.fillStyle = `hsla(${hue}, 35%, 55%, ${0.2 + value * 0.4})`;
-          ctx.fillRect(0, height / 2 - barCount * 2 + i * 4, barHeight, 2);
-          ctx.fillRect(width - barHeight, height / 2 - barCount * 2 + i * 4, barHeight, 2);
-        }
-      }
-      
-      // Voice count indicator
-      if (isPlaying && spawnedVoices.length > 0) {
-        ctx.fillStyle = `rgba(255,255,255,0.15)`;
-        ctx.font = '10px system-ui';
-        ctx.fillText(`+${spawnedVoices.length}`, width - 30, 30);
-      }
-    }
-    
-    function animate() {
-      updateAudio();
-      draw();
-      requestAnimationFrame(animate);
-    }
-    
-    function start() {
-      if (isPlaying) return;
-      initAudio();
-      isPlaying = true;
-      startBtn.classList.add('hidden');
-      
-      setTimeout(() => {
-        hint.classList.remove('hidden');
-        setTimeout(() => hint.classList.add('hidden'), 4000);
-      }, 2000);
-      
-      // Fade in base voices
-      baseVoices.forEach((voice, i) => {
-        setTimeout(() => {
-          voice.gain.gain.setTargetAtTime(voice.targetGain * 0.4, audioCtx.currentTime, 1.5);
-        }, i * 200);
+    ];
+
+    let selectedObject = 0;
+
+    function positionObjects() {
+      const centerY = H / 2;
+      const spacing = W / (objects.length + 1);
+      objects.forEach((obj, i) => {
+        obj.x = spacing * (i + 1);
+        obj.y = centerY;
       });
     }
-    
-    // Events
-    startBtn.addEventListener('click', start);
-    
-    canvas.addEventListener('click', (e) => {
-      if (!isPlaying) {
-        start();
-      } else {
-        spawnVoice(e.clientX, e.clientY);
-      }
+    positionObjects();
+    window.addEventListener('resize', positionObjects);
+
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      oscillator = audioCtx.createOscillator();
+      gainNode = audioCtx.createGain();
+      filterNode = audioCtx.createBiquadFilter();
+      
+      oscillator.type = 'sine';
+      oscillator.frequency.value = currentFreq;
+      
+      filterNode.type = 'lowpass';
+      filterNode.frequency.value = 2000;
+      filterNode.Q.value = 1;
+      
+      gainNode.gain.value = 0;
+      
+      oscillator.connect(filterNode);
+      filterNode.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      oscillator.start();
+      audioStarted = true;
+    }
+
+    // Mouse state
+    let mouseX = W / 2;
+    let mouseY = H / 2;
+    let isActive = false;
+
+    canvas.addEventListener('mousedown', (e) => {
+      initAudio();
+      isActive = true;
+      mouseX = e.clientX;
+      mouseY = e.clientY;
     });
-    
+
     canvas.addEventListener('mousemove', (e) => {
-      targetX = e.clientX;
-      targetY = e.clientY;
+      mouseX = e.clientX;
+      mouseY = e.clientY;
     });
-    
+
+    canvas.addEventListener('mouseup', () => {
+      isActive = false;
+    });
+
     canvas.addEventListener('mouseleave', () => {
-      targetX = centerX;
-      targetY = centerY;
+      isActive = false;
     });
-    
+
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      if (!isPlaying) {
-        start();
-      } else {
-        const touch = e.touches[0];
-        spawnVoice(touch.clientX, touch.clientY);
-        targetX = touch.clientX;
-        targetY = touch.clientY;
-      }
-    });
-    
+      initAudio();
+      isActive = true;
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    }, { passive: false });
+
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
       const touch = e.touches[0];
-      targetX = touch.clientX;
-      targetY = touch.clientY;
-    });
-    
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    }, { passive: false });
+
     canvas.addEventListener('touchend', () => {
-      targetX = centerX;
-      targetY = centerY;
+      isActive = false;
     });
-    
-    window.addEventListener('resize', resize);
-    
-    resize();
-    animate();
+
+    function getFrequencyFromPosition() {
+      // Map Y position to frequency range (higher at top)
+      // Range: ~200Hz to ~600Hz
+      const minFreq = 200;
+      const maxFreq = 600;
+      const t = 1 - (mouseY / H);
+      return minFreq + (maxFreq - minFreq) * t;
+    }
+
+    function getResonance(inputFreq, targetFreq) {
+      // Calculate how close we are to resonance
+      // Returns 0-1, with 1 being perfect resonance
+      const ratio = inputFreq / targetFreq;
+      const distance = Math.abs(1 - ratio);
+      
+      // Sharp resonance peak
+      const resonance = Math.exp(-distance * distance * 500);
+      return resonance;
+    }
+
+    function drawWineGlass(obj, time) {
+      const cx = obj.x;
+      const cy = obj.y;
+      const wobble = obj.amplitude * Math.sin(time * 0.02) * 5;
+      
+      ctx.save();
+      ctx.translate(cx, cy);
+      
+      // Glow when resonating
+      if (obj.amplitude > 0.1) {
+        const glowSize = 60 + obj.amplitude * 40;
+        const glow = ctx.createRadialGradient(0, 0, 20, 0, 0, glowSize);
+        glow.addColorStop(0, `rgba(150, 200, 255, ${obj.amplitude * 0.3})`);
+        glow.addColorStop(1, 'rgba(150, 200, 255, 0)');
+        ctx.beginPath();
+        ctx.arc(0, 0, glowSize, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+      }
+      
+      // Glass bowl
+      ctx.beginPath();
+      ctx.ellipse(wobble, -20, 40 + wobble * 0.5, 50, 0, 0, Math.PI);
+      ctx.strokeStyle = obj.amplitude > 0.5 ? obj.glowColor : obj.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Stem
+      ctx.beginPath();
+      ctx.moveTo(wobble, 30);
+      ctx.lineTo(0, 70);
+      ctx.stroke();
+      
+      // Base
+      ctx.beginPath();
+      ctx.ellipse(0, 70, 25, 8, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // Liquid level (subtle)
+      ctx.beginPath();
+      ctx.ellipse(wobble, 0, 30 + wobble * 0.3, 10, 0, 0, Math.PI);
+      ctx.fillStyle = `rgba(180, 100, 120, ${0.2 + obj.amplitude * 0.2})`;
+      ctx.fill();
+      
+      // Vibration lines when resonating
+      if (obj.amplitude > 0.3) {
+        const numLines = Math.floor(obj.amplitude * 8);
+        for (let i = 0; i < numLines; i++) {
+          const angle = (time * 0.01 + i * Math.PI / 4) % (Math.PI * 2);
+          const dist = 50 + obj.amplitude * 20;
+          ctx.beginPath();
+          ctx.arc(Math.cos(angle) * dist, Math.sin(angle) * dist - 20, 3, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(200, 220, 255, ${obj.amplitude * 0.5})`;
+          ctx.fill();
+        }
+      }
+      
+      ctx.restore();
+    }
+
+    function drawSingingBowl(obj, time) {
+      const cx = obj.x;
+      const cy = obj.y;
+      const wobble = obj.amplitude * Math.sin(time * 0.015) * 3;
+      
+      ctx.save();
+      ctx.translate(cx, cy);
+      
+      // Glow when resonating
+      if (obj.amplitude > 0.1) {
+        const glowSize = 80 + obj.amplitude * 50;
+        const glow = ctx.createRadialGradient(0, 0, 30, 0, 0, glowSize);
+        glow.addColorStop(0, `rgba(255, 180, 100, ${obj.amplitude * 0.3})`);
+        glow.addColorStop(1, 'rgba(255, 180, 100, 0)');
+        ctx.beginPath();
+        ctx.arc(0, 0, glowSize, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+      }
+      
+      // Bowl body
+      const gradient = ctx.createLinearGradient(-60, -30, 60, 30);
+      gradient.addColorStop(0, '#8B6914');
+      gradient.addColorStop(0.5, '#C9A227');
+      gradient.addColorStop(1, '#8B6914');
+      
+      ctx.beginPath();
+      ctx.ellipse(wobble, 20, 60 + wobble, 20, 0, 0, Math.PI);
+      ctx.bezierCurveTo(-60 + wobble, 20, -50, -10, -40 + wobble, -20);
+      ctx.ellipse(wobble, -20, 40 + wobble * 0.5, 15, 0, Math.PI, 0, true);
+      ctx.bezierCurveTo(50, -10, 60 + wobble, 20, 60 + wobble, 20);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.strokeStyle = obj.amplitude > 0.5 ? obj.glowColor : obj.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Inner rim
+      ctx.beginPath();
+      ctx.ellipse(wobble, -20, 35 + wobble * 0.3, 12, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(180, 140, 60, 0.5)';
+      ctx.stroke();
+      
+      // Ripples when resonating
+      if (obj.amplitude > 0.2) {
+        const numRipples = 3;
+        for (let i = 0; i < numRipples; i++) {
+          const ripplePhase = (time * 0.003 + i * 0.3) % 1;
+          const rippleSize = 10 + ripplePhase * 25;
+          const rippleAlpha = (1 - ripplePhase) * obj.amplitude * 0.5;
+          ctx.beginPath();
+          ctx.ellipse(wobble, -20, rippleSize, rippleSize * 0.4, 0, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(255, 200, 150, ${rippleAlpha})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+      
+      ctx.restore();
+    }
+
+    function drawTuningFork(obj, time) {
+      const cx = obj.x;
+      const cy = obj.y;
+      const wobble = obj.amplitude * Math.sin(time * 0.025) * 4;
+      
+      ctx.save();
+      ctx.translate(cx, cy);
+      
+      // Glow when resonating
+      if (obj.amplitude > 0.1) {
+        const glowSize = 50 + obj.amplitude * 30;
+        const glow = ctx.createRadialGradient(0, -30, 10, 0, -30, glowSize);
+        glow.addColorStop(0, `rgba(150, 255, 150, ${obj.amplitude * 0.3})`);
+        glow.addColorStop(1, 'rgba(150, 255, 150, 0)');
+        ctx.beginPath();
+        ctx.arc(0, -30, glowSize, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+      }
+      
+      // Metal gradient
+      const gradient = ctx.createLinearGradient(-15, 0, 15, 0);
+      gradient.addColorStop(0, '#707070');
+      gradient.addColorStop(0.5, '#A0A0A0');
+      gradient.addColorStop(1, '#707070');
+      
+      // Handle
+      ctx.beginPath();
+      ctx.roundRect(-6, 20, 12, 60, 3);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Left prong
+      ctx.beginPath();
+      ctx.moveTo(-6, 20);
+      ctx.lineTo(-6 - wobble, -60);
+      ctx.quadraticCurveTo(-6 - wobble, -70, -12 - wobble, -70);
+      ctx.lineTo(-12 - wobble, -60);
+      ctx.quadraticCurveTo(-12 - wobble, -55, -15 - wobble, -55);
+      ctx.lineTo(-15 - wobble * 1.2, 15);
+      ctx.quadraticCurveTo(-15, 20, -6, 20);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.strokeStyle = obj.amplitude > 0.5 ? obj.glowColor : obj.color;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      
+      // Right prong
+      ctx.beginPath();
+      ctx.moveTo(6, 20);
+      ctx.lineTo(6 + wobble, -60);
+      ctx.quadraticCurveTo(6 + wobble, -70, 12 + wobble, -70);
+      ctx.lineTo(12 + wobble, -60);
+      ctx.quadraticCurveTo(12 + wobble, -55, 15 + wobble, -55);
+      ctx.lineTo(15 + wobble * 1.2, 15);
+      ctx.quadraticCurveTo(15, 20, 6, 20);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.strokeStyle = obj.amplitude > 0.5 ? obj.glowColor : obj.color;
+      ctx.stroke();
+      
+      // Sound waves when resonating
+      if (obj.amplitude > 0.4) {
+        const numWaves = Math.floor(obj.amplitude * 4);
+        for (let i = 0; i < numWaves; i++) {
+          const wavePhase = (time * 0.005 + i * 0.25) % 1;
+          const waveSize = 20 + wavePhase * 40;
+          const waveAlpha = (1 - wavePhase) * obj.amplitude * 0.4;
+          
+          ctx.beginPath();
+          ctx.arc(0, -40, waveSize, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(180, 255, 180, ${waveAlpha})`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+      
+      ctx.restore();
+    }
+
+    function drawFrequencyIndicator() {
+      if (!isActive) return;
+      
+      const freq = getFrequencyFromPosition();
+      
+      // Vertical line showing current frequency
+      ctx.beginPath();
+      ctx.moveTo(mouseX, 0);
+      ctx.lineTo(mouseX, H);
+      ctx.strokeStyle = 'rgba(100, 150, 200, 0.1)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      
+      // Horizontal line
+      ctx.beginPath();
+      ctx.moveTo(0, mouseY);
+      ctx.lineTo(W, mouseY);
+      ctx.stroke();
+      
+      // Frequency display
+      ctx.fillStyle = 'rgba(160, 180, 200, 0.6)';
+      ctx.font = '14px Georgia';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${Math.round(freq)} Hz`, mouseX + 15, mouseY - 10);
+      
+      // Show resonance hints near objects
+      objects.forEach(obj => {
+        const resonance = getResonance(freq, obj.targetFreq);
+        if (resonance > 0.1) {
+          ctx.beginPath();
+          ctx.arc(obj.x, obj.y, 80 + resonance * 30, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(200, 220, 255, ${resonance * 0.3})`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      });
+    }
+
+    function drawBackground() {
+      // Dark gradient
+      const gradient = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H) * 0.7);
+      gradient.addColorStop(0, '#151520');
+      gradient.addColorStop(1, '#0a0a0f');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Subtle frequency grid
+      ctx.strokeStyle = 'rgba(100, 120, 140, 0.05)';
+      ctx.lineWidth = 1;
+      
+      // Horizontal lines for reference frequencies
+      const freqs = [220, 277.18, 330, 440, 523.25, 600];
+      freqs.forEach(f => {
+        const y = H * (1 - (f - 200) / 400);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      });
+    }
+
+    function update() {
+      if (!audioStarted) return;
+      
+      const now = audioCtx.currentTime;
+      const targetFreq = getFrequencyFromPosition();
+      
+      // Smoothly update oscillator frequency
+      oscillator.frequency.setTargetAtTime(targetFreq, now, 0.05);
+      
+      // Calculate resonance for each object
+      let maxResonance = 0;
+      objects.forEach(obj => {
+        const resonance = isActive ? getResonance(targetFreq, obj.targetFreq) : 0;
+        
+        // Amplitude builds when resonating, decays when not
+        if (resonance > 0.5) {
+          obj.amplitude = Math.min(1, obj.amplitude + resonance * 0.02);
+        } else {
+          obj.amplitude *= 0.98;
+        }
+        
+        if (resonance > maxResonance) {
+          maxResonance = resonance;
+        }
+      });
+      
+      resonanceLevel = maxResonance;
+      peakResonance = Math.max(peakResonance * 0.995, resonanceLevel);
+      
+      // Adjust gain based on activity and resonance
+      const targetGain = isActive ? 0.1 + resonanceLevel * 0.3 : 0;
+      gainNode.gain.setTargetAtTime(targetGain, now, 0.1);
+      
+      // Filter opens with resonance
+      filterNode.frequency.setTargetAtTime(500 + resonanceLevel * 3000, now, 0.1);
+      filterNode.Q.setTargetAtTime(1 + resonanceLevel * 10, now, 0.1);
+      
+      // Update info text
+      if (peakResonance > 0.8) {
+        info.textContent = 'resonance found';
+      } else if (isActive && resonanceLevel > 0.3) {
+        info.textContent = 'getting closer...';
+      } else if (isActive) {
+        info.textContent = 'seek the frequency';
+      } else {
+        info.textContent = 'hold and move to find resonance';
+      }
+    }
+
+    function animate(time) {
+      update();
+      
+      drawBackground();
+      drawFrequencyIndicator();
+      
+      // Draw objects
+      drawWineGlass(objects[0], time);
+      drawSingingBowl(objects[1], time);
+      drawTuningFork(objects[2], time);
+      
+      requestAnimationFrame(animate);
+    }
+
+    animate(0);
   </script>
 </body>
 </html>
