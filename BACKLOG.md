@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| bubble | Single soap bubble — thin-film interference, drifting, fragile beauty | 1 session | May 9 |
 | feather | Drifting down through air — physics of something light negotiating gravity | 1 session | May 8 |
 | eclipse | Total solar eclipse — moon crosses sun, corona blazes, diamond ring | 1 session | May 8 |
 | memory | Unreliable recall — see a pattern, try to remember it, watch it drift | 1 session | May 8 |

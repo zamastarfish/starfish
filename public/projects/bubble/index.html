@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>bubble — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: linear-gradient(to bottom, #1a1a2e, #16213e);
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(180, 200, 220, 0.5);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.5s;
+      font-style: italic;
+    }
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      color: rgba(180, 200, 220, 0.5);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.3s;
+    }
+    #nav a:hover { color: rgba(180, 200, 220, 0.9); }
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid rgba(180, 200, 220, 0.3);
+      color: rgba(180, 200, 220, 0.5);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #about-btn:hover {
+      border-color: rgba(180, 200, 220, 0.6);
+      color: rgba(180, 200, 220, 0.9);
+    }
+    #about {
+      position: fixed;
+      inset: 0;
+      background: rgba(20, 25, 40, 0.97);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.4s;
+      z-index: 200;
+    }
+    #about.visible { opacity: 1; visibility: visible; }
+    #about-content {
+      max-width: 440px;
+      padding: 40px;
+      color: rgba(180, 200, 220, 0.85);
+      line-height: 1.8;
+    }
+    #about-content h2 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 20px;
+      color: rgba(200, 220, 240, 0.9);
+    }
+    #about-content p { margin-bottom: 16px; }
+    #about-content .close {
+      margin-top: 24px;
+      color: rgba(180, 200, 220, 0.5);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #about-content .close:hover { color: rgba(180, 200, 220, 0.9); }
+  </style>
+</head>
+<body>
+  <div id="nav"><a href="/">← starfish</a></div>
+  <button id="about-btn">?</button>
+  <div id="about">
+    <div id="about-content">
+      <h2>bubble</h2>
+      <p>A soap film only nanometers thick, yet it holds together a sphere of air. Light waves interfere as they bounce between the inner and outer surfaces, painting rainbows that shift as the film drains.</p>
+      <p>The colors move because the bubble is always dying. Soap drains downward, the film thins at the top, and eventually—inevitably—it finds a weakness.</p>
+      <p>Move to create air currents. Click to blow a new bubble. Watch the colors swirl. Don't touch—or do.</p>
+      <p><em>Everything this beautiful is temporary.</em></p>
+      <div class="close">[ close ]</div>
+    </div>
+  </div>
+  <canvas id="canvas"></canvas>
+  <div id="info">click to blow a bubble</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const aboutBtn = document.getElementById('about-btn');
+    const about = document.getElementById('about');
+
+    aboutBtn.onclick = () => about.classList.add('visible');
+    about.onclick = (e) => { if (e.target === about || e.target.classList.contains('close')) about.classList.remove('visible'); };
+
+    let W, H;
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Audio
+    let audioCtx, masterGain;
+    let audioStarted = false;
+
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.2;
+      masterGain.connect(audioCtx.destination);
+      audioStarted = true;
+    }
+
+    function playBirthSound() {
+      if (!audioStarted) return;
+      const now = audioCtx.currentTime;
+      
+      // Soft breath/blow sound
+      const noise = audioCtx.createBufferSource();
+      const bufferSize = audioCtx.sampleRate * 0.5;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3));
+      }
+      noise.buffer = buffer;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 800;
+      filter.Q.value = 1;
+      
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+      
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(masterGain);
+      noise.start(now);
+    }
+
+    function playPopSound() {
+      if (!audioStarted) return;
+      const now = audioCtx.currentTime;
+      
+      // Quick pop - high frequency burst
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(2000, now);
+      osc.frequency.exponentialRampToValueAtTime(200, now + 0.05);
+      
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      
+      osc.start(now);
+      osc.stop(now + 0.1);
+      
+      // Add some noise for texture
+      const noise = audioCtx.createBufferSource();
+      const bufferSize = audioCtx.sampleRate * 0.1;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.1));
+      }
+      noise.buffer = buffer;
+      
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.setValueAtTime(0.2, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      
+      noise.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      noise.start(now);
+    }
+
+    function playAmbientTone(bubble) {
+      if (!audioStarted || bubble.drone) return;
+      
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+      
+      // Ethereal shimmer based on bubble size
+      const baseFreq = 200 + bubble.radius * 2;
+      osc1.type = 'sine';
+      osc1.frequency.value = baseFreq;
+      osc2.type = 'sine';
+      osc2.frequency.value = baseFreq * 1.5;
+      
+      filter.type = 'lowpass';
+      filter.frequency.value = 600;
+      
+      gain.gain.value = 0.05;
+      
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(filter);
+      filter.connect(masterGain);
+      
+      osc1.start();
+      osc2.start();
+      
+      bubble.drone = { osc1, osc2, gain, filter };
+    }
+
+    function updateAmbientTone(bubble) {
+      if (!bubble.drone) return;
+      const now = audioCtx.currentTime;
+      
+      // Pitch rises slightly as bubble thins
+      const baseFreq = 200 + bubble.radius * 2 + (1 - bubble.thickness) * 100;
+      bubble.drone.osc1.frequency.setTargetAtTime(baseFreq, now, 0.1);
+      bubble.drone.osc2.frequency.setTargetAtTime(baseFreq * 1.5, now, 0.1);
+      
+      // Gets quieter as it thins
+      bubble.drone.gain.gain.setTargetAtTime(0.05 * bubble.thickness, now, 0.1);
+    }
+
+    function stopAmbientTone(bubble) {
+      if (!bubble.drone) return;
+      const now = audioCtx.currentTime;
+      bubble.drone.gain.gain.setTargetAtTime(0, now, 0.05);
+      setTimeout(() => {
+        bubble.drone.osc1.stop();
+        bubble.drone.osc2.stop();
+      }, 200);
+    }
+
+    // Bubble state
+    let bubble = null;
+
+    // Mouse state
+    let mouseX = W / 2;
+    let mouseY = H / 2;
+    let lastMouseX = mouseX;
+    let lastMouseY = mouseY;
+
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    }, { passive: false });
+
+    canvas.addEventListener('click', (e) => {
+      initAudio();
+      
+      // Check if clicking on existing bubble (pop it)
+      if (bubble) {
+        const dx = e.clientX - bubble.x;
+        const dy = e.clientY - bubble.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < bubble.radius) {
+          popBubble();
+          return;
+        }
+      }
+      
+      // Create new bubble
+      createBubble(e.clientX, e.clientY);
+    });
+
+    function createBubble(x, y) {
+      if (bubble) {
+        stopAmbientTone(bubble);
+      }
+      
+      bubble = {
+        x: x || W / 2,
+        y: y || H * 0.7,
+        vx: 0,
+        vy: -0.5,
+        radius: 40 + Math.random() * 40,
+        thickness: 1, // 1 = full, 0 = about to pop
+        age: 0,
+        wobble: Math.random() * Math.PI * 2,
+        colorOffset: Math.random() * Math.PI * 2,
+        growing: true,
+        growthTarget: 60 + Math.random() * 50,
+        drone: null
+      };
+      
+      playBirthSound();
+      info.textContent = 'touch to pop';
+    }
+
+    function popBubble() {
+      if (!bubble) return;
+      playPopSound();
+      stopAmbientTone(bubble);
+      bubble = null;
+      info.textContent = 'click to blow another';
+    }
+
+    function updateBubble(dt) {
+      if (!bubble) return;
+      
+      bubble.age += dt;
+      
+      // Growing phase
+      if (bubble.growing && bubble.radius < bubble.growthTarget) {
+        bubble.radius += 0.5;
+        if (bubble.radius >= bubble.growthTarget) {
+          bubble.growing = false;
+          playAmbientTone(bubble);
+        }
+      }
+      
+      // Thickness decreases over time (soap draining)
+      bubble.thickness -= 0.0002;
+      
+      // Air currents from mouse
+      const mouseVelX = (mouseX - lastMouseX) * 0.3;
+      const mouseVelY = (mouseY - lastMouseY) * 0.3;
+      lastMouseX = mouseX;
+      lastMouseY = mouseY;
+      
+      const dx = bubble.x - mouseX;
+      const dy = bubble.y - mouseY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist < 300) {
+        const influence = (300 - dist) / 300;
+        bubble.vx += mouseVelX * influence * 0.1;
+        bubble.vy += mouseVelY * influence * 0.1;
+      }
+      
+      // Gentle upward drift (buoyancy)
+      bubble.vy -= 0.01;
+      
+      // Random air currents
+      bubble.vx += (Math.random() - 0.5) * 0.02;
+      bubble.vy += (Math.random() - 0.5) * 0.02;
+      
+      // Damping
+      bubble.vx *= 0.99;
+      bubble.vy *= 0.99;
+      
+      // Apply velocity
+      bubble.x += bubble.vx;
+      bubble.y += bubble.vy;
+      
+      // Wobble
+      bubble.wobble += 0.02;
+      
+      // Bounce off edges gently
+      if (bubble.x < bubble.radius) {
+        bubble.x = bubble.radius;
+        bubble.vx *= -0.5;
+      }
+      if (bubble.x > W - bubble.radius) {
+        bubble.x = W - bubble.radius;
+        bubble.vx *= -0.5;
+      }
+      if (bubble.y < bubble.radius) {
+        bubble.y = bubble.radius;
+        bubble.vy *= -0.5;
+      }
+      if (bubble.y > H - bubble.radius) {
+        bubble.y = H - bubble.radius;
+        bubble.vy *= -0.5;
+      }
+      
+      // Update audio
+      updateAmbientTone(bubble);
+      
+      // Pop if too thin
+      if (bubble.thickness <= 0) {
+        popBubble();
+      }
+    }
+
+    // Thin-film interference colors
+    function getInterferenceColor(thickness, angle) {
+      // thickness 0-1 maps to different interference patterns
+      // angle adds variation across the surface
+      
+      const phase = thickness * Math.PI * 4 + angle * 0.5;
+      
+      // RGB channels interfere at different wavelengths
+      const r = Math.sin(phase) * 0.5 + 0.5;
+      const g = Math.sin(phase + Math.PI * 0.7) * 0.5 + 0.5;
+      const b = Math.sin(phase + Math.PI * 1.4) * 0.5 + 0.5;
+      
+      return { r, g, b };
+    }
+
+    function drawBubble(time) {
+      if (!bubble) return;
+      
+      const cx = bubble.x;
+      const cy = bubble.y;
+      const r = bubble.radius + Math.sin(bubble.wobble) * 2;
+      
+      // Draw the bubble using radial gradient with interference colors
+      const steps = 60;
+      
+      for (let i = steps; i >= 0; i--) {
+        const t = i / steps;
+        const ringR = r * t;
+        
+        // Thickness varies - thinner at top (draining)
+        const localThickness = bubble.thickness * (0.7 + 0.3 * t);
+        
+        // Color based on local thickness and position
+        const angle = time / 2000 + bubble.colorOffset + t * Math.PI;
+        const color = getInterferenceColor(localThickness, angle);
+        
+        // More transparent at edges and when thin
+        const alpha = (1 - Math.pow(t, 3)) * bubble.thickness * 0.6;
+        
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${Math.floor(color.r * 255)}, ${Math.floor(color.g * 255)}, ${Math.floor(color.b * 255)}, ${alpha})`;
+        ctx.fill();
+      }
+      
+      // Highlight (reflection)
+      const highlightX = cx - r * 0.3;
+      const highlightY = cy - r * 0.3;
+      const highlightR = r * 0.25;
+      
+      const highlightGradient = ctx.createRadialGradient(
+        highlightX, highlightY, 0,
+        highlightX, highlightY, highlightR
+      );
+      highlightGradient.addColorStop(0, `rgba(255, 255, 255, ${0.5 * bubble.thickness})`);
+      highlightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      
+      ctx.beginPath();
+      ctx.arc(highlightX, highlightY, highlightR, 0, Math.PI * 2);
+      ctx.fillStyle = highlightGradient;
+      ctx.fill();
+      
+      // Secondary smaller highlight
+      const h2x = cx + r * 0.2;
+      const h2y = cy + r * 0.25;
+      const h2r = r * 0.1;
+      
+      const h2Gradient = ctx.createRadialGradient(h2x, h2y, 0, h2x, h2y, h2r);
+      h2Gradient.addColorStop(0, `rgba(255, 255, 255, ${0.3 * bubble.thickness})`);
+      h2Gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      
+      ctx.beginPath();
+      ctx.arc(h2x, h2y, h2r, 0, Math.PI * 2);
+      ctx.fillStyle = h2Gradient;
+      ctx.fill();
+      
+      // Thin dark ring at edge
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(100, 120, 140, ${0.2 * bubble.thickness})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    function drawBackground(time) {
+      // Dark gradient
+      const gradient = ctx.createLinearGradient(0, 0, 0, H);
+      gradient.addColorStop(0, '#1a1a2e');
+      gradient.addColorStop(1, '#16213e');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Subtle ambient particles (dust in light)
+      for (let i = 0; i < 20; i++) {
+        const x = (i * 137.5 + time / 50) % W;
+        const y = (i * 89.3 + time / 80) % H;
+        const size = 1 + Math.sin(time / 1000 + i) * 0.5;
+        const alpha = 0.1 + Math.sin(time / 800 + i * 0.5) * 0.05;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(150, 170, 190, ${alpha})`;
+        ctx.fill();
+      }
+    }
+
+    function animate(time) {
+      drawBackground(time);
+      updateBubble(1/60);
+      drawBubble(time);
+      
+      requestAnimationFrame(animate);
+    }
+
+    animate(0);
+  </script>
+</body>
+</html>

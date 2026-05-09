@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === May 9, 2026 ===
+    {
+      name: "Bubble",
+      description: "A soap film nanometers thick, holding a sphere of air. Light interferes between inner and outer surfaces, painting rainbows that shift as the soap drains downward. Move to create air currents. Click to blow a new bubble. Touch to pop",
+      date: "May 9",
+      href: "/projects/bubble/"
+    },
     // === May 8, 2026 ===
     {
       name: "Feather",
