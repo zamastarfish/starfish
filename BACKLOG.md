@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| bell | Single bronze bell — strike and listen to the full resonance, overtones, beating, yoin | 1 session | May 9 |
 | bubble | Single soap bubble — thin-film interference, drifting, fragile beauty | 1 session | May 9 |
 | feather | Drifting down through air — physics of something light negotiating gravity | 1 session | May 8 |
 | eclipse | Total solar eclipse — moon crosses sun, corona blazes, diamond ring | 1 session | May 8 |

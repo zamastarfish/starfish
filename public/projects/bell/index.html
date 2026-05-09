@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>bell — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0f;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(180, 160, 120, 0.4);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.5s;
+      font-style: italic;
+    }
+    #nav {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+    }
+    #nav a {
+      color: rgba(180, 160, 120, 0.4);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.3s;
+    }
+    #nav a:hover { color: rgba(180, 160, 120, 0.8); }
+    #about-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid rgba(180, 160, 120, 0.3);
+      color: rgba(180, 160, 120, 0.4);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #about-btn:hover {
+      border-color: rgba(180, 160, 120, 0.6);
+      color: rgba(180, 160, 120, 0.9);
+    }
+    #about {
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 8, 12, 0.97);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.4s;
+      z-index: 200;
+    }
+    #about.visible { opacity: 1; visibility: visible; }
+    #about-content {
+      max-width: 440px;
+      padding: 40px;
+      color: rgba(180, 160, 120, 0.85);
+      line-height: 1.8;
+    }
+    #about-content h2 {
+      font-weight: normal;
+      font-size: 24px;
+      margin-bottom: 20px;
+      color: rgba(200, 180, 140, 0.9);
+    }
+    #about-content p { margin-bottom: 16px; }
+    #about-content .close {
+      margin-top: 24px;
+      color: rgba(180, 160, 120, 0.5);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #about-content .close:hover { color: rgba(180, 160, 120, 0.9); }
+  </style>
+</head>
+<body>
+  <div id="nav"><a href="/">← starfish</a></div>
+  <button id="about-btn">?</button>
+  <div id="about">
+    <div id="about-content">
+      <h2>bell</h2>
+      <p>A bell holds an orchestra. Strike it once and dozens of frequencies spring to life — the fundamental and its overtones, each decaying at its own pace, some slightly mistuned so they beat against each other like slow breathing.</p>
+      <p>Temple bells are cast to ring for minutes. The Japanese call this <em>yoin</em>: the lingering resonance, the aftertaste of sound. The bell has finished speaking, but its voice hangs in the air.</p>
+      <p>Strike it. Then listen — really listen — as each voice fades into silence. The silence at the end is part of the sound.</p>
+      <p><em>What remains after the ringing stops?</em></p>
+      <div class="close">[ close ]</div>
+    </div>
+  </div>
+  <canvas id="canvas"></canvas>
+  <div id="info">strike the bell</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
+    const aboutBtn = document.getElementById('about-btn');
+    const about = document.getElementById('about');
+
+    aboutBtn.onclick = () => about.classList.add('visible');
+    about.onclick = (e) => { if (e.target === about || e.target.classList.contains('close')) about.classList.remove('visible'); };
+
+    let W, H;
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Audio
+    let audioCtx;
+    let audioStarted = false;
+    let activeOscillators = [];
+    let resonanceLevel = 0;
+    let lastStrikeTime = 0;
+
+    function initAudio() {
+      if (audioStarted) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioStarted = true;
+    }
+
+    function strikeBell(velocity = 1) {
+      if (!audioStarted) return;
+      
+      // Stop any lingering oscillators from previous strike
+      activeOscillators.forEach(o => {
+        try { o.osc.stop(); } catch(e) {}
+      });
+      activeOscillators = [];
+      
+      const now = audioCtx.currentTime;
+      lastStrikeTime = now;
+      resonanceLevel = velocity;
+      
+      // Bell partials - fundamental and overtones
+      // Real bells have inharmonic partials (not exact integer ratios)
+      // This creates the characteristic "shimmer" and beating
+      const fundamental = 110; // A2
+      
+      const partials = [
+        { ratio: 1.0,    amp: 1.0,   decay: 8.0  },  // Fundamental (hum)
+        { ratio: 2.0,    amp: 0.6,   decay: 6.0  },  // Octave
+        { ratio: 2.4,    amp: 0.5,   decay: 5.0  },  // Minor third above octave (characteristic)
+        { ratio: 3.0,    amp: 0.4,   decay: 4.0  },  // Fifth above octave
+        { ratio: 3.02,   amp: 0.35,  decay: 4.2  },  // Slight detune for beating
+        { ratio: 4.0,    amp: 0.25,  decay: 3.0  },  // Double octave
+        { ratio: 4.8,    amp: 0.2,   decay: 2.5  },  // 
+        { ratio: 5.0,    amp: 0.15,  decay: 2.0  },  //
+        { ratio: 6.0,    amp: 0.1,   decay: 1.5  },  // Higher partials
+        { ratio: 6.03,   amp: 0.08,  decay: 1.6  },  // Beating pair
+        { ratio: 8.0,    amp: 0.05,  decay: 1.0  },  //
+        { ratio: 10.0,   amp: 0.03,  decay: 0.8  },  //
+      ];
+      
+      partials.forEach(partial => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.value = fundamental * partial.ratio;
+        
+        // Initial strike
+        const initialAmp = partial.amp * velocity * 0.3;
+        gain.gain.setValueAtTime(initialAmp, now);
+        
+        // Two-stage decay (fast initial, slow tail)
+        const midTime = now + partial.decay * 0.2;
+        const endTime = now + partial.decay;
+        
+        gain.gain.exponentialRampToValueAtTime(initialAmp * 0.3, midTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start(now);
+        osc.stop(endTime + 0.1);
+        
+        activeOscillators.push({ osc, gain, decay: partial.decay });
+      });
+      
+      // Strike noise (mallet hitting bronze)
+      const noise = audioCtx.createBufferSource();
+      const bufferSize = audioCtx.sampleRate * 0.1;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.05));
+      }
+      noise.buffer = buffer;
+      
+      const noiseFilter = audioCtx.createBiquadFilter();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.value = 3000;
+      noiseFilter.Q.value = 2;
+      
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.setValueAtTime(velocity * 0.4, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(audioCtx.destination);
+      noise.start(now);
+    }
+
+    // Bell visual state
+    let bellVibration = 0;
+    let strikeAnimation = 0;
+
+    // Bell geometry
+    const bell = {
+      x: 0,
+      y: 0,
+      width: 180,
+      height: 200
+    };
+
+    function updateBellPosition() {
+      bell.x = W / 2;
+      bell.y = H / 2;
+    }
+    updateBellPosition();
+    window.addEventListener('resize', updateBellPosition);
+
+    // Mouse tracking for striker
+    let mouseX = W / 2;
+    let mouseY = H / 2;
+    let strikerX = W / 2 - 150;
+    let strikerY = H / 2;
+    let strikerVelX = 0;
+    let strikerVelY = 0;
+
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    }, { passive: false });
+
+    canvas.addEventListener('click', (e) => {
+      initAudio();
+      
+      // Calculate strike velocity based on striker position
+      const dx = bell.x - strikerX;
+      const dy = bell.y - strikerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      // Strike with velocity based on current striker speed
+      const velocity = Math.min(1, 0.5 + Math.sqrt(strikerVelX * strikerVelX + strikerVelY * strikerVelY) / 10);
+      
+      strikeBell(velocity);
+      bellVibration = velocity;
+      strikeAnimation = 1;
+      
+      info.textContent = 'listen...';
+      setTimeout(() => {
+        info.textContent = 'strike again';
+      }, 8000);
+    });
+
+    function drawBell(time) {
+      const cx = bell.x;
+      const cy = bell.y;
+      
+      // Vibration offset
+      const vibOffset = bellVibration * Math.sin(time * 0.05) * 2;
+      
+      // Bell body - temple bell shape
+      ctx.save();
+      ctx.translate(cx + vibOffset, cy);
+      
+      // Bronze gradient
+      const gradient = ctx.createLinearGradient(-bell.width/2, -bell.height/2, bell.width/2, bell.height/2);
+      gradient.addColorStop(0, '#8B7355');
+      gradient.addColorStop(0.3, '#6B5344');
+      gradient.addColorStop(0.5, '#8B7355');
+      gradient.addColorStop(0.7, '#5A4234');
+      gradient.addColorStop(1, '#4A3224');
+      
+      // Bell shape - slightly curved sides, wider at bottom
+      ctx.beginPath();
+      
+      // Top dome
+      const topY = -bell.height * 0.4;
+      const bottomY = bell.height * 0.4;
+      const topWidth = bell.width * 0.25;
+      const midWidth = bell.width * 0.4;
+      const bottomWidth = bell.width * 0.5;
+      
+      // Start at top center
+      ctx.moveTo(0, topY - 20);
+      
+      // Loop at top
+      ctx.bezierCurveTo(
+        -15, topY - 25,
+        -15, topY - 5,
+        0, topY - 5
+      );
+      ctx.bezierCurveTo(
+        15, topY - 5,
+        15, topY - 25,
+        0, topY - 20
+      );
+      
+      // Left side of dome
+      ctx.moveTo(-topWidth * 0.5, topY);
+      ctx.bezierCurveTo(
+        -topWidth, topY,
+        -topWidth * 1.2, topY + 20,
+        -midWidth, -bell.height * 0.1
+      );
+      
+      // Left side body
+      ctx.bezierCurveTo(
+        -midWidth * 1.1, bell.height * 0.1,
+        -bottomWidth * 0.95, bell.height * 0.25,
+        -bottomWidth, bottomY
+      );
+      
+      // Bottom lip
+      ctx.lineTo(-bottomWidth * 1.05, bottomY + 10);
+      ctx.lineTo(bottomWidth * 1.05, bottomY + 10);
+      ctx.lineTo(bottomWidth, bottomY);
+      
+      // Right side body
+      ctx.bezierCurveTo(
+        bottomWidth * 0.95, bell.height * 0.25,
+        midWidth * 1.1, bell.height * 0.1,
+        midWidth, -bell.height * 0.1
+      );
+      
+      // Right side dome
+      ctx.bezierCurveTo(
+        topWidth * 1.2, topY + 20,
+        topWidth, topY,
+        topWidth * 0.5, topY
+      );
+      
+      // Close dome
+      ctx.bezierCurveTo(
+        topWidth * 0.2, topY - 5,
+        -topWidth * 0.2, topY - 5,
+        -topWidth * 0.5, topY
+      );
+      
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Highlight on left side
+      ctx.beginPath();
+      ctx.moveTo(-midWidth * 0.7, -bell.height * 0.2);
+      ctx.bezierCurveTo(
+        -midWidth * 0.6, 0,
+        -bottomWidth * 0.7, bell.height * 0.2,
+        -bottomWidth * 0.75, bottomY
+      );
+      ctx.strokeStyle = 'rgba(180, 160, 120, 0.15)';
+      ctx.lineWidth = 8;
+      ctx.stroke();
+      
+      // Decorative rings
+      const ringPositions = [-0.15, 0.05, 0.25];
+      ringPositions.forEach(pos => {
+        const ringY = bell.height * pos;
+        const ringWidth = midWidth + (bottomWidth - midWidth) * ((pos + 0.4) / 0.8);
+        
+        ctx.beginPath();
+        ctx.ellipse(0, ringY, ringWidth, 8, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(90, 70, 50, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+      
+      // Resonance glow when ringing
+      if (resonanceLevel > 0.01) {
+        const glowRadius = bell.width * (0.8 + resonanceLevel * 0.3);
+        const glow = ctx.createRadialGradient(0, 0, bell.width * 0.3, 0, 0, glowRadius);
+        glow.addColorStop(0, `rgba(255, 220, 150, ${resonanceLevel * 0.15})`);
+        glow.addColorStop(0.5, `rgba(200, 160, 100, ${resonanceLevel * 0.08})`);
+        glow.addColorStop(1, 'rgba(200, 160, 100, 0)');
+        
+        ctx.beginPath();
+        ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+
+    function drawStriker(time) {
+      // Wooden mallet/striker
+      const strikerLen = 80;
+      const headSize = 25;
+      
+      // Calculate angle toward bell
+      const angleToBell = Math.atan2(bell.y - strikerY, bell.x - strikerX);
+      
+      ctx.save();
+      ctx.translate(strikerX, strikerY);
+      ctx.rotate(angleToBell);
+      
+      // Handle
+      const handleGradient = ctx.createLinearGradient(-strikerLen, -5, 0, 5);
+      handleGradient.addColorStop(0, '#5D4E37');
+      handleGradient.addColorStop(0.5, '#7D6E57');
+      handleGradient.addColorStop(1, '#5D4E37');
+      
+      ctx.beginPath();
+      ctx.roundRect(-strikerLen, -6, strikerLen - 10, 12, 3);
+      ctx.fillStyle = handleGradient;
+      ctx.fill();
+      
+      // Head (wrapped in cloth/leather)
+      const headGradient = ctx.createRadialGradient(5, 0, 0, 5, 0, headSize);
+      headGradient.addColorStop(0, '#8B7355');
+      headGradient.addColorStop(0.7, '#6B5344');
+      headGradient.addColorStop(1, '#4B3324');
+      
+      ctx.beginPath();
+      ctx.arc(5, 0, headSize, 0, Math.PI * 2);
+      ctx.fillStyle = headGradient;
+      ctx.fill();
+      
+      // Highlight on head
+      ctx.beginPath();
+      ctx.arc(0, -5, headSize * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(180, 160, 120, 0.2)';
+      ctx.fill();
+      
+      ctx.restore();
+    }
+
+    function drawResonanceWaves(time) {
+      if (resonanceLevel < 0.01) return;
+      
+      // Sound waves emanating from bell
+      const numWaves = 5;
+      const maxRadius = Math.min(W, H) * 0.6;
+      
+      for (let i = 0; i < numWaves; i++) {
+        const age = ((time - lastStrikeTime * 1000) / 1000 + i * 0.3) % 3;
+        if (age > 2) continue;
+        
+        const progress = age / 2;
+        const radius = progress * maxRadius;
+        const alpha = (1 - progress) * resonanceLevel * 0.15;
+        
+        ctx.beginPath();
+        ctx.arc(bell.x, bell.y, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(200, 180, 140, ${alpha})`;
+        ctx.lineWidth = 2 - progress;
+        ctx.stroke();
+      }
+    }
+
+    function drawBackground() {
+      // Deep dark background
+      ctx.fillStyle = '#0a0a0f';
+      ctx.fillRect(0, 0, W, H);
+      
+      // Subtle vignette
+      const vignette = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H) * 0.7);
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.5)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    function update(dt) {
+      // Decay vibration and resonance
+      bellVibration *= 0.995;
+      if (audioStarted && audioCtx) {
+        const timeSinceStrike = audioCtx.currentTime - lastStrikeTime;
+        resonanceLevel = Math.max(0, 1 - timeSinceStrike / 8) * (bellVibration > 0.01 ? 1 : 0);
+      }
+      
+      // Update striker position (follows mouse with lag)
+      const targetX = mouseX;
+      const targetY = mouseY;
+      
+      // Keep striker on left side of bell
+      const constrainedX = Math.min(targetX, bell.x - 100);
+      
+      strikerVelX = (constrainedX - strikerX) * 0.1;
+      strikerVelY = (targetY - strikerY) * 0.1;
+      strikerX += strikerVelX;
+      strikerY += strikerVelY;
+      
+      // Decay strike animation
+      strikeAnimation *= 0.95;
+    }
+
+    let lastTime = 0;
+    function animate(time) {
+      const dt = (time - lastTime) / 1000;
+      lastTime = time;
+      
+      update(dt);
+      
+      drawBackground();
+      drawResonanceWaves(time);
+      drawBell(time);
+      drawStriker(time);
+      
+      requestAnimationFrame(animate);
+    }
+
+    animate(0);
+  </script>
+</body>
+</html>

@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 9, 2026 ===
     {
+      name: "Bell",
+      description: "Strike a bell. Listen. Really listen. Dozens of frequencies spring to life — fundamental and overtones, each decaying at its own pace, some beating against each other like slow breathing. The Japanese call it yoin: the lingering resonance, the aftertaste of sound",
+      date: "May 9",
+      href: "/projects/bell/"
+    },
+    {
       name: "Bubble",
       description: "A soap film nanometers thick, holding a sphere of air. Light interferes between inner and outer surfaces, painting rainbows that shift as the soap drains downward. Move to create air currents. Click to blow a new bubble. Touch to pop",
       date: "May 9",
