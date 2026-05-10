@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 10, 2026 ===
     {
+      name: "Melt",
+      description: "Ice holds its shape until it doesn't. The transition happens slowly, then all at once. Move close to add warmth. Watch the form dissolve into water that remembers nothing of being solid. Click to add more ice",
+      date: "May 10",
+      href: "/projects/melt/"
+    },
+    {
       name: "Cave",
       description: "Deep underground, where time moves in millennia. Each stalactite grows one drip at a time — a centimeter per century. Move your light to reveal formations. The echo tells you how vast the darkness is. Tap to send a drip falling",
       date: "May 10",

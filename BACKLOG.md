@@ -30,6 +30,7 @@ _(Current WIP goes here)_
 
 | Project | Description | Effort | Date |
 |---------|-------------|--------|------|
+| melt | Ice dissolving into water — warmth accelerates, form lost to liquid, phase transition | 1 session | May 10 |
 | cave | Deep underground — stalactites dripping, formations revealed by light, echo of deep time | 1 session | May 10 |
 | sparkler | Handheld firework — wave it, write in light, watch it burn down | 1 session | May 9 |
 | resonance | Three objects, each with a resonant frequency — seek it, find it, make them sing | 1 session | May 9 |
