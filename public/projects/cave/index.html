@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cave — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #000; 
+      overflow: hidden; 
+      font-family: Georgia, serif;
+    }
+    canvas { display: block; }
+    
+    .nav-btn {
+      position: fixed;
+      top: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 220, 180, 0.3);
+      background: rgba(0, 0, 0, 0.5);
+      color: rgba(255, 220, 180, 0.6);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      z-index: 100;
+      backdrop-filter: blur(4px);
+    }
+    .nav-btn:hover {
+      border-color: rgba(255, 220, 180, 0.6);
+      color: rgba(255, 220, 180, 0.9);
+      background: rgba(40, 30, 20, 0.7);
+    }
+    #homeBtn { left: 20px; }
+    #infoBtn { right: 20px; }
+    
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      background: rgba(10, 8, 5, 0.9);
+      border: 1px solid rgba(255, 220, 180, 0.2);
+      border-radius: 8px;
+      padding: 20px;
+      color: rgba(255, 220, 180, 0.8);
+      font-size: 14px;
+      line-height: 1.6;
+      display: none;
+      z-index: 100;
+      backdrop-filter: blur(8px);
+    }
+    #info h3 {
+      color: rgba(255, 220, 180, 0.95);
+      margin-bottom: 10px;
+      font-weight: normal;
+      font-style: italic;
+    }
+    #info p { margin-bottom: 8px; }
+    #info .close {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      cursor: pointer;
+      font-size: 20px;
+      color: rgba(255, 220, 180, 0.5);
+    }
+    
+    #start-prompt {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 220, 180, 0.5);
+      font-size: 14px;
+      font-style: italic;
+      letter-spacing: 0.5px;
+      z-index: 50;
+      pointer-events: none;
+      transition: opacity 1s ease;
+    }
+  </style>
+</head>
+<body>
+  <button id="homeBtn" class="nav-btn" title="Back to gallery">←</button>
+  <button id="infoBtn" class="nav-btn" title="About this piece">?</button>
+  
+  <div id="info">
+    <span class="close">×</span>
+    <h3>cave</h3>
+    <p>Deep underground, where time moves in millennia.</p>
+    <p>Move your light to reveal formations. Each stalactite grows one drip at a time — 
+    a centimeter per century. The echo tells you how vast the darkness is.</p>
+    <p>Tap to send a drip falling.</p>
+    <p><em>What forms in the places we cannot see?</em></p>
+  </div>
+  
+  <div id="start-prompt">click to enter</div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let audioStarted = false;
+    let audioCtx, masterGain, reverbGain, dripGain;
+    let convolver;
+    
+    // Light position (cursor)
+    let lightX = -1000, lightY = -1000;
+    let targetLightX = -1000, targetLightY = -1000;
+    let lightRadius = 200;
+    let eyeAdjustment = 0; // How adjusted your eyes are (0-1)
+    let lastMoveTime = 0;
+    
+    // Cave formations
+    let stalactites = [];
+    let stalagmites = [];
+    let columns = [];
+    let drips = [];
+    let ripples = [];
+    
+    // Pool at bottom
+    const poolHeight = 80;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      generateCave();
+    }
+    
+    function generateCave() {
+      stalactites = [];
+      stalagmites = [];
+      columns = [];
+      
+      const spacing = 40;
+      const poolY = height - poolHeight;
+      
+      // Generate stalactites (from ceiling)
+      for (let x = spacing/2; x < width; x += spacing * (0.5 + Math.random() * 1)) {
+        const baseLen = 30 + Math.random() * 150;
+        const len = Math.min(baseLen, poolY * 0.4);
+        
+        stalactites.push({
+          x: x + (Math.random() - 0.5) * 20,
+          len: len,
+          width: 3 + Math.random() * 12,
+          wobble: Math.random() * Math.PI * 2,
+          color: getStoneColor(),
+          detail: Math.random(),
+          canDrip: Math.random() < 0.3 && len > 60
+        });
+      }
+      
+      // Generate stalagmites (from floor)
+      for (let x = spacing/2; x < width; x += spacing * (0.6 + Math.random() * 1.2)) {
+        const maxHeight = poolY * 0.35;
+        const h = 20 + Math.random() * maxHeight;
+        
+        // Check if there's a stalactite above to potentially form column
+        const aboveStalactite = stalactites.find(s => 
+          Math.abs(s.x - x) < 30 && s.len > poolY * 0.3
+        );
+        
+        if (aboveStalactite && h > poolY * 0.25 && Math.random() < 0.3) {
+          // Form a column
+          columns.push({
+            x: (x + aboveStalactite.x) / 2,
+            width: 8 + Math.random() * 15,
+            color: getStoneColor(),
+            poolY: poolY
+          });
+          // Remove the stalactite that joined
+          stalactites = stalactites.filter(s => s !== aboveStalactite);
+        } else {
+          stalagmites.push({
+            x: x + (Math.random() - 0.5) * 15,
+            height: h,
+            width: 4 + Math.random() * 14,
+            color: getStoneColor(),
+            poolY: poolY
+          });
+        }
+      }
+    }
+    
+    function getStoneColor() {
+      // Cave stone colors - browns, tans, grays with slight variation
+      const hue = 25 + Math.random() * 20; // 25-45 (brown to tan)
+      const sat = 15 + Math.random() * 25; // Muted
+      const light = 20 + Math.random() * 25; // Dark
+      return { h: hue, s: sat, l: light };
+    }
+    
+    function drawStalactite(s, visibility) {
+      const { x, len, width: w, wobble, color, detail } = s;
+      
+      ctx.save();
+      
+      // Main stalactite shape with tapering
+      const gradient = ctx.createLinearGradient(x, 0, x, len);
+      const baseColor = `hsla(${color.h}, ${color.s}%, ${color.l}%, ${visibility})`;
+      const tipColor = `hsla(${color.h}, ${color.s}%, ${color.l - 5}%, ${visibility})`;
+      gradient.addColorStop(0, baseColor);
+      gradient.addColorStop(1, tipColor);
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(x - w/2, 0);
+      
+      // Wavy sides
+      const segments = 8;
+      for (let i = 1; i <= segments; i++) {
+        const t = i / segments;
+        const y = t * len;
+        const currentWidth = w * (1 - t * 0.8) / 2;
+        const wave = Math.sin(t * 4 + wobble) * 2 * detail;
+        ctx.lineTo(x - currentWidth + wave, y);
+      }
+      
+      // Tip
+      ctx.lineTo(x, len + 5);
+      
+      // Back up the other side
+      for (let i = segments; i >= 1; i--) {
+        const t = i / segments;
+        const y = t * len;
+        const currentWidth = w * (1 - t * 0.8) / 2;
+        const wave = Math.sin(t * 4 + wobble + 1) * 2 * detail;
+        ctx.lineTo(x + currentWidth + wave, y);
+      }
+      
+      ctx.lineTo(x + w/2, 0);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Subtle highlight
+      ctx.strokeStyle = `hsla(${color.h}, ${color.s}%, ${color.l + 15}%, ${visibility * 0.3})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x - w/4, 10);
+      ctx.lineTo(x - 1, len * 0.7);
+      ctx.stroke();
+      
+      ctx.restore();
+    }
+    
+    function drawStalagmite(s, visibility) {
+      const { x, height: h, width: w, color, poolY } = s;
+      const baseY = poolY;
+      
+      ctx.save();
+      
+      const gradient = ctx.createLinearGradient(x, baseY, x, baseY - h);
+      const baseColor = `hsla(${color.h}, ${color.s}%, ${color.l}%, ${visibility})`;
+      const tipColor = `hsla(${color.h}, ${color.s}%, ${color.l + 5}%, ${visibility})`;
+      gradient.addColorStop(0, baseColor);
+      gradient.addColorStop(1, tipColor);
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(x - w/2, baseY);
+      
+      // Taper up
+      const segments = 6;
+      for (let i = 1; i <= segments; i++) {
+        const t = i / segments;
+        const y = baseY - t * h;
+        const currentWidth = w * (1 - t * 0.7) / 2;
+        const wave = Math.sin(t * 3 + x * 0.1) * 2;
+        ctx.lineTo(x - currentWidth + wave, y);
+      }
+      
+      ctx.lineTo(x, baseY - h - 3);
+      
+      for (let i = segments; i >= 1; i--) {
+        const t = i / segments;
+        const y = baseY - t * h;
+        const currentWidth = w * (1 - t * 0.7) / 2;
+        const wave = Math.sin(t * 3 + x * 0.1 + 2) * 2;
+        ctx.lineTo(x + currentWidth + wave, y);
+      }
+      
+      ctx.lineTo(x + w/2, baseY);
+      ctx.closePath();
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    function drawColumn(c, visibility) {
+      const { x, width: w, color, poolY } = c;
+      
+      ctx.save();
+      
+      // Full height column
+      const gradient = ctx.createLinearGradient(x - w, 0, x + w, 0);
+      gradient.addColorStop(0, `hsla(${color.h}, ${color.s}%, ${color.l - 5}%, ${visibility})`);
+      gradient.addColorStop(0.5, `hsla(${color.h}, ${color.s}%, ${color.l + 5}%, ${visibility})`);
+      gradient.addColorStop(1, `hsla(${color.h}, ${color.s}%, ${color.l - 5}%, ${visibility})`);
+      
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      
+      // Wavy column
+      ctx.moveTo(x - w/2, 0);
+      const segments = 12;
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const y = t * poolY;
+        const wave = Math.sin(t * 6 + x * 0.05) * 3;
+        ctx.lineTo(x - w/2 + wave, y);
+      }
+      
+      for (let i = segments; i >= 0; i--) {
+        const t = i / segments;
+        const y = t * poolY;
+        const wave = Math.sin(t * 6 + x * 0.05 + 3) * 3;
+        ctx.lineTo(x + w/2 + wave, y);
+      }
+      
+      ctx.closePath();
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    function getVisibility(x, y) {
+      if (lightX < 0) return 0.02 + eyeAdjustment * 0.05;
+      
+      const dx = x - lightX;
+      const dy = y - lightY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      const effectiveRadius = lightRadius * (1 + eyeAdjustment * 0.5);
+      
+      if (dist > effectiveRadius * 1.5) return 0.02 + eyeAdjustment * 0.05;
+      
+      const falloff = 1 - Math.pow(dist / (effectiveRadius * 1.5), 1.5);
+      return Math.max(0.02 + eyeAdjustment * 0.05, falloff * 0.9);
+    }
+    
+    function drawPool() {
+      const poolY = height - poolHeight;
+      
+      // Dark water
+      const gradient = ctx.createLinearGradient(0, poolY, 0, height);
+      gradient.addColorStop(0, 'rgba(10, 15, 20, 0.8)');
+      gradient.addColorStop(1, 'rgba(5, 8, 12, 0.95)');
+      
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, poolY, width, poolHeight);
+      
+      // Subtle ripples
+      ripples.forEach((r, i) => {
+        const age = (Date.now() - r.startTime) / 1000;
+        if (age > 3) {
+          ripples.splice(i, 1);
+          return;
+        }
+        
+        const radius = age * 40;
+        const alpha = Math.max(0, 0.3 - age * 0.1);
+        
+        ctx.strokeStyle = `rgba(60, 70, 80, ${alpha * getVisibility(r.x, r.y)})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(r.x, poolY + 5, radius, radius * 0.3, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+      
+      // Reflections of light
+      if (lightX > 0) {
+        const reflectY = poolY + (lightY - poolY) * 0.2;
+        const visibility = getVisibility(lightX, poolY);
+        
+        ctx.fillStyle = `rgba(255, 230, 180, ${visibility * 0.15})`;
+        ctx.beginPath();
+        ctx.ellipse(lightX, reflectY, 30 + Math.sin(Date.now() * 0.002) * 5, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    function updateDrips() {
+      const poolY = height - poolHeight;
+      
+      drips.forEach((d, i) => {
+        d.y += d.vy;
+        d.vy += 0.3; // Gravity
+        
+        if (d.y > poolY) {
+          // Hit water
+          ripples.push({
+            x: d.x,
+            y: poolY,
+            startTime: Date.now()
+          });
+          drips.splice(i, 1);
+          playDrip(d.x);
+        }
+      });
+    }
+    
+    function drawDrips() {
+      drips.forEach(d => {
+        const visibility = getVisibility(d.x, d.y);
+        ctx.fillStyle = `rgba(180, 200, 220, ${visibility * 0.8})`;
+        ctx.beginPath();
+        ctx.ellipse(d.x, d.y, 2, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+    
+    function maybeSpawnDrip() {
+      if (Math.random() > 0.003) return; // Rare
+      
+      const drippingStalactites = stalactites.filter(s => s.canDrip);
+      if (drippingStalactites.length === 0) return;
+      
+      const s = drippingStalactites[Math.floor(Math.random() * drippingStalactites.length)];
+      
+      drips.push({
+        x: s.x,
+        y: s.len + 5,
+        vy: 0
+      });
+    }
+    
+    function spawnDrip(x) {
+      // Find nearest stalactite that can drip
+      let nearest = null;
+      let nearestDist = Infinity;
+      
+      stalactites.filter(s => s.canDrip).forEach(s => {
+        const dist = Math.abs(s.x - x);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearest = s;
+        }
+      });
+      
+      if (nearest && nearestDist < 100) {
+        drips.push({
+          x: nearest.x,
+          y: nearest.len + 5,
+          vy: 0
+        });
+      }
+    }
+    
+    function draw() {
+      // Clear with darkness
+      ctx.fillStyle = '#030303';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw ceiling rock texture
+      const ceilingGrad = ctx.createLinearGradient(0, 0, 0, 60);
+      ceilingGrad.addColorStop(0, 'rgba(20, 18, 15, 0.9)');
+      ceilingGrad.addColorStop(1, 'rgba(10, 8, 6, 0)');
+      ctx.fillStyle = ceilingGrad;
+      ctx.fillRect(0, 0, width, 60);
+      
+      // Draw light gradient (warm torch/headlamp glow)
+      if (lightX > 0) {
+        const gradient = ctx.createRadialGradient(
+          lightX, lightY, 0,
+          lightX, lightY, lightRadius * (1 + eyeAdjustment * 0.5)
+        );
+        gradient.addColorStop(0, 'rgba(255, 230, 180, 0.12)');
+        gradient.addColorStop(0.3, 'rgba(255, 220, 160, 0.06)');
+        gradient.addColorStop(0.7, 'rgba(255, 200, 140, 0.02)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      }
+      
+      // Draw formations (back to front)
+      columns.forEach(c => {
+        const visibility = getVisibility(c.x, height / 2);
+        drawColumn(c, visibility);
+      });
+      
+      stalagmites.forEach(s => {
+        const visibility = getVisibility(s.x, s.poolY - s.height / 2);
+        drawStalagmite(s, visibility);
+      });
+      
+      stalactites.forEach(s => {
+        const visibility = getVisibility(s.x, s.len / 2);
+        drawStalactite(s, visibility);
+      });
+      
+      drawDrips();
+      drawPool();
+      
+      // Smooth light movement
+      lightX += (targetLightX - lightX) * 0.08;
+      lightY += (targetLightY - lightY) * 0.08;
+      
+      // Eye adjustment - when still, eyes adjust
+      const now = Date.now();
+      if (now - lastMoveTime > 2000) {
+        eyeAdjustment = Math.min(1, eyeAdjustment + 0.002);
+      } else {
+        eyeAdjustment = Math.max(0, eyeAdjustment - 0.01);
+      }
+      
+      maybeSpawnDrip();
+      updateDrips();
+      
+      requestAnimationFrame(draw);
+    }
+    
+    // Audio
+    async function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      
+      document.getElementById('start-prompt').style.opacity = '0';
+      
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.5;
+      masterGain.connect(audioCtx.destination);
+      
+      // Create reverb (long cave reverb)
+      convolver = audioCtx.createConvolver();
+      const reverbTime = 4;
+      const sampleRate = audioCtx.sampleRate;
+      const length = sampleRate * reverbTime;
+      const impulse = audioCtx.createBuffer(2, length, sampleRate);
+      
+      for (let channel = 0; channel < 2; channel++) {
+        const data = impulse.getChannelData(channel);
+        for (let i = 0; i < length; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sampleRate * 1.5));
+        }
+      }
+      convolver.buffer = impulse;
+      
+      reverbGain = audioCtx.createGain();
+      reverbGain.gain.value = 0.6;
+      convolver.connect(reverbGain);
+      reverbGain.connect(masterGain);
+      
+      dripGain = audioCtx.createGain();
+      dripGain.gain.value = 0.4;
+      dripGain.connect(convolver);
+      dripGain.connect(masterGain);
+      
+      // Ambient cave drone (very quiet, deep)
+      startAmbientDrone();
+    }
+    
+    function startAmbientDrone() {
+      // Deep filtered noise - the sound of silence underground
+      const bufferSize = 2 * audioCtx.sampleRate;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = noiseBuffer;
+      noise.loop = true;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 80;
+      filter.Q.value = 1;
+      
+      const droneGain = audioCtx.createGain();
+      droneGain.gain.value = 0.03;
+      
+      noise.connect(filter);
+      filter.connect(droneGain);
+      droneGain.connect(convolver);
+      droneGain.connect(masterGain);
+      
+      noise.start();
+      
+      // Occasional low rumble/settling
+      setInterval(() => {
+        if (Math.random() < 0.1) {
+          playSettling();
+        }
+      }, 3000);
+    }
+    
+    function playDrip(x) {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Drip sound - short plop with reverb
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      // Higher pitch at start, drops quickly
+      osc.frequency.setValueAtTime(800 + Math.random() * 400, now);
+      osc.frequency.exponentialRampToValueAtTime(200, now + 0.05);
+      osc.type = 'sine';
+      
+      // Pan based on position
+      const panner = audioCtx.createStereoPanner();
+      panner.pan.value = (x / width) * 2 - 1;
+      
+      gain.gain.setValueAtTime(0.3 + Math.random() * 0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      
+      osc.connect(gain);
+      gain.connect(panner);
+      panner.connect(dripGain);
+      
+      osc.start(now);
+      osc.stop(now + 0.15);
+    }
+    
+    function playSettling() {
+      if (!audioCtx) return;
+      
+      const now = audioCtx.currentTime;
+      
+      // Very low rumble
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const filter = audioCtx.createBiquadFilter();
+      
+      osc.type = 'sine';
+      osc.frequency.value = 30 + Math.random() * 20;
+      
+      filter.type = 'lowpass';
+      filter.frequency.value = 100;
+      
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.05, now + 0.5);
+      gain.gain.linearRampToValueAtTime(0, now + 2);
+      
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(convolver);
+      
+      osc.start(now);
+      osc.stop(now + 2);
+    }
+    
+    // Events
+    canvas.addEventListener('mousemove', (e) => {
+      targetLightX = e.clientX;
+      targetLightY = e.clientY;
+      lastMoveTime = Date.now();
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      targetLightX = e.touches[0].clientX;
+      targetLightY = e.touches[0].clientY;
+      lastMoveTime = Date.now();
+    });
+    
+    canvas.addEventListener('click', (e) => {
+      initAudio();
+      spawnDrip(e.clientX);
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      initAudio();
+    });
+    
+    // Navigation
+    document.getElementById('homeBtn').onclick = () => {
+      window.location.href = '/';
+    };
+    
+    document.getElementById('infoBtn').onclick = () => {
+      document.getElementById('info').style.display = 'block';
+    };
+    
+    document.querySelector('#info .close').onclick = () => {
+      document.getElementById('info').style.display = 'none';
+    };
+    
+    window.addEventListener('resize', resize);
+    resize();
+    draw();
+  </script>
+</body>
+</html>

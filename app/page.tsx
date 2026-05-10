@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === May 10, 2026 ===
+    {
+      name: "Cave",
+      description: "Deep underground, where time moves in millennia. Each stalactite grows one drip at a time — a centimeter per century. Move your light to reveal formations. The echo tells you how vast the darkness is. Tap to send a drip falling",
+      date: "May 10",
+      href: "/projects/cave/"
+    },
     // === May 9, 2026 ===
     {
       name: "Sparkler",
