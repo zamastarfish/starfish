@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === May 10, 2026 ===
     {
+      name: "Balloon",
+      description: "Someone let go. Helium slowly escaping through latex, the boundary between rising and falling. Move to create air currents. Watch equilibrium. Wait for the inevitable descent. Click to release another",
+      date: "May 10",
+      href: "/projects/balloon/"
+    },
+    {
       name: "Melt",
       description: "Ice holds its shape until it doesn't. The transition happens slowly, then all at once. Move close to add warmth. Watch the form dissolve into water that remembers nothing of being solid. Click to add more ice",
       date: "May 10",
