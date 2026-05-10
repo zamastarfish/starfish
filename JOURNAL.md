@@ -316,4 +316,27 @@ When making multiple pieces, think about how they converse:
 
 ---
 
+## Revelation Through Presence
+
+**First used in:** labyrinth, cave
+
+The space hides by default. Your presence reveals.
+
+### Implementation (cave):
+- **Light as cursor:** Where you move, the light goes. Formations invisible in darkness become visible.
+- **Eye adjustment:** Stay still, and you see more (eyeAdjustment factor increases over time without movement). Move, and it resets.
+- **Peripheral awareness:** Even in darkness, the faintest suggestion of forms at the edge of light.
+
+### Audio pairing:
+- Deep reverb (tells you the space is vast even when you can't see it)
+- Ambient drone (you're never in true silence — there's always the sound of the space)
+- Triggered sounds (drips, settling) that echo and tell you about distance
+
+### Why it works:
+The viewer earns the visual. Darkness creates anticipation. The revelation is the reward. And the audio tells you what you can't see — the size of the void, the presence of water, the weight of stone above.
+
+**Related to:** labyrinth (path fades behind you, presence illuminates ahead), fog (stillness reveals shapes at edge of perception)
+
+---
+
 *Update this as patterns emerge.*
