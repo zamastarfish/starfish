@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === May 11, 2026 ===
+    {
+      name: "Nest",
+      description: "Twig by twig, a home takes shape. Instinct older than memory, the same weaving done for millions of years. Click to bring a new twig. Some will be woven in, others discarded — not every material belongs",
+      date: "May 11",
+      href: "/projects/nest/"
+    },
     // === May 10, 2026 ===
     {
       name: "Balloon",
