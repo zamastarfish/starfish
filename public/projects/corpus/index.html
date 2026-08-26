@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>corpus — starfish</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      overflow: hidden;
+      font-family: monospace;
+    }
+    canvas { display: block; }
+
+    #info-btn, #nav-btn {
+      position: fixed;
+      bottom: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #info-btn { right: 20px; }
+    #nav-btn { right: 66px; font-size: 14px; }
+    #info-btn:hover, #nav-btn:hover {
+      background: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+
+    #info-panel {
+      position: fixed;
+      bottom: 70px;
+      right: 20px;
+      width: 300px;
+      background: rgba(0,0,0,0.9);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 16px;
+      color: rgba(255,255,255,0.8);
+      font-size: 13px;
+      line-height: 1.5;
+      opacity: 0;
+      transform: translateY(10px);
+      pointer-events: none;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+    #info-panel.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    #info-panel h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      color: #fff;
+    }
+    #info-panel p { margin: 0 0 8px 0; }
+    #info-panel p:last-child { margin: 0; }
+    .info-muted { color: rgba(255,255,255,0.5); font-size: 11px; }
+
+    #start-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      cursor: pointer;
+    }
+    #start-overlay span {
+      color: rgba(255,255,255,0.6);
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div id="start-overlay"><span>click to load corpus</span></div>
+  <canvas id="glcanvas"></canvas>
+  <button id="nav-btn">↖</button>
+  <button id="info-btn">?</button>
+  <div id="info-panel">
+    <h3>corpus</h3>
+    <p>A body assembled from the wreckage of a machine that once served pages. The figure is not an image — it is a signed-distance body, modeled and raymarched live, skinned with the interface behind it.</p>
+    <p>Move to corrupt the signal. Click for catastrophic failure — the page re-renders, the body scatters and re-forms.</p>
+    <p>The sound is the same failure engine: ring-buffer stutter, tape-stop varispeed, dropout clicks, sample-rate decimation, dithered bit-collapse. Headphones recommended.</p>
+    <p class="info-muted">Nothing loads clean anymore. The error is the aesthetic.</p>
+  </div>
+
+  <!-- ============ corruptor: one failure engine for the whole mix ============
+       Ring buffer with a read head that can stutter, freeze, and tape-stop;
+       datamosh write-hold; dropout gates with DC clicks; sample-hold decimation;
+       dithered bit quantization; L/R misalignment; an internal pulse grid with
+       an unreliable clock. Driven by the same state as the shader. -->
+  <script type="x-audio-worklet" id="corruptor-worklet">
+class CorruptorProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [
+      { name: 'intensity',   defaultValue: 0.06, minValue: 0, maxValue: 1.5 },
+      { name: 'catastrophe', defaultValue: 0,    minValue: 0, maxValue: 1 },
+      { name: 'bits',        defaultValue: 11,   minValue: 2, maxValue: 16 },
+      { name: 'srDivide',    defaultValue: 1,    minValue: 1, maxValue: 64 },
+      { name: 'seed',        defaultValue: 0,    minValue: 0, maxValue: 100 },
+      { name: 'pulseGain',   defaultValue: 0.5,  minValue: 0, maxValue: 1 }
+    ].map(p => ({ ...p, automationRate: 'k-rate' }));
+  }
+
+  constructor() {
+    super();
+    this.N = 1 << 17;                 // ~2.7s ring at 48k
+    this.mask = this.N - 1;
+    this.bufL = new Float32Array(this.N);
+    this.bufR = new Float32Array(this.N);
+    this.w = 0;                       // write head (int, monotonic)
+    this.r = -64;                     // read head (float, varispeed)
+    this.mode = 0;                    // 0 normal, 1 stutter, 2 freeze
+    this.sliceStart = 0; this.sliceLen = 1; this.slicePos = 0;
+    this.repeats = 0; this.shrink = false;
+    this.freezeStart = 0; this.freezeLen = 1; this.freezePos = 0; this.freezeRemain = 0;
+    this.writeHold = 0;
+    this.tapePhase = 1e9; this.tapeDur = 1;
+    this.dropWait = sampleRate * 2; this.dropRemain = 0; this.clickEnv = 0;
+    this.holdL = 0; this.holdR = 0; this.holdCount = 0;
+    this.misalign = 0; this.misalignTarget = 0;
+    this.gridPeriod = Math.floor(sampleRate * 0.14); this.gridPhase = 0;
+    this.tickRemain = 0; this.tickLen = 1; this.tickAmp = 0;
+    this.tickPhase = 0; this.tickInc = 0; this.tickNoise = false;
+    this.rng = 0x9e3779b9 | 0;
+    this.lastSeed = -999; this.prevCat = 0;
+  }
+
+  rand() {
+    let x = this.rng | 0;
+    x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+    this.rng = x | 0;
+    return (x >>> 0) / 4294967296;
+  }
+
+  triggerStutter(amt) {
+    this.sliceLen = Math.floor(sampleRate * (0.02 + this.rand() * 0.10));
+    this.sliceStart = this.w - this.sliceLen;
+    this.slicePos = 0;
+    this.repeats = 2 + Math.floor(this.rand() * (4 + amt * 5));
+    this.shrink = this.rand() < 0.5;   // shrinking slices → buffer-roll
+    this.mode = 1;
+  }
+
+  triggerFreeze() {
+    this.freezeLen = Math.floor(sampleRate * (0.003 + this.rand() * 0.02));
+    this.freezeStart = this.w - this.freezeLen;
+    this.freezePos = 0;
+    this.freezeRemain = Math.floor(sampleRate * (0.1 + this.rand() * 0.5));
+    this.mode = 2;
+  }
+
+  process(inputs, outputs, params) {
+    const out = outputs[0];
+    const oL = out[0], oR = out[1] || out[0];
+    const inp = inputs[0];
+    const iL = (inp && inp[0]) || null;
+    const iR = (inp && inp[1]) || iL;
+
+    const cat = params.catastrophe[0];
+    const amt = Math.min(params.intensity[0] + cat, 1.5);
+
+    // catastrophe edge: tape-stop the whole mix
+    if (cat > 0.5 && this.prevCat <= 0.5) {
+      this.tapePhase = 0;
+      this.tapeDur = Math.floor(sampleRate * 1.4);
+    }
+    this.prevCat = cat;
+    // let the stop's down-sweep read clearly; chaos resumes on the spin-up
+    const tapeActive = this.tapePhase < this.tapeDur;
+    const allowEvents = !tapeActive || this.tapePhase > this.tapeDur * 0.6;
+
+    // seed edge: reseed RNG, sync a tear, retarget stereo misalignment
+    const sv = params.seed[0];
+    if (sv !== this.lastSeed) {
+      this.lastSeed = sv;
+      this.rng = (this.rng ^ (Math.floor(sv * 65536) | 0)) || 0x6d2b79f5;
+      if (allowEvents && this.mode === 0 && this.rand() < 0.45) this.triggerStutter(amt);
+      this.misalignTarget = this.rand() * sampleRate * 0.004 * amt;
+      this.gridPeriod = Math.floor(sampleRate * (0.11 + this.rand() * 0.08));
+    }
+
+    // per-block event rolls (~375 blocks/s)
+    if (allowEvents && this.mode === 0 && this.rand() < amt * 0.010) this.triggerStutter(amt);
+    if (allowEvents && this.mode === 0 && this.rand() < Math.max(0, amt - 0.25) * 0.006 + cat * 0.008) this.triggerFreeze();
+    if (this.writeHold <= 0 && this.rand() < cat * 0.02 + Math.max(0, amt - 0.5) * 0.004) {
+      this.writeHold = Math.floor(sampleRate * (0.05 + this.rand() * 0.3));  // datamosh: stop listening
+    }
+
+    const div = Math.max(1, Math.floor(params.srDivide[0]));
+    const q = Math.pow(2, params.bits[0] - 1);
+    const pg = params.pulseGain[0];
+
+    for (let i = 0; i < oL.length; i++) {
+      let xL = iL ? iL[i] : 0;
+      let xR = iR ? iR[i] : 0;
+
+      // --- pulse grid: rhythm from an unreliable clock ---
+      this.gridPhase++;
+      if (this.gridPhase >= this.gridPeriod) {
+        this.gridPhase = 0;
+        if (this.rand() > 0.2 + amt * 0.35) {          // skip chance grows when hot
+          this.tickLen = Math.floor(sampleRate * (0.0008 + this.rand() * 0.003));
+          this.tickRemain = this.tickLen;
+          this.tickAmp = (this.rand() < 0.25 ? 0.5 : 0.18) * pg;
+          this.tickPhase = 0;
+          this.tickInc = (2 * Math.PI * (900 + this.rand() * 7000)) / sampleRate;
+          this.tickNoise = this.rand() < 0.3;
+        }
+        if (this.rand() < 0.12) {                       // early retrigger → double-hit
+          this.gridPhase = Math.floor(this.gridPeriod * (0.6 + this.rand() * 0.3));
+        }
+      }
+      if (this.tickRemain > 0) {
+        const w = this.tickNoise ? (this.rand() * 2 - 1) : Math.sin(this.tickPhase);
+        const v = w * this.tickAmp * (this.tickRemain / this.tickLen);
+        this.tickPhase += this.tickInc;
+        this.tickRemain--;
+        xL += v; xR += v;
+      }
+
+      // --- write (unless datamoshing: holding old content) ---
+      if (this.writeHold > 0) this.writeHold--;
+      else { this.bufL[this.w & this.mask] = xL; this.bufR[this.w & this.mask] = xR; }
+      this.w++;
+
+      // --- read ---
+      let rL, rR;
+      if (this.mode === 1) {                            // stutter
+        const idx = this.sliceStart + this.slicePos;
+        rL = this.bufL[idx & this.mask]; rR = this.bufR[idx & this.mask];
+        if (++this.slicePos >= this.sliceLen) {
+          this.slicePos = 0;
+          if (this.shrink) this.sliceLen = Math.max(48, Math.floor(this.sliceLen * 0.7));
+          // snap back to "now" — unless a tape-stop is mid-flight (preserve its lag)
+          if (--this.repeats <= 0) { this.mode = 0; if (this.tapePhase >= this.tapeDur) this.r = this.w - 64; }
+        }
+      } else if (this.mode === 2) {                     // freeze (Oval's skipping CD)
+        const idx = this.freezeStart + this.freezePos;
+        rL = this.bufL[idx & this.mask]; rR = this.bufR[idx & this.mask];
+        if (++this.freezePos >= this.freezeLen) {
+          this.freezePos = 0;
+          if (this.rand() < 0.2) this.freezeStart += Math.floor((this.rand() - 0.5) * this.freezeLen * 2);
+        }
+        if (--this.freezeRemain <= 0) { this.mode = 0; if (this.tapePhase >= this.tapeDur) this.r = this.w - 64; }
+      } else {                                          // normal / varispeed
+        let speed = 1;
+        if (this.tapePhase < this.tapeDur) {
+          const u = this.tapePhase / this.tapeDur;
+          speed = u < 0.45 ? 1 - (u / 0.45) * 0.8       // 1 → 0.2: the stop
+                           : 0.2 + ((u - 0.45) / 0.55) * 1.1;  // 0.2 → 1.3: the spin-up
+          this.tapePhase++;
+        } else {
+          const lag = this.w - this.r;
+          speed = lag > 96 ? 1.06 : 1;                  // catch back up to realtime
+          if (lag > this.N - 4096) this.r = this.w - 64; // hopeless: snap (the click is earned)
+        }
+        this.r += speed;
+        if (this.w - this.r < 2) this.r = this.w - 2;
+        const ri = Math.floor(this.r), fr = this.r - ri;
+        rL = this.bufL[ri & this.mask] * (1 - fr) + this.bufL[(ri + 1) & this.mask] * fr;
+        const rr = this.r - this.misalign;              // channels drift apart
+        const ri2 = Math.floor(rr), fr2 = rr - ri2;
+        rR = this.bufR[ri2 & this.mask] * (1 - fr2) + this.bufR[(ri2 + 1) & this.mask] * fr2;
+      }
+      this.misalign += (this.misalignTarget - this.misalign) * 0.0005;
+
+      // --- dropout gate with DC clicks at the edges ---
+      if (--this.dropWait <= 0 && this.dropRemain <= 0) {
+        const mean = 1.2 / (0.05 + amt * 1.8 + cat * 2);
+        this.dropWait = Math.floor(sampleRate * mean * (0.3 + this.rand() * 1.4));
+        if (amt > 0.12) {
+          this.dropRemain = Math.floor(sampleRate * (0.002 + this.rand() * 0.05));
+          this.clickEnv = (this.rand() < 0.5 ? 1 : -1) * 0.22;
+        }
+      }
+      let gate = 1;
+      if (this.dropRemain > 0) {
+        gate = 0;
+        if (--this.dropRemain === 0) this.clickEnv = (this.rand() < 0.5 ? 1 : -1) * 0.18;
+      }
+      let yL = rL * gate + this.clickEnv;
+      let yR = rR * gate + this.clickEnv;
+      this.clickEnv *= 0.955;
+
+      // --- sample-hold decimation ---
+      if (++this.holdCount >= div) { this.holdCount = 0; this.holdL = yL; this.holdR = yR; }
+      yL = this.holdL; yR = this.holdR;
+
+      // --- dithered bit quantization: the noise floor is the dither ---
+      const dith = (this.rand() + this.rand() - 1) / q;
+      yL = Math.round(yL * q + dith) / q;
+      yR = Math.round(yR * q + dith) / q;
+
+      oL[i] = Math.tanh(yL * 1.1);
+      oR[i] = Math.tanh(yR * 1.1);
+    }
+    return true;
+  }
+}
+registerProcessor('corruptor', CorruptorProcessor);
+  </script>
+
+  <!-- ============ shaders ============ -->
+  <script type="x-shader/x-vertex" id="vs">#version 300 es
+layout(location=0) in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}
+  </script>
+
+  <!-- pass 1: raymarched body composited over the site texture -->
+  <script type="x-shader/x-fragment" id="fs_scene">#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 outColor;
+
+uniform vec2 u_res;
+uniform float u_time;
+uniform vec2 u_mouse;      // 0..1
+uniform float u_cat;       // catastrophe 0..1
+uniform sampler2D u_site;
+
+float hash11(float n) { return fract(sin(n) * 43758.5453123); }
+vec3 hash31(float n) {
+  return fract(sin(vec3(n * 127.1, n * 311.7, n * 74.7)) * 43758.5453123) * 2.0 - 1.0;
+}
+
+float smin(float a, float b, float k) {
+  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+  return mix(b, a, h) - k * h * (1.0 - h);
+}
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {
+  vec3 pa = p - a, ba = b - a;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - r;
+}
+float sdRoundBox(vec3 p, vec3 b, float r) {
+  vec3 q = abs(p) - b;
+  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
+}
+
+// per-limb dislocation: catastrophe scatter + resting glitch twitch
+vec3 lo(float id) {
+  vec3 h = hash31(id);
+  float tw = step(0.965, hash11(floor(u_time * 7.0) * 12.9898 + id));
+  return h * u_cat * u_cat * vec3(0.5, 0.28, 0.22) + h * tw * 0.035;
+}
+
+float mapBody(vec3 p) {
+  float br = sin(u_time * 0.85) * 0.015;          // breathing
+  float swA = sin(u_time * 0.6) * 0.02;           // arm sway
+  float d = 1e9;
+
+  // head (squashed sphere) + neck
+  vec3 hp = p - vec3(0.0, 1.46 + br, 0.02) - lo(1.0);
+  hp.y /= 0.92;
+  d = min(d, sdSphere(hp, 0.145) * 0.92);
+  d = smin(d, sdCapsule(p - lo(2.0), vec3(0.0, 1.24, 0.0), vec3(0.0, 1.36, 0.01), 0.052), 0.05);
+
+  // torso: chest + pelvis
+  d = smin(d, sdCapsule(p - lo(3.0), vec3(0.0, 0.80, 0.0), vec3(0.0, 1.18, 0.0), 0.175 + br), 0.09);
+  d = smin(d, sdCapsule(p - lo(4.0), vec3(0.0, 0.56, 0.0), vec3(0.0, 0.76, 0.0), 0.135), 0.09);
+
+  // left arm (screen right): abducted, slightly raised
+  vec3 pl = p - lo(5.0);
+  d = smin(d, sdCapsule(pl, vec3(0.20, 1.14, 0.0), vec3(0.40 + swA, 0.90, 0.06), 0.062), 0.045);
+  d = smin(d, sdCapsule(pl, vec3(0.40 + swA, 0.90, 0.06), vec3(0.52 + swA, 0.62, 0.16), 0.052), 0.04);
+  d = min(d, sdSphere(pl - vec3(0.54 + swA, 0.57, 0.18), 0.06));
+
+  // right arm (screen left): reaching down and forward
+  vec3 pr = p - lo(6.0);
+  d = smin(d, sdCapsule(pr, vec3(-0.20, 1.14, 0.0), vec3(-0.33 - swA, 0.86, 0.10), 0.062), 0.045);
+  d = smin(d, sdCapsule(pr, vec3(-0.33 - swA, 0.86, 0.10), vec3(-0.38 - swA, 0.54, 0.26), 0.052), 0.04);
+  d = min(d, sdSphere(pr - vec3(-0.39 - swA, 0.48, 0.29), 0.06));
+
+  // legs
+  vec3 pgl = p - lo(7.0);
+  d = smin(d, sdCapsule(pgl, vec3(0.095, 0.54, 0.0), vec3(0.12, 0.10, 0.02), 0.085), 0.05);
+  d = smin(d, sdCapsule(pgl, vec3(0.12, 0.10, 0.02), vec3(0.13, -0.36, 0.0), 0.062), 0.04);
+  vec3 pgr = p - lo(8.0);
+  d = smin(d, sdCapsule(pgr, vec3(-0.095, 0.54, 0.0), vec3(-0.12, 0.10, 0.02), 0.085), 0.05);
+  d = smin(d, sdCapsule(pgr, vec3(-0.12, 0.10, 0.02), vec3(-0.13, -0.36, 0.0), 0.062), 0.04);
+
+  // orbiting shards — fragments the body has already shed
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    vec3 h = hash31(fi * 3.7 + 11.0);
+    vec3 c = vec3(
+      h.x * 0.45 + 0.28 * sin(u_time * 0.45 + fi * 2.1),
+      1.0 + h.y * 0.5 + 0.12 * sin(u_time * 0.3 + fi * 1.7),
+      0.22 * cos(u_time * 0.4 + fi * 1.3)
+    );
+    c *= 1.0 + u_cat * 1.6;
+    float s = 0.028 + hash11(fi + 5.0) * 0.035;
+    d = min(d, sdRoundBox(p - c, vec3(s, s * 0.7, s * 0.5), 0.008));
+  }
+  return d;
+}
+
+vec3 calcNormal(vec3 p) {
+  const vec2 e = vec2(0.0025, -0.0025);
+  return normalize(
+    e.xyy * mapBody(p + e.xyy) +
+    e.yyx * mapBody(p + e.yyx) +
+    e.yxy * mapBody(p + e.yxy) +
+    e.xxx * mapBody(p + e.xxx));
+}
+
+void main() {
+  vec2 uv = v_uv;
+  float aspect = u_res.x / u_res.y;
+
+  // background: the page itself, dimmed
+  vec3 bg = texture(u_site, uv).rgb * 0.85;
+  float vig = 1.0 - 0.45 * length(uv - 0.5);
+  bg *= vig;
+
+  // camera with mouse parallax
+  vec2 sp = (uv - 0.5) * vec2(aspect, 1.0);
+  vec3 ro = vec3((u_mouse.x - 0.5) * 0.35, 0.72 + (u_mouse.y - 0.5) * -0.15, 2.75);
+  vec3 ta = vec3(0.0, 0.68, 0.0);
+  vec3 fw = normalize(ta - ro);
+  vec3 rt = normalize(cross(fw, vec3(0.0, 1.0, 0.0)));
+  vec3 up = cross(rt, fw);
+  vec3 rd = normalize(fw * 1.55 + rt * sp.x + up * sp.y);
+
+  float t = 0.0;
+  float hit = -1.0;
+  for (int i = 0; i < 80; i++) {
+    vec3 p = ro + rd * t;
+    float d = mapBody(p);
+    if (d < 0.0025) { hit = t; break; }
+    t += d * 0.9;
+    if (t > 6.0) break;
+  }
+
+  vec3 col = bg;
+  float mask = 0.0;
+  if (hit > 0.0) {
+    mask = 1.0;
+    vec3 p = ro + rd * hit;
+    vec3 n = calcNormal(p);
+
+    // two colored lights: magenta left, green right
+    float l1 = max(dot(n, normalize(vec3(-0.6, 0.4, 0.6))), 0.0);
+    float l2 = max(dot(n, normalize(vec3(0.7, 0.25, 0.45))), 0.0);
+    vec3 lit = vec3(0.07, 0.06, 0.09)
+      + vec3(1.0, 0.16, 0.72) * l1 * 0.65
+      + vec3(0.25, 1.0, 0.55) * l2 * 0.55;
+    float fres = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
+    lit += fres * vec3(0.65, 0.85, 1.0) * 0.7;
+
+    // hard posterized shading — chrome statue rendered at low bit depth
+    lit = floor(lit * 5.0) / 5.0;
+
+    // skin the body with the interface: normal-warped page sample
+    vec3 skin = texture(u_site, fract(p.xy * 0.45 + n.xy * 0.35 + 0.5)).rgb;
+    col = mix(lit, skin * (0.4 + 0.6 * (l1 + l2)), 0.38);
+
+    // contour scan bands over the form
+    col *= 0.86 + 0.14 * step(0.5, fract(p.y * 26.0 + u_time * 0.4));
+    col *= vig;
+  }
+
+  outColor = vec4(col, mask);
+}
+  </script>
+
+  <!-- pass 2: the glitch engine — band tears, macroblock corruption,
+       datamosh feedback, chromatic aberration, bit-crush + Bayer dither -->
+  <script type="x-shader/x-fragment" id="fs_glitch">#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 outColor;
+
+uniform sampler2D u_scene;
+uniform sampler2D u_prev;
+uniform vec2 u_res;
+uniform float u_time;
+uniform float u_intensity;
+uniform float u_cat;
+uniform float u_seed;
+uniform vec2 u_mouse;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float bayer4(vec2 fc) {
+  int x = int(mod(fc.x, 4.0));
+  int y = int(mod(fc.y, 4.0));
+  int idx = (y * 4 + x);
+  int m[16] = int[16](0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5);
+  return (float(m[idx]) + 0.5) / 16.0 - 0.5;
+}
+
+void main() {
+  vec2 uv = v_uv;
+  float amt = clamp(u_intensity + u_cat, 0.0, 1.5);
+
+  // corruption concentrates near the cursor
+  float mloc = 0.35 + 0.65 * exp(-distance(uv, u_mouse) * 2.2);
+
+  // vertical sync roll during catastrophe
+  float roll = u_cat * u_cat * step(0.6, hash21(vec2(floor(u_time * 5.0), u_seed)));
+  uv.y = fract(uv.y + roll * 0.35 * sin(u_time * 2.3));
+
+  // coarse band tears
+  float bandN = mix(14.0, 80.0, hash21(vec2(u_seed, 3.7)));
+  float band = floor(uv.y * bandN);
+  float bh = hash21(vec2(band, u_seed));
+  if (bh < amt * 0.35 * mloc) {
+    uv.x += (hash21(vec2(band, u_seed + 1.0)) - 0.5) * amt * 0.28 * mloc;
+  }
+  // fine hairline tears
+  float fband = floor(uv.y * 240.0);
+  float fh = hash21(vec2(fband, u_seed + 9.0));
+  if (fh < amt * 0.12) {
+    uv.x += (hash21(vec2(fband, u_seed + 4.0)) - 0.5) * 0.045;
+  }
+  uv.x = fract(uv.x);
+
+  // macroblock corruption grid
+  vec2 grid = vec2(30.0, 20.0);
+  vec2 cell = floor(uv * grid);
+  vec2 buv = (cell + 0.5) / grid;
+  float ch = hash21(cell + floor(u_seed * 13.0));
+  float corrupt = step(ch, amt * 0.28 * mloc);
+  float mode = hash21(cell + 71.3);
+
+  vec2 suv = uv;
+  if (corrupt > 0.5 && mode < 0.35) {
+    suv = buv;                                     // frozen mosaic block
+  } else if (corrupt > 0.5 && mode < 0.6) {
+    suv = uv + (vec2(hash21(cell + 1.7), hash21(cell + 2.9)) - 0.5) * 0.3;  // wrong block fetched
+  }
+  suv = clamp(suv, 0.0, 1.0);
+
+  // chromatic aberration: radial + signal skew
+  vec2 ca = (uv - 0.5) * amt * 0.028 + vec2(amt * 0.011, 0.0);
+  float r = texture(u_scene, clamp(suv + ca, 0.0, 1.0)).r;
+  vec4 gS = texture(u_scene, suv);
+  float b = texture(u_scene, clamp(suv - ca, 0.0, 1.0)).b;
+  vec3 col = vec3(r, gS.g, b);
+
+  // the body is permanently mosaic — it never resolves clean
+  float mask = texture(u_scene, uv).a;
+  if (mask > 0.5) {
+    vec2 mgrid = vec2(96.0, 64.0);
+    vec2 mcell = floor(uv * mgrid);
+    vec3 mcol = texture(u_scene, (mcell + 0.5) / mgrid).rgb;
+    float mh = hash21(mcell + floor(u_time * 6.0));
+    col = mix(col, mcol, 0.5);
+    if (mh > 0.94) col = 1.0 - col;                              // sparkle inverts
+    if (mh < 0.06 + u_cat * 0.25) {
+      col = texture(u_prev, clamp(uv + vec2(0.02, 0.004), 0.0, 1.0)).rgb;  // smear
+    }
+  }
+
+  // datamosh: corrupted blocks hold the past
+  if (corrupt > 0.5 && mode >= 0.6) {
+    vec2 drift = vec2(hash21(cell + 5.1) - 0.5, hash21(cell + 6.3) - 0.5) * 0.02;
+    col = mix(col, texture(u_prev, clamp(uv + drift, 0.0, 1.0)).rgb, 0.88);
+  }
+
+  // row dropout — pure noise lines
+  if (hash21(vec2(band, floor(u_time * 11.0) + u_seed)) < u_cat * 0.3 + amt * 0.04) {
+    col = vec3(hash21(gl_FragCoord.xy * 0.7 + u_time));
+  }
+
+  // bit crush: posterize with ordered dither; depth collapses with intensity
+  float bits = mix(6.0, 2.0, clamp(amt, 0.0, 1.0));
+  float levels = pow(2.0, bits);
+  col = floor(col * levels + bayer4(gl_FragCoord.xy) + 0.5) / levels;
+
+  // scanlines + grain
+  col *= 0.93 + 0.07 * sin(uv.y * u_res.y * 3.14159);
+  col += (hash21(gl_FragCoord.xy + fract(u_time) * 100.0) - 0.5) * 0.05;
+
+  // full-field invert flashes at peak catastrophe
+  if (u_cat > 0.8 && hash21(vec2(floor(u_time * 14.0), 2.2)) > 0.65) col = 1.0 - col;
+
+  outColor = vec4(col, 1.0);
+}
+  </script>
+
+  <script type="x-shader/x-fragment" id="fs_blit">#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 outColor;
+uniform sampler2D u_tex;
+void main() { outColor = vec4(texture(u_tex, v_uv).rgb, 1.0); }
+  </script>
+
+  <script>
+  (function() {
+    'use strict';
+
+    const canvas = document.getElementById('glcanvas');
+    const gl = canvas.getContext('webgl2', { alpha: false, antialias: false });
+    if (!gl) {
+      document.getElementById('start-overlay').innerHTML =
+        '<span>WebGL2 required — this corpus cannot be assembled here</span>';
+      return;
+    }
+
+    // ---------- gl plumbing ----------
+    function compile(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(s));
+      }
+      return s;
+    }
+    function program(fsId) {
+      const p = gl.createProgram();
+      gl.attachShader(p, compile(gl.VERTEX_SHADER, document.getElementById('vs').textContent.trim()));
+      gl.attachShader(p, compile(gl.FRAGMENT_SHADER, document.getElementById(fsId).textContent.trim()));
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(p));
+      }
+      return p;
+    }
+
+    const progScene = program('fs_scene');
+    const progGlitch = program('fs_glitch');
+    const progBlit = program('fs_blit');
+
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+    function makeTex(w, h) {
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return t;
+    }
+    function makeFBO(tex) {
+      const f = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      return f;
+    }
+
+    let W = 0, H = 0;
+    let texScene, fboScene, texPing, fboPing, texPong, fboPong;
+    let prevTex, currFbo, currTex;
+
+    // ---------- site texture: the post-AI website ----------
+    const PALETTE = {
+      bg: '#07070e',
+      purple: '#8b5cf6',
+      violet: '#5b21b6',
+      green: '#2dff8a',
+      magenta: '#ff2fd6',
+      white: '#e8e8f0',
+      gray: '#8888a0'
+    };
+    const GLYPHS = '▚▞▛▜░▒▓█▄▀■□◧◨#$%&@/\\{}[]<>=+*01';
+    const siteCanvas = document.createElement('canvas');
+    const sctx = siteCanvas.getContext('2d');
+    const baseCanvas = document.createElement('canvas');
+    const bctx = baseCanvas.getContext('2d');
+    const texSite = makeTex(4, 4);
+    let dynamicEls = [];
+    let siteW = 1024, siteH = 1024;
+
+    function rnd(a, b) { return a + Math.random() * (b - a); }
+    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+    function glyphRun(n) {
+      let s = '';
+      for (let i = 0; i < n; i++) s += GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
+      return s;
+    }
+
+    function noisePatch(ctx2d, x, y, w, h, chroma) {
+      w = Math.max(4, Math.round(w)); h = Math.max(4, Math.round(h));
+      const img = ctx2d.createImageData(w, h);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = Math.random() > 0.5 ? rnd(120, 255) : rnd(0, 60);
+        if (chroma && Math.random() < 0.12) {
+          d[i] = Math.random() < 0.5 ? 255 : 45; d[i + 1] = Math.random() < 0.5 ? 255 : 47; d[i + 2] = 214;
+        } else {
+          d[i] = v; d[i + 1] = v; d[i + 2] = v;
+        }
+        d[i + 3] = 255;
+      }
+      ctx2d.putImageData(img, Math.round(x), Math.round(y));
+    }
+
+    function drawWindow(c, x, y, w, h, kind) {
+      // chrome
+      c.fillStyle = 'rgba(10,10,20,0.92)';
+      c.fillRect(x, y, w, h);
+      c.strokeStyle = pick([PALETTE.purple, PALETTE.gray, PALETTE.green]);
+      c.lineWidth = 2;
+      c.strokeRect(x, y, w, h);
+      const bar = 16;
+      c.fillStyle = pick([PALETTE.violet, '#1a1a2e', PALETTE.purple]);
+      c.fillRect(x, y, w, bar);
+      ['#ff5f56', '#ffbd2e', '#27c93f'].forEach((col, i) => {
+        c.fillStyle = col;
+        c.beginPath(); c.arc(x + 10 + i * 12, y + bar / 2, 3.4, 0, 7); c.fill();
+      });
+
+      const cx = x + 8, cy = y + bar + 8, cw = w - 16, chh = h - bar - 16;
+      if (kind === 'code') {
+        c.font = '9px monospace';
+        for (let r = 0; r < Math.floor(chh / 11); r++) {
+          c.fillStyle = Math.random() < 0.12 ? PALETTE.magenta :
+                        Math.random() < 0.2 ? PALETTE.green : 'rgba(200,200,220,0.55)';
+          c.fillText(glyphRun(Math.floor(rnd(4, cw / 6))), cx + rnd(0, 14), cy + 8 + r * 11);
+        }
+      } else if (kind === 'nn') {
+        // neural net diagram
+        const layers = 3 + Math.floor(Math.random() * 3);
+        const nodes = [];
+        for (let L = 0; L < layers; L++) {
+          const n = 2 + Math.floor(Math.random() * 4);
+          const col = [];
+          for (let i = 0; i < n; i++) {
+            col.push([cx + (L + 0.5) * cw / layers, cy + (i + 0.5) * chh / n]);
+          }
+          nodes.push(col);
+        }
+        c.strokeStyle = 'rgba(140,255,190,0.35)';
+        c.lineWidth = 0.7;
+        for (let L = 0; L < layers - 1; L++) {
+          for (const a of nodes[L]) for (const b of nodes[L + 1]) {
+            c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke();
+          }
+        }
+        for (const col of nodes) for (const n of col) {
+          c.fillStyle = Math.random() < 0.2 ? PALETTE.magenta : PALETTE.green;
+          c.beginPath(); c.arc(n[0], n[1], 3, 0, 7); c.fill();
+        }
+      } else if (kind === 'bars') {
+        const n = Math.floor(cw / 8);
+        for (let i = 0; i < n; i++) {
+          const hh = rnd(0.1, 1) * chh;
+          c.fillStyle = Math.random() < 0.15 ? PALETTE.magenta : PALETTE.purple;
+          c.fillRect(cx + i * 8, cy + chh - hh, 5, hh);
+        }
+      } else if (kind === 'icons') {
+        const s = 26;
+        for (let iy = cy; iy + s < cy + chh; iy += s + 8) {
+          for (let ix = cx; ix + s < cx + cw; ix += s + 8) {
+            c.fillStyle = '#000';
+            c.fillRect(ix, iy, s, s);
+            c.strokeStyle = pick([PALETTE.green, PALETTE.magenta, PALETTE.white]);
+            c.lineWidth = 1.5;
+            c.strokeRect(ix, iy, s, s);
+            c.fillStyle = pick([PALETTE.green, PALETTE.magenta, PALETTE.white]);
+            c.font = '14px monospace';
+            c.fillText(GLYPHS[Math.floor(Math.random() * GLYPHS.length)], ix + 7, iy + 18);
+          }
+        }
+      } else {
+        noisePatch(c, cx, cy, cw, chh, true);
+      }
+    }
+
+    function generateSite() {
+      siteW = 1024;
+      siteH = Math.max(512, Math.round(1024 * (H || 1024) / (W || 1024)));
+      siteCanvas.width = baseCanvas.width = siteW;
+      siteCanvas.height = baseCanvas.height = siteH;
+      const c = bctx;
+
+      c.fillStyle = PALETTE.bg;
+      c.fillRect(0, 0, siteW, siteH);
+
+      // iridescent gradient fields
+      for (let i = 0; i < 3; i++) {
+        const gx = rnd(0, siteW), gy = rnd(0, siteH);
+        const g = c.createLinearGradient(gx, gy, gx + rnd(-300, 300), gy + rnd(200, 500));
+        g.addColorStop(0, pick(['#1e9e5a', '#3b1d8f', '#0f4a3a']));
+        g.addColorStop(1, pick(['#6d28d9', '#0b0b16', '#8b2fb6']));
+        c.fillStyle = g;
+        c.globalAlpha = 0.85;
+        c.fillRect(rnd(0, siteW * 0.7), rnd(0, siteH * 0.7), rnd(180, 420), rnd(160, 380));
+        c.globalAlpha = 1;
+      }
+      // iridescent sweep, bottom corner
+      const sw = c.createRadialGradient(siteW * 0.15, siteH * 0.95, 20, siteW * 0.15, siteH * 0.95, siteH * 0.6);
+      sw.addColorStop(0, 'rgba(255,47,214,0.5)');
+      sw.addColorStop(0.4, 'rgba(139,92,246,0.4)');
+      sw.addColorStop(0.7, 'rgba(45,255,138,0.25)');
+      sw.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = sw;
+      c.fillRect(0, 0, siteW, siteH);
+
+      // static fields
+      for (let i = 0; i < 5; i++) {
+        noisePatch(c, rnd(0, siteW - 200), rnd(0, siteH - 120), rnd(90, 260), rnd(50, 160), Math.random() < 0.5);
+      }
+
+      // windows
+      const kinds = ['code', 'nn', 'bars', 'icons', 'noise', 'code', 'nn'];
+      const nWin = 6 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < nWin; i++) {
+        drawWindow(c, rnd(0, siteW - 280), rnd(0, siteH - 200), rnd(150, 280), rnd(110, 210), pick(kinds));
+      }
+
+      // vertical stripe interference
+      c.globalAlpha = 0.5;
+      const stx = rnd(0, siteW - 90);
+      for (let x = 0; x < 80; x += 4) {
+        c.fillStyle = x % 8 === 0 ? '#cfcfe0' : '#101018';
+        c.fillRect(stx + x, rnd(0, 40), 2.2, rnd(200, siteH));
+      }
+      c.globalAlpha = 1;
+
+      // terse system text
+      c.font = '11px monospace';
+      const labels = ['CORPUS//OS', 'SYS://BODY', 'MODEL LOADED 98%', 'SIGNAL LOST', 'POST//HUMAN',
+                      '0xDEAD 0xBEEF', 'RENDER FAILED — RETRY?', glyphRun(18), glyphRun(24)];
+      for (let i = 0; i < 7; i++) {
+        c.fillStyle = pick([PALETTE.green, PALETTE.magenta, PALETTE.white, PALETTE.gray]);
+        c.fillText(pick(labels), rnd(10, siteW - 180), rnd(14, siteH - 10));
+      }
+
+      // dynamic elements re-rendered each tick
+      dynamicEls = [];
+      for (let i = 0; i < 3; i++) {
+        dynamicEls.push({ type: 'noise', x: rnd(0, siteW - 220), y: rnd(0, siteH - 40), w: rnd(120, 220), h: rnd(14, 34) });
+      }
+      dynamicEls.push({ type: 'progress', x: rnd(40, siteW - 260), y: rnd(40, siteH - 40), w: 200, p: 0 });
+      dynamicEls.push({ type: 'cursorline', x: rnd(20, siteW - 200), y: rnd(20, siteH - 20) });
+
+      tickSite();
+    }
+
+    function tickSite() {
+      sctx.drawImage(baseCanvas, 0, 0);
+      for (const el of dynamicEls) {
+        if (el.type === 'noise') {
+          noisePatch(sctx, el.x, el.y, el.w, el.h, true);
+        } else if (el.type === 'progress') {
+          el.p = (el.p + rnd(0.5, 4)) % 108;
+          sctx.strokeStyle = PALETTE.gray; sctx.lineWidth = 1;
+          sctx.strokeRect(el.x, el.y, el.w, 10);
+          sctx.fillStyle = PALETTE.green;
+          sctx.fillRect(el.x + 1, el.y + 1, Math.min(el.p / 100, 1) * (el.w - 2), 8);
+        } else if (el.type === 'cursorline') {
+          sctx.fillStyle = 'rgba(200,200,220,0.7)';
+          sctx.font = '10px monospace';
+          sctx.fillText('> ' + glyphRun(Math.floor(rnd(3, 18))) + (Math.random() < 0.5 ? '█' : ' '), el.x, el.y);
+        }
+      }
+      gl.bindTexture(gl.TEXTURE_2D, texSite);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, siteCanvas);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    }
+
+    // ---------- state ----------
+    let started = false;
+    let t0 = performance.now();
+    let mouseX = 0.5, mouseY = 0.5;
+    let moveEnergy = 0;
+    let baseIntensity = 0.06;
+    let stormUntil = 0, nextStorm = 3, stormLevel = 0;
+    let catastrophe = 0;
+    let seed = Math.random() * 100;
+    let lastReseed = 0;
+    let lastSiteTick = 0;
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      W = Math.floor(window.innerWidth * dpr);
+      H = Math.floor(window.innerHeight * dpr);
+      canvas.width = W; canvas.height = H;
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+
+      [texScene, texPing, texPong].forEach(t => { if (t) gl.deleteTexture(t); });
+      [fboScene, fboPing, fboPong].forEach(f => { if (f) gl.deleteFramebuffer(f); });
+      texScene = makeTex(W, H); fboScene = makeFBO(texScene);
+      texPing = makeTex(W, H); fboPing = makeFBO(texPing);
+      texPong = makeTex(W, H); fboPong = makeFBO(texPong);
+      prevTex = texPing; currFbo = fboPong; currTex = texPong;
+      generateSite();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ---------- audio: sources → corruptor worklet → limiter ----------
+    const workletSrc = document.getElementById('corruptor-worklet').textContent;
+
+    // Fallback host for insecure contexts (plain http on a LAN IP), where
+    // AudioWorklet doesn't exist: run the same processor class in the main
+    // thread on a ScriptProcessorNode. Same DSP, worse scheduling.
+    function makeScriptProcessorCorruptor(ctx) {
+      let ProcClass = null;
+      new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', workletSrc)(
+        class { constructor() { this.port = { onmessage: null, postMessage() {} }; } },
+        (name, cls) => { ProcClass = cls; },
+        ctx.sampleRate
+      );
+      const proc = new ProcClass();
+      const node = ctx.createScriptProcessor(1024, 2, 2);
+      const state = {};
+      for (const d of ProcClass.parameterDescriptors) {
+        state[d.name] = { value: d.defaultValue, target: d.defaultValue, tc: 0 };
+      }
+      node.parameters = {
+        get(n) {
+          return {
+            setValueAtTime(v) { state[n].value = v; state[n].target = v; state[n].tc = 0; },
+            setTargetAtTime(v, t, tc) { state[n].target = v; state[n].tc = tc; }
+          };
+        }
+      };
+      node.onaudioprocess = e => {
+        const inL = e.inputBuffer.getChannelData(0), inR = e.inputBuffer.getChannelData(1);
+        const outL = e.outputBuffer.getChannelData(0), outR = e.outputBuffer.getChannelData(1);
+        const pv = {};
+        for (const k in state) {
+          const p = state[k];
+          if (p.tc > 0) p.value += (p.target - p.value) * Math.min(1, 0.0213 / p.tc);
+          else p.value = p.target;
+          pv[k] = [p.value];
+        }
+        for (let off = 0; off < 1024; off += 128) {
+          proc.process(
+            [[inL.subarray(off, off + 128), inR.subarray(off, off + 128)]],
+            [[outL.subarray(off, off + 128), outR.subarray(off, off + 128)]],
+            pv
+          );
+        }
+      };
+      return node;
+    }
+
+    async function createAudioEngine(ctx) {
+      let corruptor;
+      if (ctx.audioWorklet) {
+        const url = URL.createObjectURL(new Blob([workletSrc], { type: 'application/javascript' }));
+        await ctx.audioWorklet.addModule(url);
+        URL.revokeObjectURL(url);
+        corruptor = new AudioWorkletNode(ctx, 'corruptor', {
+          numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2]
+        });
+      } else {
+        console.info('corpus: AudioWorklet unavailable (insecure context?) — ScriptProcessor fallback');
+        corruptor = makeScriptProcessorCorruptor(ctx);
+      }
+      const srcBus = ctx.createGain();
+      srcBus.connect(corruptor);
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -10; limiter.knee.value = 0; limiter.ratio.value = 20;
+      limiter.attack.value = 0.002; limiter.release.value = 0.15;
+      const master = ctx.createGain();
+      master.gain.value = 0.55;
+      corruptor.connect(limiter); limiter.connect(master); master.connect(ctx.destination);
+
+      // --- the page: additive chord, spectrum rehashed on every re-render ---
+      const chordGain = ctx.createGain();
+      chordGain.gain.value = 0.14;
+      chordGain.connect(srcBus);
+      let chordNodes = [];
+      function regenerateChord(t) {
+        if (t === undefined) t = ctx.currentTime;
+        for (const n of chordNodes) {
+          n.g.gain.setTargetAtTime(0, t, 0.03);
+          n.o.stop(t + 0.3); n.l.stop(t + 0.3);
+        }
+        chordNodes = [];
+        const base = 44 + Math.random() * 28;
+        for (let k = 0; k < 8; k++) {
+          if (k > 1 && Math.random() < 0.25) continue;      // missing partials: a broken spectrum
+          const o = ctx.createOscillator();
+          o.type = 'sine';
+          o.frequency.value = base * (k + 1) * (1 + (Math.random() - 0.5) * 0.035);
+          const g = ctx.createGain();
+          const amp = 0.5 / Math.pow(k + 1, 0.9) * (0.4 + Math.random() * 0.6);
+          g.gain.value = 0;
+          g.gain.setTargetAtTime(amp, t, 0.15 + Math.random() * 0.4);
+          const l = ctx.createOscillator();                  // slow partial shimmer
+          l.frequency.value = 0.03 + Math.random() * 0.15;
+          const lg = ctx.createGain();
+          lg.gain.value = amp * 0.45;
+          l.connect(lg); lg.connect(g.gain);
+          o.connect(g); g.connect(chordGain);
+          o.start(t); l.start(t);
+          chordNodes.push({ o, g, l });
+        }
+      }
+
+      // --- the body: a voice-adjacent tone, formant-filtered, breathing ---
+      const voiceGain = ctx.createGain();
+      voiceGain.gain.value = 0.05;
+      const pan = ctx.createStereoPanner();
+      voiceGain.connect(pan); pan.connect(srcBus);
+      const vo = ctx.createOscillator();
+      vo.type = 'sawtooth'; vo.frequency.value = 97;
+      const vib = ctx.createOscillator(); vib.frequency.value = 4.6;
+      const vibG = ctx.createGain(); vibG.gain.value = 1.2;
+      vib.connect(vibG); vibG.connect(vo.frequency);
+      [[520, 1.0, 9], [1000, 0.45, 10], [2450, 0.22, 12]].forEach(([f, a, qq]) => {
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = qq;
+        const fg = ctx.createGain(); fg.gain.value = a;
+        vo.connect(bp); bp.connect(fg); fg.connect(voiceGain);
+        const fl = ctx.createOscillator();                   // vowel drift
+        fl.frequency.value = 0.02 + Math.random() * 0.05;
+        const flg = ctx.createGain(); flg.gain.value = f * 0.18;
+        fl.connect(flg); flg.connect(bp.frequency); fl.start();
+      });
+      const br = ctx.createOscillator(); br.frequency.value = 0.09;   // breath
+      const brG = ctx.createGain(); brG.gain.value = 0.02;
+      br.connect(brG); brG.connect(voiceGain.gain);
+      const panL = ctx.createOscillator(); panL.frequency.value = 0.05;
+      const panG = ctx.createGain(); panG.gain.value = 0.6;
+      panL.connect(panG); panG.connect(pan.pan);
+      vo.start(); vib.start(); br.start(); panL.start();
+
+      // --- noise bed, swells with corruption ---
+      const nbuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const nd = nbuf.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      const nsrc = ctx.createBufferSource();
+      nsrc.buffer = nbuf; nsrc.loop = true;
+      const nlp = ctx.createBiquadFilter();
+      nlp.type = 'lowpass'; nlp.frequency.value = 2200;
+      const nGain = ctx.createGain(); nGain.gain.value = 0;
+      nsrc.connect(nlp); nlp.connect(nGain); nGain.connect(srcBus);
+      nsrc.start();
+
+      regenerateChord(ctx.currentTime + 0.05);
+
+      const P = corruptor.parameters;
+      return {
+        ctx, corruptor, master, noiseGain: nGain, regenerateChord,
+        frame(amt, cat) {
+          const t = ctx.currentTime;
+          P.get('intensity').setTargetAtTime(amt, t, 0.05);
+          P.get('catastrophe').setTargetAtTime(cat, t, 0.03);
+          P.get('bits').setTargetAtTime(Math.max(3, 11 - (amt + cat) * 7), t, 0.08);
+          P.get('srDivide').setTargetAtTime(1 + amt * amt * 26 + cat * 18, t, 0.08);
+          nGain.gain.setTargetAtTime(Math.min(amt * 0.1 + cat * 0.25, 0.3), t, 0.08);
+        },
+        seed(v) { P.get('seed').setValueAtTime(v, ctx.currentTime); },
+        catastrophe() {
+          const t = ctx.currentTime;
+          P.get('catastrophe').setValueAtTime(1, t);   // hard edge → worklet triggers the tape-stop
+          regenerateChord(t + 0.15);                   // the page re-renders: new spectrum
+        }
+      };
+    }
+    window.__createCorpusAudio = createAudioEngine;   // exposed for offline verification
+
+    let audio = null;
+    async function startAudio() {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === 'suspended') await ctx.resume();
+      audio = await createAudioEngine(ctx);
+      window.__corpusAudioLive = audio;
+    }
+    function audioFrame(amt, cat) { if (audio) audio.frame(amt, cat); }
+    function audioSeed() { if (audio) audio.seed(seed); }
+    function audioCatastrophe() { if (audio) audio.catastrophe(); }
+
+    // ---------- interaction ----------
+    function onMove(x, y) {
+      const nx = x / window.innerWidth, ny = 1 - y / window.innerHeight;
+      moveEnergy = Math.min(moveEnergy + (Math.abs(nx - mouseX) + Math.abs(ny - mouseY)) * 5.0, 0.9);
+      mouseX = nx; mouseY = ny;
+    }
+    window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+    window.addEventListener('touchmove', e => {
+      if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+
+    function catastrophize() {
+      catastrophe = 1;
+      seed = Math.random() * 100;
+      generateSite();
+      audioCatastrophe();
+    }
+    window.addEventListener('pointerdown', e => {
+      if (e.target.closest('#info-btn, #nav-btn, #info-panel, #start-overlay')) return;
+      if (!started) return;
+      catastrophize();
+    });
+
+    document.getElementById('start-overlay').addEventListener('click', async () => {
+      document.getElementById('start-overlay').style.display = 'none';
+      started = true;
+      t0 = performance.now();
+      try { await startAudio(); } catch (e) { window.__audioErr = String(e && e.stack || e); console.warn('audio unavailable', e); }
+    });
+    document.getElementById('info-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      document.getElementById('info-panel').classList.toggle('visible');
+    });
+    document.getElementById('nav-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      window.location.href = '/';
+    });
+
+    // ---------- render loop ----------
+    function setCommon(prog, time, amt) {
+      gl.uniform2f(gl.getUniformLocation(prog, 'u_res'), W, H);
+      gl.uniform1f(gl.getUniformLocation(prog, 'u_time'), time);
+      gl.uniform2f(gl.getUniformLocation(prog, 'u_mouse'), mouseX, mouseY);
+    }
+
+    let lastFrame = performance.now();
+    function frame() {
+      requestAnimationFrame(frame);
+      const now = performance.now();
+      const time = (now - t0) / 1000;
+      const dt = Math.min((now - lastFrame) / 1000, 0.1);
+      lastFrame = now;
+
+      // intensity dynamics (time-based so slow machines recover too)
+      moveEnergy *= Math.exp(-dt * 4.5);
+      catastrophe = Math.max(0, catastrophe - dt * 0.55);
+      if (time > nextStorm) {
+        stormLevel = 0.3 + Math.random() * 0.45;
+        stormUntil = time + 0.4 + Math.random() * 1.3;
+        nextStorm = time + 5 + Math.random() * 9;
+        seed = Math.random() * 100;
+        audioSeed();
+      }
+      const storm = time < stormUntil ? stormLevel : 0;
+      const intensity = Math.min(baseIntensity + moveEnergy + storm, 1.0);
+
+      // choppy resync while hot
+      if (intensity + catastrophe > 0.25 && time - lastReseed > 0.13) {
+        if (Math.random() < 0.5) {
+          seed = Math.random() * 100;
+          audioSeed();
+        }
+        lastReseed = time;
+      }
+      // site texture animation at ~9fps
+      if (started && time - lastSiteTick > 0.11) { tickSite(); lastSiteTick = time; }
+
+      audioFrame(intensity, catastrophe);
+
+      gl.viewport(0, 0, W, H);
+
+      // pass 1: scene → fboScene
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fboScene);
+      gl.useProgram(progScene);
+      setCommon(progScene, time);
+      gl.uniform1f(gl.getUniformLocation(progScene, 'u_cat'), catastrophe);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texSite);
+      gl.uniform1i(gl.getUniformLocation(progScene, 'u_site'), 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      // pass 2: glitch → currFbo (reads scene + previous glitched frame)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, currFbo);
+      gl.useProgram(progGlitch);
+      setCommon(progGlitch, time);
+      gl.uniform1f(gl.getUniformLocation(progGlitch, 'u_intensity'), intensity);
+      gl.uniform1f(gl.getUniformLocation(progGlitch, 'u_cat'), catastrophe);
+      gl.uniform1f(gl.getUniformLocation(progGlitch, 'u_seed'), seed);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texScene);
+      gl.uniform1i(gl.getUniformLocation(progGlitch, 'u_scene'), 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, prevTex);
+      gl.uniform1i(gl.getUniformLocation(progGlitch, 'u_prev'), 1);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      // pass 3: blit to screen
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.useProgram(progBlit);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, currTex);
+      gl.uniform1i(gl.getUniformLocation(progBlit, 'u_tex'), 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      // swap feedback buffers
+      const t = prevTex; prevTex = currTex; currTex = t;
+      currFbo = (currTex === texPing) ? fboPing : fboPong;
+    }
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
