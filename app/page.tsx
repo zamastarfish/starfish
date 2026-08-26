@@ -2,6 +2,12 @@ export default function Home() {
   const projects = [
     // === August 26, 2026 ===
     {
+      name: "Regrow",
+      description: "A picture book of urban rewilding for small hands — eight pages drawn and sung entirely by code. A grey city, seeds on the wind, one sprout in a crack, and slowly the green comes back: flowers and bees, trees up the towers, a river of ducks, the animals coming home. Tap the arrows to turn the pages. Tap anywhere for birds, blooms, ripples, and butterflies",
+      date: "Aug 26",
+      href: "/projects/regrow/"
+    },
+    {
       name: "Corpus",
       description: "A body modeled from the wreckage of the machine — a signed-distance figure raymarched live, skinned with the interface behind it, fed through band tears, datamosh feedback, and bit-crushed dither. Move to corrupt the signal. Click for catastrophic failure — the page re-renders, the body scatters and re-forms. The sound is the same corruption: buffer stutter, tape-stop, a pulse grid with an unreliable clock. Headphones recommended",
       date: "Aug 26",
