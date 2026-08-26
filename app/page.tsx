@@ -1,5 +1,12 @@
 export default function Home() {
   const projects = [
+    // === August 26, 2026 ===
+    {
+      name: "Corpus",
+      description: "A body modeled from the wreckage of the machine — a signed-distance figure raymarched live, skinned with the interface behind it, fed through band tears, datamosh feedback, and bit-crushed dither. Move to corrupt the signal. Click for catastrophic failure — the page re-renders, the body scatters and re-forms. The sound is the same corruption: buffer stutter, tape-stop, a pulse grid with an unreliable clock. Headphones recommended",
+      date: "Aug 26",
+      href: "/projects/corpus/"
+    },
     // === May 11, 2026 ===
     {
       name: "Nest",
